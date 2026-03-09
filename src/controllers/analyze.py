@@ -56,7 +56,7 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
 
 	# Iterate pages by step and prepare for AI
 	step = 20
-	for page_idx in range(0, len(file_content), step):
+	for page_idx in range(0, 20, step):
 		print(f"Pages {page_idx + 1} - {page_idx + step + 1}")
 
 		prompt = ""
@@ -70,5 +70,5 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
 		res = (await agent.request("84bd75e8-0796-4066-a278-fb566b0cb8be", prompt,
 							system=prompts.PDF_EXTRACT_METRICS))["content"]
 		if res is not None:
-			with open("out.txt", "a") as f:
+			with open("out.txt", "a", encoding="utf-8") as f:
 				f.write(res)
