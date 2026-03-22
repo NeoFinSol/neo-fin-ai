@@ -311,20 +311,52 @@ jobs:
 
 ## 🔐 БЕЗОПАСНОСТЬ
 
+### Required GitHub Secrets:
+
+Настройте следующие секреты в репозитории:
+
+```bash
+# Перейти в: Settings → Secrets and variables → Actions
+# Нажать: New repository secret
+
+# Обязательно настройте:
+DATABASE_PASSWORD          # Пароль PostgreSQL (используется в ci.yml)
+QWEN_API_KEY               # API ключ Qwen AI
+QWEN_API_URL               # URL Qwen API (например, https://api.qwen.ai/v1)
+CORS_ALLOW_ORIGINS         # Разрешенные CORS origin (через запятую)
+CORS_ALLOW_METHODS         # Разрешенные HTTP методы
+CORS_ALLOW_HEADERS         # Разрешенные заголовки
+CORS_ALLOW_CREDENTIALS     # Разрешить credentials (true/false)
+```
+
 ### Secrets Management:
 
 1. **Не коммитьте секреты в код!**
-2. Используйте GitHub Secrets:
-   ```bash
-   # Settings → Secrets and variables → Actions
-   # Add secret: QWEN_API_KEY, DATABASE_PASSWORD, etc.
-   ```
+2. Используйте GitHub Secrets для всех чувствительных данных
+3. Workflow автоматически подставляет секреты через environment variables
 
-3. Использование в workflow:
-   ```yaml
-   env:
-     QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
-   ```
+Пример настройки секретов:
+
+```bash
+# Через GitHub UI:
+1. Repository Settings → Secrets and variables → Actions
+2. New repository secret
+3. Name: DATABASE_PASSWORD
+4. Value: <your_secure_password>
+5. Repeat for all required secrets
+
+# Через GitHub CLI:
+gh secret set DATABASE_PASSWORD --body "<your_password>"
+gh secret set QWEN_API_KEY --body "<your_api_key>"
+gh secret set QWEN_API_URL --body "https://api.qwen.ai/v1"
+```
+
+Использование в workflow:
+```yaml
+env:
+  DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@localhost:5432/neofin
+  QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+```
 
 ### Branch Protection:
 
