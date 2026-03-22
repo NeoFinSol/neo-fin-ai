@@ -1,7 +1,8 @@
 # 🗄️ ИНСТРУКЦИЯ ПО НАСТРОЙКЕ БАЗЫ ДАННЫХ
 
 **Дата:** 23.03.2026  
-**Статус:** Готово к использованию
+**Статус:** Готово к использованию  
+**Уровень безопасности:** ⚠️ Требует настройки переменных окружения для production
 
 ---
 
@@ -9,9 +10,10 @@
 
 1. [Быстрый старт с Docker](#быстрый-старт-с-docker)
 2. [Локальная установка PostgreSQL](#локальная-установка-postgresql)
-3. [Запуск миграций](#запуск-миграций)
-4. [Запуск DB integration тестов](#запуск-db-integration-тестов)
-5. [Troubleshooting](#troubleshooting)
+3. [Настройка переменных окружения](#настройка-переменных-окружения)
+4. [Запуск миграций](#запуск-миграций)
+5. [Запуск DB integration тестов](#запуск-db-integration-тестов)
+6. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -24,6 +26,9 @@
 ### Шаг 1: Запуск баз данных
 
 ```bash
+# Перейти в директорию проекта
+cd <project-root>  # Например: cd e:\neo-fin-ai (Windows) или cd ~/neo-fin-ai (Linux/Mac)
+
 # Запустить только PostgreSQL (main + test)
 docker-compose up -d db db_test
 
@@ -40,21 +45,87 @@ db_test             Up (healthy)             0.0.0.0:5433->5432
 
 ### Шаг 2: Проверка подключения
 
+**Вариант A: Через docker-compose (рекомендуется):**
 ```bash
-# Проверка main БД
+# Проверка main БД (через internal network)
 docker-compose exec db psql -U postgres -d neofin -c "SELECT 1"
 
 # Проверка test БД
 docker-compose exec db_test psql -U postgres -d neofin_test -c "SELECT 1"
 ```
 
-### Шаг 3: Запуск миграций
+**Вариант B: Через опубликованные порты:**
+```bash
+# Main БД (порт 5432)
+psql -h localhost -p 5432 -U postgres -d neofin -c "SELECT 1"
+
+# Test БД (порт 5433)
+psql -h localhost -p 5433 -U postgres -d neofin_test -c "SELECT 1"
+```
+
+⚠️ **Важно:** Пароль по умолчанию `postgres` используется ТОЛЬКО для локальной разработки!
+
+### Шаг 3: Настройка переменных окружения
+
+Создайте файл `.env` в корне проекта (не коммитьте в git!):
 
 ```bash
-# Применить все миграции
-alembic upgrade head
+# .env файл (НЕ для production!)
+# ⚠️ ЗАМЕНИТЕ ПАРОЛИ НА БЕЗОПАСНЫЕ ЗНАЧЕНИЯ!
 
-# Проверить статус миграций
+DATABASE_URL=postgresql+asyncpg://postgres:<YOUR_PASSWORD>@localhost:5432/neofin
+TEST_DATABASE_URL=postgresql+asyncpg://postgres:<YOUR_PASSWORD>@localhost:5433/neofin_test
+
+# Qwen AI API configuration (опционально)
+# QWEN_API_KEY=<your_api_key>
+# QWEN_API_URL=https://api.qwen.ai/v1
+```
+
+🔐 **Для production используйте secrets:**
+
+```yaml
+# docker-compose.prod.yml
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+
+secrets:
+  db_password:
+    external: true
+```
+
+### Шаг 4: Запуск миграций
+
+**Вариант A: С использованием .env файла:**
+```bash
+# Alembic автоматически загрузит DATABASE_URL из .env
+alembic upgrade head
+```
+
+**Вариант B: Явная передача DATABASE_URL:**
+
+Bash (Linux/Mac):
+```bash
+export DATABASE_URL="postgresql+asyncpg://postgres:password@localhost:5432/neofin"
+alembic upgrade head
+```
+
+PowerShell (Windows):
+```powershell
+$env:DATABASE_URL="postgresql+asyncpg://postgres:password@localhost:5432/neofin"
+alembic upgrade head
+```
+
+**Вариант C: С указанием конфигурационного файла:**
+```bash
+alembic -c alembic.ini upgrade head
+```
+
+**Проверка статуса:**
+```bash
 alembic current
 ```
 
@@ -79,7 +150,7 @@ alembic current
    # Порт по умолчанию: 5432
    ```
 
-3. **Создать тестовую БД:**
+3. **Создать базы данных:**
    ```bash
    psql -U postgres
    CREATE DATABASE neofin;
@@ -116,26 +187,21 @@ sudo -u postgres createdb neofin_test
 
 ---
 
-## 🔧 ЗАПУСК МИГРАЦИЙ
+## 🔧 ЗАПУСК МИГРАЦИЙ (ПОДРОБНО)
 
 ### Предварительные требования:
 
-1. Убедитесь что `.env` файл настроен:
-```bash
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/neofin
-TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/neofin_test
-```
-
+1. Убедитесь что `.env` файл настроен (см. выше)
 2. Установлены зависимости:
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ### Применение миграций:
 
 ```bash
 # Перейти в директорию проекта
-cd e:\neo-fin-ai
+cd <project-root>
 
 # Применить все миграции
 alembic upgrade head
@@ -144,7 +210,7 @@ alembic upgrade head
 alembic current
 
 # Показать историю миграций
-alembic history
+alembic history --verbose
 ```
 
 ### Откат миграций:
@@ -235,7 +301,11 @@ CREATE DATABASE neofin;
 **Решение:**
 ```bash
 # Использовать текущего пользователя
-export DATABASE_URL=postgresql+asyncpg://<user>:<password>@localhost:5432/neofin
+# Bash/Linux:
+export DATABASE_URL="postgresql+asyncpg://<user>:<password>@localhost:5432/neofin"
+
+# PowerShell/Windows:
+$env:DATABASE_URL="postgresql+asyncpg://<user>:<password>@localhost:5432/neofin"
 ```
 
 ### ❌ Ошибка: "migration already applied"
@@ -272,7 +342,8 @@ alembic upgrade head
 
 - [ ] Docker запущен и доступен
 - [ ] Контейнеры `db` и `db_test` в статусе `Up (healthy)`
-- [ ] Порты 5432 и 5433 открыты
+- [ ] Порты 5432 и 5433 открыты (только для development!)
+- [ ] `.env` файл настроен с безопасными паролями
 - [ ] Миграции применены (`alembic current` показывает `0001_create_analyses`)
 - [ ] DB integration тест проходит
 
@@ -282,7 +353,7 @@ alembic upgrade head
 # 1. Проверка Docker
 docker-compose ps
 
-# 2. Проверка подключения к БД
+# 2. Проверка подключения к БД (internal network)
 docker-compose exec db psql -U postgres -d neofin -c "SELECT version()"
 
 # 3. Проверка миграций
@@ -296,32 +367,83 @@ pytest tests/test_db_integration.py -v
 
 ## 🔐 БЕЗОПАСНОСТЬ
 
-### Рекомендации для production:
+### ⚠️ КРИТИЧЕСКИ ВАЖНО ДЛЯ PRODUCTION:
 
-1. **Не используйте пароли по умолчанию:**
+1. **НИКОГДА не используйте пароли по умолчанию:**
    ```bash
-   # Измените в docker-compose.yml
-   POSTGRES_PASSWORD=<secure_password>
+   # ПЛОХО:
+   POSTGRES_PASSWORD=postgres
+   
+   # ХОРОШО:
+   POSTGRES_PASSWORD=<secure_random_password_32_chars>
    ```
 
-2. **Не публикуйте порты наружу:**
+2. **Не публикуйте порты наружу в production:**
    ```yaml
-   # Уберите ports из production docker-compose
-   # ports:
-   #   - "5432:5432"
+   # docker-compose.prod.yml
+   db:
+     # Уберите публикацию портов!
+     # ports:
+     #   - "5432:5432"
+     
+     # Используйте internal network
+     networks:
+       - backend-network
    ```
 
-3. **Используйте secrets:**
+3. **Используйте secrets для управления паролями:**
    ```yaml
-   # Для Docker Swarm/Kubernetes
+   # Docker Swarm example
+   services:
+     db:
+       environment:
+         POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+       secrets:
+         - db_password
+   
    secrets:
-     - db_password
+     db_password:
+       external: true  #或使用 file:/path/to/secret
    ```
 
-4. **Регулярные бэкапы:**
-   ```bash
-   docker-compose exec db pg_dump -U postgres neofin > backup.sql
+4. **Изолируйте базы данных:**
+   ```yaml
+   networks:
+     backend-network:
+       driver: bridge
+       internal: true  # Нет доступа извне
    ```
+
+5. **Регулярные бэкапы:**
+   ```bash
+   # Создать бэкап
+   docker-compose exec db pg_dump -U postgres neofin > backup_$(date +%Y%m%d).sql
+   
+   # Восстановить из бэкапа
+   cat backup_20260323.sql | docker-compose exec -T db psql -U postgres neofin
+   ```
+
+6. **.env файл НЕ должен попадать в git:**
+   ```bash
+   # Проверьте .gitignore
+   echo ".env" >> .gitignore
+   
+   # Удалите из git если уже добавлен
+   git rm --cached .env
+   ```
+
+### Рекомендации по генерации паролей:
+
+```bash
+# Linux/Mac
+openssl rand -base64 32
+
+# Python
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# PowerShell
+[System.Web.Security.Membership]::GeneratePassword(32, 4)
+```
 
 ---
 
@@ -331,7 +453,10 @@ pytest tests/test_db_integration.py -v
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
 - [Docker Compose Reference](https://docs.docker.com/compose/)
 - [SQLAlchemy Async](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html)
+- [Docker Secrets](https://docs.docker.com/engine/swarm/secrets/)
 
 ---
 
-*Инструкция актуальна для версии проекта NeoFin AI 0.1.0*
+*Инструкция актуальна для версии проекта NeoFin AI 0.1.0*  
+**Последнее обновление:** 23.03.2026  
+**Уровень безопасности:** Требуется настройка production переменных окружения
