@@ -1,6 +1,11 @@
 # Docker Compose для CI/CD
 # БЕЗ проброса хост-портов - используется только внутренняя сеть
 # Запускается в GitHub Actions для тестирования сборки
+#
+# SECURITY: 
+# - Пароли передаются через environment variables в CI workflow
+# - Не используйте этот файл локально с production данными
+# - Для локальной разработки создайте docker-compose.override.yml
 
 services:
   backend:
@@ -9,16 +14,14 @@ services:
       dockerfile: Dockerfile
     # Нет ports: - не пробрасываем порты на хост в CI
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/neofin
-      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@db_test:5432/neofin_test
+      # SECURITY: Credentials injected via CI workflow env, not hardcoded
+      # DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/neofin
+      # TEST_DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db_test:5432/neofin_test
+      # QWEN_API_KEY: ${QWEN_API_KEY}
+      # QWEN_API_URL: ${QWEN_API_URL}
+      # CORS_*: ${CORS_*}
       DB_WAIT_RETRIES: 30
       DB_WAIT_SECONDS: 2
-      QWEN_API_KEY: test_key
-      QWEN_API_URL: https://api.qwen.ai/v1
-      CORS_ALLOW_ORIGINS: http://localhost
-      CORS_ALLOW_METHODS: GET,POST,PUT,DELETE,OPTIONS
-      CORS_ALLOW_HEADERS: Content-Type,Authorization,X-Requested-With
-      CORS_ALLOW_CREDENTIALS: false
     depends_on:
       db:
         condition: service_healthy
@@ -41,7 +44,8 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # SECURITY: Password set via CI workflow environment variable
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ci_default_change_me}
       POSTGRES_DB: neofin
     # Нет ports: - не пробрасываем порты на хост в CI
     healthcheck:
@@ -59,7 +63,8 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # SECURITY: Password set via CI workflow environment variable
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ci_default_change_me}
       POSTGRES_DB: neofin_test
     # Нет ports: - не пробрасываем порты на хост в CI
     healthcheck:

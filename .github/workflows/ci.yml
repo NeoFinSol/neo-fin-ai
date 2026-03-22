@@ -231,17 +231,35 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Build Docker image (CI configuration)
+      env:
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+        QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
+        CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
+        CORS_ALLOW_METHODS: ${{ secrets.CORS_ALLOW_METHODS }}
+        CORS_ALLOW_HEADERS: ${{ secrets.CORS_ALLOW_HEADERS }}
+        CORS_ALLOW_CREDENTIALS: ${{ secrets.CORS_ALLOW_CREDENTIALS }}
       run: |
+        # SECURITY: Secrets passed via environment variables, not hardcoded
         # Используем CI конфигурацию БЕЗ проброса портов на хост
         docker-compose -f docker-compose.ci.yml build backend frontend
 
     - name: Start containers with healthchecks
+      env:
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+        QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
+        CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
+        CORS_ALLOW_METHODS: ${{ secrets.CORS_ALLOW_METHODS }}
+        CORS_ALLOW_HEADERS: ${{ secrets.CORS_ALLOW_HEADERS }}
+        CORS_ALLOW_CREDENTIALS: ${{ secrets.CORS_ALLOW_CREDENTIALS }}
       run: |
+        # SECURITY: Secrets injected via env vars, not in compose file
         # Запускаем контейнеры и ждём готовности через depends_on healthchecks
         docker-compose -f docker-compose.ci.yml up -d
         
-        # Используем встроенную команду wait для проверки health status
-        echo "Waiting for all services to be healthy..."
+        # SECURITY: Don't echo secrets or environment variables in logs
+        echo "Waiting for all services to become healthy..."
         
         # Максимум 20 попыток с интервалом 3 секунды (60 секунд всего)
         max_attempts=20

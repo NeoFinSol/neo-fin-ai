@@ -45,7 +45,7 @@ jobs:
     - name: Set environment variables
       # SECURITY: Pass env directly instead of creating .env file
       run: |
-        echo "Environment configured via GitHub Actions env context"
+        echo "Environment configured securely via GitHub Actions"
 
     - name: Run tests with coverage
       env:
