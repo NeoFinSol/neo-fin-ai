@@ -3,7 +3,9 @@
 # Запускается в GitHub Actions для тестирования сборки
 #
 # SECURITY: 
-# - Пароли передаются через environment variables в CI workflow
+# - ВСЕ credentials передаются ТОЛЬКО через environment variables CI workflow
+# - Никаких default паролей или test ключей в этом файле
+# - Без внешних переменных окружения контейнеры не запустятся (ошибка безопасности)
 # - Не используйте этот файл локально с production данными
 # - Для локальной разработки создайте docker-compose.override.yml
 
@@ -14,12 +16,16 @@ services:
       dockerfile: Dockerfile
     # Нет ports: - не пробрасываем порты на хост в CI
     environment:
-      # SECURITY: Credentials injected via CI workflow env, not hardcoded
+      # SECURITY: ALL credentials MUST be injected via CI workflow environment
+      # Эти переменные устанавливаются в .github/workflows/ci.yml через secrets
       # DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/neofin
       # TEST_DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db_test:5432/neofin_test
       # QWEN_API_KEY: ${QWEN_API_KEY}
       # QWEN_API_URL: ${QWEN_API_URL}
-      # CORS_*: ${CORS_*}
+      # CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
+      # CORS_ALLOW_METHODS: ${CORS_ALLOW_METHODS}
+      # CORS_ALLOW_HEADERS: ${CORS_ALLOW_HEADERS}
+      # CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS}
       DB_WAIT_RETRIES: 30
       DB_WAIT_SECONDS: 2
     depends_on:
@@ -44,8 +50,9 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      # SECURITY: Password set via CI workflow environment variable
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-ci_default_change_me}
+      # SECURITY: Password MUST be provided via environment variable
+      # No default value - will fail if DB_PASSWORD not set (intentional security measure)
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: neofin
     # Нет ports: - не пробрасываем порты на хост в CI
     healthcheck:
@@ -63,8 +70,9 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      # SECURITY: Password set via CI workflow environment variable
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-ci_default_change_me}
+      # SECURITY: Password MUST be provided via environment variable
+      # No default value - will fail if DB_PASSWORD not set (intentional security measure)
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: neofin_test
     # Нет ports: - не пробрасываем порты на хост в CI
     healthcheck:
