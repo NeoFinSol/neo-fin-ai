@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 
 import aiohttp
-from aiohttp import ClientError, ClientTimeout
+from aiohttp import ClientError, ClientTimeout, ContentTypeError
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +13,18 @@ RETRY_DELAY = 1.0  # seconds
 RETRY_BACKOFF = 2.0  # multiplier
 
 
+class ConfigurationError(Exception):
+    """Raised when agent is not properly configured."""
+    pass
+
+
 class Agent:
     def __init__(self, timeout: int = DEFAULT_TIMEOUT):
         self._auth_token: Optional[str] = None
         self._url: Optional[str] = None
         self.model: str = "qwen3.5-plus"
         self.timeout = timeout
+        self._configured: bool = False
 
     def set_config(self, auth_token: Optional[str], url: Optional[str]) -> None:
         """
@@ -27,11 +33,27 @@ class Agent:
         Args:
             auth_token: Qwen API authentication token
             url: Qwen API base URL
+            
+        Raises:
+            ConfigurationError: If URL or auth_token is missing or empty
         """
-        if auth_token:
-            self._auth_token = auth_token
-        if url:
-            self._url = url.rstrip('/')
+        if not auth_token or not auth_token.strip():
+            raise ConfigurationError("Qwen API auth token is required")
+        
+        if not url or not url.strip():
+            raise ConfigurationError("Qwen API URL is required")
+        
+        self._auth_token = auth_token.strip()
+        self._url = url.strip().rstrip('/')
+        self._configured = True
+        logger.info("Agent configured with URL: %s", self._url)
+
+    def _ensure_configured(self) -> None:
+        """Ensure agent is configured before making requests."""
+        if not self._configured or not self._url or not self._auth_token:
+            raise ConfigurationError(
+                "Agent not configured. Call set_config(auth_token, url) first"
+            )
 
     async def invoke(self, input: dict, timeout: Optional[int] = None) -> Optional[str]:
         """
@@ -46,7 +68,10 @@ class Agent:
             
         Raises:
             asyncio.TimeoutError: If request times out
+            ConfigurationError: If agent is not configured
         """
+        self._ensure_configured()
+        
         actual_timeout = timeout or self.timeout
         try:
             async with asyncio.timeout(actual_timeout):
@@ -81,10 +106,11 @@ class Agent:
             
         Returns:
             Optional[str]: API response or None
+            
+        Raises:
+            ConfigurationError: If agent is not configured
         """
-        if not self._url or not self._auth_token:
-            logger.warning("Agent not configured with URL or auth token")
-            return None
+        self._ensure_configured()
 
         headers = {
             "Authorization": f"Bearer {self._auth_token}",
@@ -127,7 +153,7 @@ class Agent:
                             logger.warning("Unexpected response format from Qwen API")
                             return response_str
                             
-                        except aiohttp.ContentTypeError:
+                        except ContentTypeError:
                             text = await res.text()
                             logger.error("Unexpected content type from Qwen API: %s", text[:200])
                             return text

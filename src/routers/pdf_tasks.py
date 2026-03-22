@@ -1,17 +1,15 @@
 ﻿import logging
+import os
 import tempfile
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
 
+from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
 from src.db.crud import create_analysis, get_analysis
 from src.tasks import process_pdf
 
 logger = logging.getLogger(__name__)
-
-# PDF magic numbers: %PDF-
-PDF_MAGIC_HEADER = b"%PDF-"
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 router = APIRouter(tags=["pdf"])
 
@@ -28,29 +26,71 @@ async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="PDF file expected")
 
+    temp_file = None
+    tmp_path = None
+    
     try:
-        content = await file.read()
+        # Read first chunk to check header and size
+        header_size = MAGIC_HEADER_SIZE
+        first_chunk = await file.file.read(header_size)
         
-        if not content:
+        if not first_chunk:
             raise HTTPException(status_code=400, detail="Empty file")
         
-        if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)} MB"
-            )
-        
-        if not _validate_pdf_file(content):
+        # Validate magic header before reading full file
+        if not _validate_pdf_file(first_chunk):
             raise HTTPException(status_code=400, detail="Invalid PDF file format")
         
+        # Create temporary file and write in chunks
         suffix = ".pdf"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-            tmp_file.write(content)
-            tmp_path = tmp_file.name
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        temp_file.write(first_chunk)
+        
+        # Read remaining content in chunks
+        chunk_size = 8192  # 8KB
+        total_size = len(first_chunk)
+        
+        while True:
+            chunk = await file.file.read(chunk_size)
+            if not chunk:
+                break
+            
+            total_size += len(chunk)
+            
+            # Check size limit during read
+            if total_size > MAX_FILE_SIZE:
+                temp_file.close()
+                if os.path.exists(temp_file.name):
+                    os.remove(temp_file.name)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)} MB"
+                )
+            
+            temp_file.write(chunk)
+        
+        temp_file.flush()
+        temp_file.close()
+        tmp_path = temp_file.name
+        
     except HTTPException:
+        if temp_file:
+            try:
+                temp_file.close()
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
         raise
     except Exception as exc:
         logger.exception("Failed to save uploaded file: %s", exc)
+        if temp_file:
+            try:
+                temp_file.close()
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
         raise HTTPException(status_code=500, detail="Failed to save uploaded file")
 
     task_id = str(uuid.uuid4())
@@ -58,7 +98,15 @@ async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
         await create_analysis(task_id, "processing", None)
     except Exception as exc:
         logger.exception("Failed to create analysis record: %s", exc)
+        if temp_file:
+            try:
+                temp_file.close()
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
         raise HTTPException(status_code=500, detail="Failed to create analysis record")
+    
     background_tasks.add_task(process_pdf, task_id, tmp_path)
     return {"task_id": task_id}
 
