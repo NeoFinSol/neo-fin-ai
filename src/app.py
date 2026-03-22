@@ -27,16 +27,27 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(version="0.1.0", lifespan=lifespan)
 
-# CORS configuration
+# CORS configuration - restricted for security
 allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "false").lower() == "true"
-allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80").split(",")
+allow_origins = os.getenv(
+    "CORS_ALLOW_ORIGINS", 
+    "http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80"
+).split(",")
+allow_methods = os.getenv(
+    "CORS_ALLOW_METHODS",
+    "GET,POST,PUT,DELETE,OPTIONS"
+).split(",")
+allow_headers = os.getenv(
+    "CORS_ALLOW_HEADERS",
+    "Content-Type,Authorization,X-Requested-With"
+).split(",")
 
 app.add_middleware(
 	CORSMiddleware,
 	allow_origins=allow_origins,
 	allow_credentials=allow_credentials,
-	allow_methods=["*"],
-	allow_headers=["*"],
+	allow_methods=allow_methods,
+	allow_headers=allow_headers,
 )
 
 # Routers

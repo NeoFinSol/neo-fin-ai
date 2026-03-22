@@ -9,7 +9,18 @@ from src.tasks import process_pdf
 
 logger = logging.getLogger(__name__)
 
+# PDF magic numbers: %PDF-
+PDF_MAGIC_HEADER = b"%PDF-"
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
 router = APIRouter(tags=["pdf"])
+
+
+def _validate_pdf_file(content: bytes) -> bool:
+    """Validate PDF file by checking magic header."""
+    if not content or len(content) < 5:
+        return False
+    return content[:5] == PDF_MAGIC_HEADER
 
 
 @router.post("/upload")
@@ -18,11 +29,26 @@ async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=400, detail="PDF file expected")
 
     try:
+        content = await file.read()
+        
+        if not content:
+            raise HTTPException(status_code=400, detail="Empty file")
+        
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)} MB"
+            )
+        
+        if not _validate_pdf_file(content):
+            raise HTTPException(status_code=400, detail="Invalid PDF file format")
+        
         suffix = ".pdf"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-            content = await file.read()
             tmp_file.write(content)
             tmp_path = tmp_file.name
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Failed to save uploaded file: %s", exc)
         raise HTTPException(status_code=500, detail="Failed to save uploaded file")

@@ -1,15 +1,15 @@
 import asyncio
 import io
 import json
+import logging
 from typing import BinaryIO
-import os
 
 import pdfplumber
 from fastapi import HTTPException
 
-from src.core import prompts
 from src.core.agent import agent
-from src.exceptions.PdfExtractException import PdfExtractException
+
+logger = logging.getLogger(__name__)
 
 
 def _read_pdf_file(file: io.BytesIO) -> list[dict]:
@@ -66,17 +66,17 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
 
 		file_content = _read_pdf_file(pdf_file)
 	except Exception as e:
-		# Return proper FastAPI HTTP Exception instead of custom exception
+		logger.exception("PDF processing failed: %s", e)
 		raise HTTPException(status_code=400, detail=f"PDF processing failed: {str(e)}")
 
-	print("Request to AI")
+	logger.info("Starting AI analysis for %d pages", len(file_content))
 
 	# Iterate pages by step and prepare for AI
 	step = 20
 	all_results = []
 	for page_idx in range(0, len(file_content), step):
 		end_idx = min(page_idx + step, len(file_content))
-		print(f"Pages {page_idx + 1} - {end_idx}")
+		logger.debug("Processing pages %d-%d", page_idx + 1, end_idx)
 
 		prompt = ""
 		for i in range(page_idx, end_idx):
@@ -89,15 +89,17 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
 				input={
 					"tool_input": prompt,
 					"intermediate_steps": []
-				}
+				},
+				timeout=120
 			)
 			if res is not None:
-				with open("out.txt", "a", encoding="utf-8") as f:
-					f.write(res)
+				logger.info("Successfully received AI response for pages %d-%d", page_idx + 1, end_idx)
 				all_results.append(json.loads(res))
 		except asyncio.TimeoutError:
+			logger.error("AI request timeout for pages %d-%d", page_idx + 1, end_idx)
 			raise HTTPException(status_code=504, detail="AI request timeout")
 		except Exception as e:
+			logger.exception("AI processing failed for pages %d-%d: %s", page_idx + 1, end_idx, e)
 			raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
 
 	# Combine results from all pages

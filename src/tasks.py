@@ -5,7 +5,6 @@ import os
 import PyPDF2
 
 from src.analysis import pdf_extractor
-from src.analysis.nlp_analysis import analyze_narrative
 from src.analysis.ratios import calculate_ratios
 from src.analysis.scoring import calculate_integral_score
 from src.db.crud import create_analysis, update_analysis
@@ -14,6 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_text_from_pdf(pdf_path: str) -> str:
+    """
+    Extract text from PDF using PyPDF2.
+    
+    Args:
+        pdf_path: Path to PDF file
+        
+    Returns:
+        str: Extracted text content
+    """
     reader = PyPDF2.PdfReader(pdf_path)
     texts: list[str] = []
     for page_index, page in enumerate(reader.pages, start=1):
@@ -25,6 +33,13 @@ def _extract_text_from_pdf(pdf_path: str) -> str:
 
 
 async def process_pdf(task_id: str, file_path: str) -> None:
+    """
+    Process PDF file and update analysis results.
+    
+    Args:
+        task_id: Unique task identifier
+        file_path: Path to temporary PDF file
+    """
     try:
         # Update or create analysis record
         existing = await update_analysis(task_id, "processing", None)
@@ -38,10 +53,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         else:
             text = await asyncio.to_thread(_extract_text_from_pdf, file_path)
 
-        narrative = None
-        # if text and len(text) > 500:
-        #     narrative = await analyze_narrative(text)
-
+        # Extract tables and calculate metrics
         tables = await asyncio.to_thread(pdf_extractor.extract_tables, file_path)
         metrics = await asyncio.to_thread(pdf_extractor.parse_financial_statements, tables, text)
         ratios = await asyncio.to_thread(calculate_ratios, metrics)
@@ -58,7 +70,6 @@ async def process_pdf(task_id: str, file_path: str) -> None:
                     "metrics": metrics,
                     "ratios": ratios,
                     "score": score,
-                    "narrative": narrative,
                 }
             },
         )

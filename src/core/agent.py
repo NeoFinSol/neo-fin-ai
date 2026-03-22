@@ -1,82 +1,181 @@
 import asyncio
 import logging
+from typing import Optional
+
 import aiohttp
+from aiohttp import ClientError, ClientTimeout
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 120  # seconds
+MAX_RETRIES = 3
+RETRY_DELAY = 1.0  # seconds
+RETRY_BACKOFF = 2.0  # multiplier
 
 
 class Agent:
-	def __init__(self, timeout: int = DEFAULT_TIMEOUT):
-		self._auth_token: str = ""
-		self._url: str = ""
-		self.model: str = "qwen3.5-plus"
-		self.timeout = timeout
+    def __init__(self, timeout: int = DEFAULT_TIMEOUT):
+        self._auth_token: Optional[str] = None
+        self._url: Optional[str] = None
+        self.model: str = "qwen3.5-plus"
+        self.timeout = timeout
 
-	def set_config(self, auth_token: str | None, url: str | None):
-		"""Configure agent with API credentials."""
-		if auth_token:
-			self._auth_token = auth_token
-		if url:
-			self._url = url
+    def set_config(self, auth_token: Optional[str], url: Optional[str]) -> None:
+        """
+        Configure agent with API credentials.
+        
+        Args:
+            auth_token: Qwen API authentication token
+            url: Qwen API base URL
+        """
+        if auth_token:
+            self._auth_token = auth_token
+        if url:
+            self._url = url.rstrip('/')
 
-	async def invoke(self, input: dict, timeout: int | None = None) -> str | None:
-		"""Invoke the agent with timeout support."""
-		actual_timeout = timeout or self.timeout
-		try:
-			async with asyncio.timeout(actual_timeout):
-				return await self.request(
-					chat_id=input.get("chat_id", "default"),
-					message=input.get("tool_input", ""),
-				)
-		except asyncio.TimeoutError:
-			logger.error("Agent request timeout after %d seconds", actual_timeout)
-			raise
+    async def invoke(self, input: dict, timeout: Optional[int] = None) -> Optional[str]:
+        """
+        Invoke the agent with timeout support.
+        
+        Args:
+            input: Input dictionary with chat_id and tool_input
+            timeout: Request timeout in seconds
+            
+        Returns:
+            Optional[str]: Agent response or None
+            
+        Raises:
+            asyncio.TimeoutError: If request times out
+        """
+        actual_timeout = timeout or self.timeout
+        try:
+            async with asyncio.timeout(actual_timeout):
+                return await self.request(
+                    chat_id=input.get("chat_id", "default"),
+                    message=input.get("tool_input", ""),
+                )
+        except asyncio.TimeoutError:
+            logger.error("Agent request timeout after %d seconds", actual_timeout)
+            raise
 
-	async def request(self, chat_id: str, message: str, *, parent_id: str | None = None, system: str | None = None, timeout: int | None = None) -> str | None:
-		"""Send request to Qwen API."""
-		if not self._url or not self._auth_token:
-			logger.warning("Agent not configured with URL or auth token")
-			return None
+    async def request(
+        self, 
+        chat_id: str, 
+        message: str, 
+        *, 
+        parent_id: Optional[str] = None, 
+        system: Optional[str] = None,
+        timeout: Optional[int] = None,
+        retries: int = MAX_RETRIES,
+    ) -> Optional[str]:
+        """
+        Send request to Qwen API with retry logic.
+        
+        Args:
+            chat_id: Chat identifier
+            message: Message to send
+            parent_id: Optional parent message ID
+            system: Optional system prompt
+            timeout: Request timeout in seconds
+            retries: Number of retry attempts
+            
+        Returns:
+            Optional[str]: API response or None
+        """
+        if not self._url or not self._auth_token:
+            logger.warning("Agent not configured with URL or auth token")
+            return None
 
-		headers: dict = {
-			"Authorization": f"Bearer {self._auth_token}"
-		}
+        headers = {
+            "Authorization": f"Bearer {self._auth_token}",
+            "Content-Type": "application/json"
+        }
 
-		req_json: dict = {
-			"model": self.model,
-			"message": message,
-			"chat_id": chat_id
-		}
+        req_json = {
+            "model": self.model,
+            "message": message,
+            "chat_id": chat_id
+        }
 
-		if system is not None:
-			req_json["system"] = system
-		if parent_id is not None:
-			req_json["parent_id"] = parent_id
+        if system is not None:
+            req_json["system"] = system
+        if parent_id is not None:
+            req_json["parent_id"] = parent_id
 
-		actual_timeout = timeout or self.timeout
-		try:
-			async with aiohttp.ClientSession() as session:
-				async with session.post(
-					self._url + "/chat",
-					json=req_json,
-					headers=headers,
-					timeout=aiohttp.ClientTimeout(total=actual_timeout)
-				) as res:
-					try:
-						data = await res.json()
-						return data.get("response") if isinstance(data, dict) else str(data)
-					except aiohttp.ContentTypeError:
-						text = await res.text()
-						logger.error("Unexpected response from Qwen API: %s", text[:200])
-						return text
-		except asyncio.TimeoutError:
-			logger.error("Timeout connecting to Qwen API after %d seconds", actual_timeout)
-			raise
-		except Exception as e:
-			logger.exception("Error calling Qwen API: %s", e)
-			return None
+        actual_timeout = timeout or self.timeout
+        last_exception: Optional[Exception] = None
+        
+        for attempt in range(retries):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"{self._url}/chat",
+                        json=req_json,
+                        headers=headers,
+                        timeout=ClientTimeout(total=actual_timeout)
+                    ) as res:
+                        try:
+                            data = await res.json()
+                            if isinstance(data, dict):
+                                response = data.get("response")
+                                if response:
+                                    logger.info("Successfully received response from Qwen API")
+                                    return response
+                            
+                            # Fallback to string conversion
+                            response_str = str(data)
+                            logger.warning("Unexpected response format from Qwen API")
+                            return response_str
+                            
+                        except aiohttp.ContentTypeError:
+                            text = await res.text()
+                            logger.error("Unexpected content type from Qwen API: %s", text[:200])
+                            return text
+                            
+            except asyncio.TimeoutError as e:
+                last_exception = e
+                logger.warning(
+                    "Request timeout (attempt %d/%d) after %d seconds", 
+                    attempt + 1, retries, actual_timeout
+                )
+                if attempt < retries - 1:
+                    delay = RETRY_DELAY * (RETRY_BACKOFF ** attempt)
+                    logger.info("Retrying in %.2f seconds...", delay)
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("All retry attempts failed due to timeout")
+                    raise
+                    
+            except ClientError as e:
+                last_exception = e
+                logger.warning(
+                    "Client error (attempt %d/%d): %s", 
+                    attempt + 1, retries, str(e)
+                )
+                if attempt < retries - 1:
+                    delay = RETRY_DELAY * (RETRY_BACKOFF ** attempt)
+                    logger.info("Retrying in %.2f seconds...", delay)
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("All retry attempts failed due to client error")
+                    return None
+                    
+            except Exception as e:
+                last_exception = e
+                logger.exception("Unexpected error calling Qwen API (attempt %d/%d): %s", attempt + 1, retries, e)
+                if attempt < retries - 1:
+                    delay = RETRY_DELAY * (RETRY_BACKOFF ** attempt)
+                    logger.info("Retrying in %.2f seconds...", delay)
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("All retry attempts failed due to unexpected error")
+                    return None
+        
+        # Should not reach here, but just in case
+        if last_exception:
+            logger.error("Request failed after all retries: %s", last_exception)
+        return None
 
 
+# Global singleton instance
 agent = Agent()
