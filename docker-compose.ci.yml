@@ -51,7 +51,7 @@ services:
       retries: 10
       start_period: 5s
     volumes:
-      - postgres-test-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     networks:
       - ci-net
 
@@ -79,5 +79,7 @@ networks:
     # Эфемерная сеть - удаляется после завершения workflow
 
 volumes:
+  postgres-data:
+    # Временное хранилище для main DB - удаляется после workflow
   postgres-test-data:
-    # Временное хранилище - удаляется после workflow
+    # Временное хранилище для test DB - удаляется после workflow
