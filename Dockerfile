@@ -1,10 +1,25 @@
-FROM python:3.14.3-alpine3.23
+FROM python:3.10-slim
+
 WORKDIR /app
 
-RUN pip install --upgrade pip
-COPY requirements.txt /app
-RUN pip install -r requirements.txt
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-COPY src /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        poppler-utils \
+        libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
 
-ENTRYPOINT ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "80"]
+COPY requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+COPY src /app/src
+COPY alembic.ini /app/alembic.ini
+COPY migrations /app/migrations
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+EXPOSE 8000
+ENTRYPOINT ["/app/entrypoint.sh"]

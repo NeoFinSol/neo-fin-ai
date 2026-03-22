@@ -1,6 +1,7 @@
 import io
 import json
 from typing import BinaryIO
+import os
 
 import pdfplumber
 
@@ -9,9 +10,12 @@ from src.core.agent import agent
 from src.exceptions.PdfExtractException import PdfExtractException
 
 
-def _read_pdf_file(file: io.BytesIO | BinaryIO) -> list[dict]:
+def _read_pdf_file(file: io.BytesIO) -> list[dict]:
 	file_data = []
 
+	# Reset file pointer to beginning
+	file.seek(0)
+	
 	with pdfplumber.open(file) as pdf:
 		for page_num, page in enumerate(pdf.pages, start=1):
 			tables = page.extract_tables(table_settings={
@@ -48,7 +52,15 @@ def _read_pdf_file(file: io.BytesIO | BinaryIO) -> list[dict]:
 
 async def analyze_pdf(file: io.BytesIO | BinaryIO):
 	try:
-		file_content = _read_pdf_file(file)
+		# Convert BinaryIO to BytesIO if needed
+		if isinstance(file, io.BytesIO):
+			pdf_file = file
+		else:
+			# For BinaryIO, we need to read the content and create BytesIO
+			content = file.read()
+			pdf_file = io.BytesIO(content)
+		
+		file_content = _read_pdf_file(pdf_file)
 	except Exception as e:
 		raise PdfExtractException(detail=str(e))
 
@@ -67,8 +79,14 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
 			prompt += f"=== PAGE {page_idx + i + 1} ===\n"
 			prompt += json.dumps(file_content[page_idx + i]) + "\n"
 
-		res = (await agent.request("84bd75e8-0796-4066-a278-fb566b0cb8be", prompt,
-							system=prompts.PDF_EXTRACT_METRICS))["content"]
+		# Call the AI agent with the prepared prompt
+		res = await agent.invoke(
+			input={
+				"tool_input": prompt,
+				"intermediate_steps": []
+			}
+		)
 		if res is not None:
 			with open("out.txt", "a", encoding="utf-8") as f:
 				f.write(res)
+		return json.loads(res)

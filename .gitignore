@@ -36,3 +36,6 @@ data/pdf_samples/*
 
 __snapshots__/
 
+
+frontend/node_modules/
+frontend/dist/

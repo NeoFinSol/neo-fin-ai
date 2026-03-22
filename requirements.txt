@@ -8,3 +8,11 @@ aiohttp~=3.13.3
 pydantic-settings~=2.13.1
 SQLAlchemy[asyncio]~=2.0.46
 asyncpg~=0.31.0
+alembic~=1.16.5
+psycopg2-binary~=2.9.9
+PyPDF2
+pdf2image
+pytesseract
+camelot-py[cv]
+opencv-python
+pillow
