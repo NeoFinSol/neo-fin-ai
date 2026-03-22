@@ -32,7 +32,9 @@ async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
     try:
         # Read first chunk to check header and size
         header_size = MAGIC_HEADER_SIZE
-        first_chunk = await file.file.read(header_size)
+        # Use asyncio.to_thread for sync file operations
+        import asyncio
+        first_chunk = await asyncio.to_thread(file.file.read, header_size)
         
         if not first_chunk:
             raise HTTPException(status_code=400, detail="Empty file")
@@ -51,7 +53,7 @@ async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
         total_size = len(first_chunk)
         
         while True:
-            chunk = await file.file.read(chunk_size)
+            chunk = await asyncio.to_thread(file.file.read, chunk_size)
             if not chunk:
                 break
             

@@ -151,12 +151,21 @@ def parse_financial_statements(tables: list, text: str) -> dict[str, float | Non
 
 
 def _table_to_rows(table: Any) -> list[list[Any]]:
-    if hasattr(table, "values"):
-        return table.values.tolist()
+    # Check if it's a pandas DataFrame (camelot table)
+    try:
+        import pandas as pd
+        if isinstance(table, pd.DataFrame):
+            return table.values.tolist()
+    except (ImportError, AttributeError):
+        pass
+    
+    # Handle dict with "rows" key
     if isinstance(table, dict) and "rows" in table:
         rows = table.get("rows")
         if isinstance(rows, list):
             return rows
+    
+    # Handle plain list structures
     if isinstance(table, list):
         if not table:
             return []
@@ -164,6 +173,7 @@ def _table_to_rows(table: Any) -> list[list[Any]]:
             return [list(row.values()) for row in table]
         if isinstance(table[0], list):
             return table
+    
     return []
 
 
