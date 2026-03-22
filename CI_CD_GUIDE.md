@@ -243,6 +243,31 @@ docker build -t neofin-backend .
 docker system prune -a
 ```
 
+### ❌ Container healthcheck timeout
+
+**Проблема:** Контейнеры не становятся healthy в CI
+
+**Решение:**
+```yaml
+# Увеличить retries и start_period в docker-compose.ci.yml
+services:
+  db:
+    healthcheck:
+      interval: 3s
+      timeout: 3s
+      retries: 10        # Было 5
+      start_period: 5s   # Добавить
+```
+
+### ❌ Ports conflict на раннере
+
+**Проблема:** Несколько workflow запускаются на одном раннере
+
+**Решение:**
+- ✅ Использовать `docker-compose.ci.yml` БЕЗ проброса портов
+- ✅ Контейнеры общаются через internal network по hostname
+- ✅ Никаких `ports: - "5432:5432"` в CI
+
 ### ❌ Security scan нашел уязвимости
 
 **Проблема:** pip-audit или safety нашли уязвимые зависимости
@@ -311,6 +336,31 @@ jobs:
 
 ## 🔐 БЕЗОПАСНОСТЬ
 
+### Docker Security в CI:
+
+**Проблема:** Проброс портов (`ports: - "5432:5432"`) в GitHub Actions может:
+- Раскрыть порты на хосте раннера
+- Вызвать конфликты портов на общем раннере
+- Увеличить поверхность атаки
+
+**Решение в проекте:**
+1. ✅ **docker-compose.ci.yml** - конфигурация БЕЗ проброса портов
+2. ✅ **Internal network** - контейнеры общаются через hostname
+3. ✅ **Healthchecks** - замена `sleep 10` на проверку готовности
+4. ✅ **Cleanup** - полная очистка после workflow
+
+```yaml
+# docker-compose.ci.yml - БЕЗ ports:
+services:
+  db:
+    image: postgres:16-alpine
+    # Нет ports: - только внутренняя сеть
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      retries: 10
+```
+
 ### Required GitHub Secrets:
 
 Настройте следующие секреты в репозитории:
@@ -354,7 +404,9 @@ gh secret set QWEN_API_URL --body "https://api.qwen.ai/v1"
 Использование в workflow:
 ```yaml
 env:
-  DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@localhost:5432/neofin
+  # В CI service containers доступны по hostname internal network
+  DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
+  TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
   QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
 ```
 
