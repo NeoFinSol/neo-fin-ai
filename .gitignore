@@ -1,3 +1,18 @@
+# Large files
+*.zip
+*.zip.tmp
+*.tar
+*.tar.gz
+*.rar
+
+# Windows reserved names
+nul
+con
+prn
+aux
+com*
+lpt*
+
 __pycache__/
 *.pyc
 *.pyo
@@ -36,6 +51,19 @@ data/pdf_samples/*
 
 __snapshots__/
 
-
 frontend/node_modules/
 frontend/dist/
+
+# Build artifacts
+frontend/bin/
+frontend/obj/
+*.csproj
+backend/bin/
+backend/obj/
+
+# IDE files
+.DS_Store
+*.swp
+*.swo
+*~
+.env.local

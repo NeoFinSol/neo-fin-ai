@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,16 +27,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(version="0.1.0", lifespan=lifespan)
 
-# CORS (dev defaults for local frontend)
+# CORS configuration
+allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "false").lower() == "true"
+allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80").split(",")
+
 app.add_middleware(
 	CORSMiddleware,
-	allow_origins=[
-		"http://localhost",
-		"http://localhost:80",
-		"http://127.0.0.1",
-		"http://127.0.0.1:80",
-	],
-	allow_credentials=False,
+	allow_origins=allow_origins,
+	allow_credentials=allow_credentials,
 	allow_methods=["*"],
 	allow_headers=["*"],
 )

@@ -1,9 +1,11 @@
+import asyncio
 import io
 import json
 from typing import BinaryIO
 import os
 
 import pdfplumber
+from fastapi import HTTPException
 
 from src.core import prompts
 from src.core.agent import agent
@@ -58,35 +60,47 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
 		else:
 			# For BinaryIO, we need to read the content and create BytesIO
 			content = file.read()
+			if not content:
+				raise ValueError("Empty file content")
 			pdf_file = io.BytesIO(content)
-		
+
 		file_content = _read_pdf_file(pdf_file)
 	except Exception as e:
-		raise PdfExtractException(detail=str(e))
+		# Return proper FastAPI HTTP Exception instead of custom exception
+		raise HTTPException(status_code=400, detail=f"PDF processing failed: {str(e)}")
 
 	print("Request to AI")
 
 	# Iterate pages by step and prepare for AI
 	step = 20
-	for page_idx in range(0, 20, step):
-		print(f"Pages {page_idx + 1} - {page_idx + step + 1}")
+	all_results = []
+	for page_idx in range(0, len(file_content), step):
+		end_idx = min(page_idx + step, len(file_content))
+		print(f"Pages {page_idx + 1} - {end_idx}")
 
 		prompt = ""
-		for i in range(0, step):
-			if page_idx + i >= len(file_content):
-				continue
-
-			prompt += f"=== PAGE {page_idx + i + 1} ===\n"
-			prompt += json.dumps(file_content[page_idx + i]) + "\n"
+		for i in range(page_idx, end_idx):
+			prompt += f"=== PAGE {i + 1} ===\n"
+			prompt += json.dumps(file_content[i]) + "\n"
 
 		# Call the AI agent with the prepared prompt
-		res = await agent.invoke(
-			input={
-				"tool_input": prompt,
-				"intermediate_steps": []
-			}
-		)
-		if res is not None:
-			with open("out.txt", "a", encoding="utf-8") as f:
-				f.write(res)
-		return json.loads(res)
+		try:
+			res = await agent.invoke(
+				input={
+					"tool_input": prompt,
+					"intermediate_steps": []
+				}
+			)
+			if res is not None:
+				with open("out.txt", "a", encoding="utf-8") as f:
+					f.write(res)
+				all_results.append(json.loads(res))
+		except asyncio.TimeoutError:
+			raise HTTPException(status_code=504, detail="AI request timeout")
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=f"AI processing failed: {str(e)}")
+
+	# Combine results from all pages
+	if all_results:
+		return all_results[0] if len(all_results) == 1 else {"pages": all_results}
+	return {}

@@ -43,6 +43,6 @@ async def get_result(task_id: str):
     if analysis is None:
         raise HTTPException(status_code=404, detail="Task not found")
     payload = {"status": analysis.status}
-    if analysis.result:
+    if analysis.result and isinstance(analysis.result, dict):
         payload.update(analysis.result)
     return payload

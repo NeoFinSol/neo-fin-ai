@@ -25,11 +25,13 @@ def _extract_text_from_pdf(pdf_path: str) -> str:
 
 
 async def process_pdf(task_id: str, file_path: str) -> None:
-    existing = await update_analysis(task_id, "processing", None)
-    if existing is None:
-        await create_analysis(task_id, "processing", None)
-
     try:
+        # Update or create analysis record
+        existing = await update_analysis(task_id, "processing", None)
+        if existing is None:
+            await create_analysis(task_id, "processing", None)
+
+        # Process PDF
         scanned = await asyncio.to_thread(pdf_extractor.is_scanned_pdf, file_path)
         if scanned:
             text = await asyncio.to_thread(pdf_extractor.extract_text_from_scanned, file_path)
@@ -64,8 +66,9 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         logger.exception("Failed to process PDF task %s: %s", task_id, exc)
         await update_analysis(task_id, "failed", {"error": str(exc)})
     finally:
+        # Clean up temporary file
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
         except Exception as exc:
-            logger.warning("Failed to удалить временный файл %s: %s", file_path, exc)
+            logger.warning("Failed to delete temporary file %s: %s", file_path, exc)
