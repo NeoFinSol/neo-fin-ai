@@ -51,13 +51,26 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Content Include=".env.example" />
-    <Content Include=".gitignore" />
-    <Content Include="README.md" />
-    <Content Include="requirements.txt" />
-    <Content Include="docker-compose.yml" />
-    <Content Include="Dockerfile" />
-    <Content Include="entrypoint.sh" />
+    <!-- Essential configuration files -->
+    <Content Include=".env.example">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include="README.md">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include="requirements.txt">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include="docker-compose.yml">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Dockerfile">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <!-- Git ignore file - not for build output -->
+    <None Include=".gitignore">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="src" />
