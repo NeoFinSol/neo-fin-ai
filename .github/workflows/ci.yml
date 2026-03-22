@@ -30,18 +30,20 @@ jobs:
 
     - name: Lint with flake8
       run: |
-        # Stop the build if there are Python syntax errors or undefined names
+        # CRITICAL: Stop the build if there are Python syntax errors or undefined names
         flake8 src --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Check for style issues
+        # Check for style issues (warnings only, don't fail)
         flake8 src --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     - name: Check code formatting with black
       run: |
-        black --check src/ tests/ || true
+        # Fail CI if code is not formatted correctly
+        black --check src/ tests/ scripts/ *.py
 
     - name: Check imports with isort
       run: |
-        isort --check-only src/ tests/ || true
+        # Fail CI if imports are not sorted correctly
+        isort --check-only src/ tests/ scripts/ .
 
   test:
     name: Run Tests
@@ -162,15 +164,18 @@ EOF
 
     - name: Run bandit security scan
       run: |
-        bandit -r src/ -f json -o bandit-report.json || true
+        # CRITICAL: Fail on security issues (severity: high, confidence: medium)
+        bandit -r src/ -f json -o bandit-report.json -ll
 
     - name: Run pip-audit
       run: |
-        pip-audit --format json > pip-audit-report.json || true
+        # CRITICAL: Fail on known vulnerabilities
+        pip-audit --format json > pip-audit-report.json
 
     - name: Run safety check
       run: |
-        safety check --json > safety-report.json || true
+        # CRITICAL: Fail on known vulnerabilities
+        safety check --json > safety-report.json
 
     - name: Upload security reports
       uses: actions/upload-artifact@v4

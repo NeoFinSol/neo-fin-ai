@@ -9,20 +9,21 @@ jobs:
     name: Test Coverage
     runs-on: ubuntu-latest
     
+    # Service container без проброса портов - internal network
     services:
       postgres-test:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
           POSTGRES_DB: neofin_test
-        ports:
-          - 5433:5432
+        # ports убраны - используем internal network
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 5s
 
     steps:
     - name: Checkout code
@@ -44,10 +45,10 @@ jobs:
     - name: Create .env file
       run: |
         cat > .env << EOF
-        TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/neofin_test
-        QWEN_API_KEY=test_key
-        QWEN_API_URL=https://api.qwen.ai/v1
-        EOF
+TEST_DATABASE_URL=postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+QWEN_API_KEY=${{ secrets.QWEN_API_KEY }}
+QWEN_API_URL=${{ secrets.QWEN_API_URL }}
+EOF
 
     - name: Run tests with coverage
       run: |
@@ -56,19 +57,29 @@ jobs:
           --cov-report=xml \
           --cov-report=html \
           --cov-report=term-missing \
-          -v
+          -v \
+          --junitxml=test-results.xml
 
     - name: Upload coverage report
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: coverage-report
         path: |
           htmlcov/
           coverage.xml
+          test-results.xml
 
     - name: Check coverage threshold
       run: |
-        # Extract coverage percentage
+        # Validate coverage.xml exists
+        if [ ! -f coverage.xml ]; then
+          echo "❌ CRITICAL: coverage.xml not found. Tests may have failed."
+          echo "Check test-results.xml artifact for details."
+          exit 1
+        fi
+        
+        # Extract coverage percentage from coverage.xml
         COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(float(root.attrib['line-rate']) * 100)")
         echo "Coverage: $COVERAGE%"
         
@@ -100,6 +111,22 @@ jobs:
         pip install -r requirements.txt
         pip install mypy
 
-    - name: Run mypy
+    - name: Run mypy type checking
       run: |
-        mypy src/ --ignore-missing-imports --no-strict-optional || true
+        # CRITICAL: Fail on type errors
+        # Note: --ignore-missing-imports kept for third-party libs without stubs
+        # Note: --no-strict-optional kept to allow Optional[T] flexibility
+        mypy src/ \
+          --ignore-missing-imports \
+          --no-strict-optional \
+          --warn-unused-configs \
+          --warn-redundant-casts \
+          --warn-unreachable
+
+    - name: Upload mypy report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: mypy-report
+        path: |
+          .mypy_cache/
