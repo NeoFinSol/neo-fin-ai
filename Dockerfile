@@ -14,6 +14,8 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # libgl1: required for opencv-python (PDF table extraction)
 # tesseract-ocr: required for pytesseract (OCR)
 # poppler-utils: required for pdf2image (PDF to image conversion)
+# ca-certificates: required for HTTPS requests (GigaChat/Qwen APIs)
+# Using --no-install-recommends to minimize attack surface
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tesseract-ocr \

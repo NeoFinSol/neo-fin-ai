@@ -1,12 +1,18 @@
 # NeoFin AI Backend Dependencies
 # Pinned versions for reproducibility, security, and compatibility
 # Tested with Python 3.11.6
+#
+# After changing versions, run:
+#   1. docker-compose build --no-cache
+#   2. pytest tests/ -v
+#   3. Check compatibility matrix below
 
 # -----------------------------------------------------------------------------
 # FastAPI Framework
 # -----------------------------------------------------------------------------
 # FastAPI 0.115.x is compatible with Pydantic 2.8.x
 # uvicorn 0.30.x is the stable ASGI server
+# COMPATIBILITY: FastAPI >=0.100 works with Pydantic 2.x
 fastapi[standard]~=0.115.0
 uvicorn[standard]~=0.30.0
 
@@ -30,7 +36,9 @@ aiohttp~=3.9.0    # Async HTTP client
 # SQLAlchemy 2.0.x with async support
 # asyncpg 0.29.x - PostgreSQL async driver
 # alembic 1.13.x - Database migrations
-# psycopg2-binary 2.9.x - Sync PostgreSQL driver (for alembic)
+# psycopg2-binary 2.9.x - Sync PostgreSQL driver (for alembic CLI)
+# COMPATIBILITY: SQLAlchemy 2.0.30+ works with asyncpg 0.29.x
+# NOTE: psycopg2-binary is for development only; use psycopg2 in production
 SQLAlchemy[asyncio]~=2.0.30
 asyncpg~=0.29.0
 alembic~=1.13.0

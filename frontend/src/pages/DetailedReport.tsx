@@ -37,45 +37,45 @@ export const DetailedReport = () => {
   const handlePrint = () => window.print();
 
   const metrics = [
-    { 
-      label: 'Ликвидность', 
-      value: result.ratios.current_ratio?.toFixed(2) || '—', 
-      sub: 'Текущая', 
-      icon: Activity, 
-      trend: 'up', 
-      color: 'teal' 
+    {
+      label: 'Ликвидность',
+      value: result?.ratios?.current_ratio?.toFixed(2) || '—',
+      sub: 'Текущая',
+      icon: Activity,
+      trend: 'up',
+      color: 'teal'
     },
-    { 
-      label: 'Автономия', 
-      value: result.ratios.equity_ratio?.toFixed(2) || '—', 
+    {
+      label: 'Автономия',
+      value: result?.ratios?.equity_ratio?.toFixed(2) || '—',
       sub: 'Коэфф. собств. кап.', 
       icon: ShieldCheck, 
       trend: 'up', 
       color: 'blue' 
     },
-    { 
-      label: 'ROA', 
-      value: result.ratios.roa ? (result.ratios.roa * 100).toFixed(1) + '%' : '—', 
-      sub: 'Рент. активов', 
-      icon: PieChart, 
-      trend: 'down', 
-      color: 'indigo' 
+    {
+      label: 'ROA',
+      value: result?.ratios?.roa ? (result.ratios.roa * 100).toFixed(1) + '%' : '—',
+      sub: 'Рент. активов',
+      icon: PieChart,
+      trend: 'down',
+      color: 'indigo'
     },
-    { 
-      label: 'ROE', 
-      value: result.ratios.roe ? (result.ratios.roe * 100).toFixed(1) + '%' : '—', 
-      sub: 'Рент. капитала', 
-      icon: TrendingUp, 
-      trend: 'up', 
-      color: 'violet' 
+    {
+      label: 'ROE',
+      value: result?.ratios?.roe ? (result.ratios.roe * 100).toFixed(1) + '%' : '—',
+      sub: 'Рент. капитала',
+      icon: TrendingUp,
+      trend: 'up',
+      color: 'violet'
     },
-    { 
-      label: 'Долг / Выручка', 
-      value: result.ratios.debt_to_revenue?.toFixed(2) || '—', 
-      sub: 'Долговая нагрузка', 
-      icon: BarChart3, 
-      trend: 'down', 
-      color: 'orange' 
+    {
+      label: 'Долг / Выручка',
+      value: result?.ratios?.debt_to_revenue?.toFixed(2) || '—',
+      sub: 'Долговая нагрузка',
+      icon: BarChart3,
+      trend: 'down',
+      color: 'orange'
     },
     { 
       label: 'Маржа', 

@@ -6,7 +6,6 @@ from typing import AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.pool import NullPool
 
 # DATABASE_URL is read from environment variable.
 # Validation is deferred to get_engine() to allow module imports during testing.
@@ -85,7 +84,6 @@ def get_engine() -> AsyncEngine:
         try:
             # For asyncpg, pool settings are handled by the driver itself
             # SQLAlchemy 2.0+ supports these parameters for async engines
-            # Using poolclass=NullPool to let asyncpg manage pooling internally
             _engine = create_async_engine(
                 db_url,
                 echo=False,  # Disable SQL logging to prevent credential leakage

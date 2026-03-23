@@ -164,6 +164,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             except SQLAlchemyError as create_exc:
                 logger.exception("Database error creating analysis for task %s: %s", task_id, create_exc)
                 await update_analysis(task_id, "failed", {"error": "Database error during initialization"})
+                return  # Exit early - cannot process without DB record
 
         # Process PDF
         scanned = await asyncio.to_thread(pdf_extractor.is_scanned_pdf, file_path)
