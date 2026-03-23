@@ -32,33 +32,26 @@ MINIMAL_PDF = (
 
 @pytest.fixture
 def client():
-    """Create test client with DEV_MODE enabled."""
-    import os
-    old_dev_mode = os.environ.get("DEV_MODE")
-    os.environ["DEV_MODE"] = "1"
-    
+    """Create test client. DEV_MODE should be set per-test via monkeypatch."""
     with TestClient(app) as test_client:
         yield test_client
-    
-    if old_dev_mode is None:
-        os.environ.pop("DEV_MODE", None)
-    else:
-        os.environ["DEV_MODE"] = old_dev_mode
 
 
 class TestFrontendAPIIntegration:
     """Test frontend API integration points."""
 
     @pytest.mark.asyncio
-    async def test_health_endpoint_for_frontend(self, client):
+    async def test_health_endpoint_for_frontend(self, client, monkeypatch):
         """Test that frontend can access health endpoint."""
+        monkeypatch.setenv("DEV_MODE", "1")
         response = client.get("/system/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
 
     @pytest.mark.asyncio
-    async def test_upload_endpoint_simulation(self, client, dev_mode_enabled):
+    async def test_upload_endpoint_simulation(self, client, monkeypatch):
         """Test upload endpoint as frontend would call it."""
+        monkeypatch.setenv("DEV_MODE", "1")
         # Simulate frontend file upload
         response = client.post(
             "/upload",
@@ -71,8 +64,9 @@ class TestFrontendAPIIntegration:
         assert "task_id" in data
 
     @pytest.mark.asyncio
-    async def test_result_polling_simulation(self, client, dev_mode_enabled):
+    async def test_result_polling_simulation(self, client, monkeypatch):
         """Test result polling as frontend would do it."""
+        monkeypatch.setenv("DEV_MODE", "1")
         # First upload a file
         upload_response = client.post(
             "/upload",
@@ -98,8 +92,9 @@ class TestFrontendAPIIntegration:
         assert "status" in result_data
 
     @pytest.mark.asyncio
-    async def test_analyze_direct_endpoint(self, client, dev_mode_enabled):
+    async def test_analyze_direct_endpoint(self, client, monkeypatch):
         """Test direct analysis endpoint (alternative frontend flow)."""
+        monkeypatch.setenv("DEV_MODE", "1")
         response = client.post(
             "/analyze/pdf/file",
             files={"file": ("test.pdf", MINIMAL_PDF, "application/pdf")},
@@ -113,8 +108,9 @@ class TestFrontendAPIIntegration:
             assert isinstance(result, dict)
 
     @pytest.mark.asyncio
-    async def test_base64_analysis_endpoint(self, client, dev_mode_enabled):
+    async def test_base64_analysis_endpoint(self, client, monkeypatch):
         """Test base64 analysis endpoint (used by some frontend implementations)."""
+        monkeypatch.setenv("DEV_MODE", "1")
         base64_data = base64.b64encode(MINIMAL_PDF).decode("utf-8")
         
         response = client.post(
@@ -134,8 +130,9 @@ class TestFrontendErrorHandling:
     """Test frontend error handling scenarios."""
 
     @pytest.mark.asyncio
-    async def test_frontend_file_too_large_error(self, client, dev_mode_enabled):
+    async def test_frontend_file_too_large_error(self, client, monkeypatch):
         """Test that frontend receives proper error for large files."""
+        monkeypatch.setenv("DEV_MODE", "1")
         # Create a file larger than MAX_FILE_SIZE (50 MB)
         large_content = b"%PDF-1.4\n" + b"x" * (51 * 1024 * 1024)
         
@@ -148,8 +145,9 @@ class TestFrontendErrorHandling:
         assert "too large" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
-    async def test_frontend_invalid_pdf_error(self, client, dev_mode_enabled):
+    async def test_frontend_invalid_pdf_error(self, client, monkeypatch):
         """Test that frontend receives proper error for invalid PDF."""
+        monkeypatch.setenv("DEV_MODE", "1")
         response = client.post(
             "/upload",
             files={"file": ("invalid.pdf", b"not a pdf", "application/pdf")},
@@ -159,8 +157,9 @@ class TestFrontendErrorHandling:
         assert "detail" in response.json()
 
     @pytest.mark.asyncio
-    async def test_frontend_empty_file_error(self, client, dev_mode_enabled):
+    async def test_frontend_empty_file_error(self, client, monkeypatch):
         """Test that frontend receives proper error for empty files."""
+        monkeypatch.setenv("DEV_MODE", "1")
         response = client.post(
             "/upload",
             files={"file": ("empty.pdf", b"", "application/pdf")},
@@ -170,8 +169,9 @@ class TestFrontendErrorHandling:
         assert "detail" in response.json()
 
     @pytest.mark.asyncio
-    async def test_frontend_task_not_found_error(self, client, dev_mode_enabled):
+    async def test_frontend_task_not_found_error(self, client, monkeypatch):
         """Test that frontend receives proper error for non-existent task."""
+        monkeypatch.setenv("DEV_MODE", "1")
         response = client.get("/result/non-existent-task-id")
         
         assert response.status_code == 404
@@ -182,8 +182,9 @@ class TestFrontendCORS:
     """Test CORS configuration for frontend."""
 
     @pytest.mark.asyncio
-    async def test_cors_headers_present(self, client):
+    async def test_cors_headers_present(self, client, monkeypatch):
         """Test that CORS headers are present in responses."""
+        monkeypatch.setenv("DEV_MODE", "1")
         response = client.options(
             "/system/health",
             headers={
@@ -196,8 +197,9 @@ class TestFrontendCORS:
         assert response.status_code in [200, 400, 404]
 
     @pytest.mark.asyncio
-    async def test_health_accessible_from_any_origin(self, client):
+    async def test_health_accessible_from_any_origin(self, client, monkeypatch):
         """Test that health endpoint is accessible (CORS allowed)."""
+        monkeypatch.setenv("DEV_MODE", "1")
         response = client.get(
             "/system/health",
             headers={"Origin": "http://example.com"}

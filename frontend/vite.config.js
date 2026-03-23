@@ -6,10 +6,28 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/upload': 'http://localhost:8000',
-      '/result': 'http://localhost:8000',
-      '/analyze': 'http://localhost:8000',
-      '/system': 'http://localhost:8000',
+      // Secure proxy configuration for development
+      // Only proxies specific API paths to backend
+      '/upload': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/result': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/analyze': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/system': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
 })
