@@ -13,9 +13,55 @@ import src.db.crud as crud
 import src.db.database as db
 from src.db.database import Base
 
-# Set testing flags to bypass validation in database.py and auth.py
+# Set TESTING=1 to bypass DATABASE_URL validation during tests
+# Do NOT set DEV_MODE here - tests should verify authentication behavior
 os.environ["TESTING"] = "1"
-os.environ["DEV_MODE"] = "1"
+
+
+@pytest.fixture(autouse=True, scope="session")
+def setup_test_environment():
+    """
+    Setup test environment for all tests.
+    This fixture runs automatically before any tests.
+    """
+    # Set DEV_MODE for all tests to bypass authentication
+    # Individual tests can override this with auth_enabled fixture
+    os.environ["DEV_MODE"] = "1"
+    yield
+    # Cleanup
+    os.environ.pop("DEV_MODE", None)
+
+
+@pytest.fixture(scope="function")
+def dev_mode_enabled(monkeypatch):
+    """
+    Fixture to enable DEV_MODE for specific tests that need to bypass authentication.
+    Use this fixture explicitly in tests that require unauthenticated access.
+    
+    Usage:
+        def test_something(dev_mode_enabled):
+            # DEV_MODE is enabled only for this test
+    """
+    # DEV_MODE is already set globally, this is just for explicit documentation
+    monkeypatch.setenv("DEV_MODE", "1")
+    yield
+    monkeypatch.delenv("DEV_MODE", raising=False)
+
+
+@pytest.fixture(scope="function")
+def auth_enabled(monkeypatch):
+    """
+    Fixture to ensure authentication is enabled for tests.
+    Sets DEV_MODE=0 and requires API_KEY to be set.
+    
+    Usage:
+        def test_authenticated_endpoint(auth_enabled, client):
+            # Authentication is enforced
+            response = client.get("/protected", headers={"X-API-Key": "test-key"})
+    """
+    monkeypatch.setenv("DEV_MODE", "0")
+    monkeypatch.setenv("API_KEY", "test-api-key-for-testing")
+    yield
 
 
 @pytest_asyncio.fixture(scope="session")

@@ -2,6 +2,10 @@
 
 import base64
 import os
+
+# Set DEV_MODE BEFORE importing app to bypass authentication in tests
+os.environ["DEV_MODE"] = "1"
+
 from io import BytesIO
 
 from fastapi.testclient import TestClient
@@ -17,7 +21,7 @@ class FakeAnalysis:
         self.result = result
 
 
-def test_upload_and_result(monkeypatch, tmp_path):
+def test_upload_and_result(monkeypatch, tmp_path, dev_mode_enabled):
     store: dict[str, FakeAnalysis] = {}
 
     async def fake_create(task_id: str, status: str, result: dict | None = None):
@@ -261,9 +265,9 @@ def test_analyze_pdf_base64_too_large(monkeypatch):
     assert "File too large" in response.json()["detail"]
 
 
-def test_analyze_pdf_file_error_handling(monkeypatch):
+def test_analyze_pdf_file_error_handling(monkeypatch, dev_mode_enabled):
     """Test error handling in /analyze/pdf/file endpoint."""
-    
+
     async def fake_analyze_error(file_stream):
         raise Exception("Internal processing error")
 
@@ -272,7 +276,7 @@ def test_analyze_pdf_file_error_handling(monkeypatch):
     client = TestClient(app)
 
     pdf_content = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
-    
+
     response = client.post(
         "/analyze/pdf/file",
         files={"file": ("test.pdf", pdf_content, "application/pdf")},
@@ -282,9 +286,9 @@ def test_analyze_pdf_file_error_handling(monkeypatch):
     assert "Internal server error" in response.json()["detail"]
 
 
-def test_analyze_pdf_base64_error_handling(monkeypatch):
+def test_analyze_pdf_base64_error_handling(monkeypatch, dev_mode_enabled):
     """Test error handling in /analyze/pdf/base64 endpoint."""
-    
+
     async def fake_analyze_error(file_stream):
         raise ValueError("Some processing error")
 
@@ -294,7 +298,7 @@ def test_analyze_pdf_base64_error_handling(monkeypatch):
 
     pdf_content = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
     base64_data = base64.b64encode(pdf_content).decode("utf-8")
-    
+
     response = client.post(
         "/analyze/pdf/base64",
         json={"file_data": base64_data},

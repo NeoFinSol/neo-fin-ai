@@ -20,7 +20,7 @@ DEV_MODE: bool = os.getenv("DEV_MODE", "0") == "1"
 
 async def get_api_key(
     api_key_header: str = Security(API_KEY_HEADER),
-) -> str:
+) -> Optional[str]:
     """
     Validate API Key from request header.
     
@@ -30,20 +30,25 @@ async def get_api_key(
     
     In development (DEV_MODE=1):
         - Authentication is disabled
-        - Any request is allowed (including without API key)
+        - Returns None to indicate dev mode (not a valid key)
     
     Args:
         api_key_header: API Key from X-API-Key header
         
     Returns:
-        str: Validated API key or 'dev-mode' in development
+        Optional[str]: Validated API key in production, None in dev mode
         
     Raises:
         HTTPException: If API key is missing or invalid (production only)
         RuntimeError: If API_KEY not set in production (fail-fast)
     """
-    # Check if API_KEY is set - fail fast in production
-    if not API_KEY and not DEV_MODE:
+    # Development mode - bypass authentication
+    if DEV_MODE:
+        logger.debug("Development mode: authentication disabled")
+        return None
+    
+    # Production mode - require API_KEY to be set (fail-fast)
+    if not API_KEY:
         logger.error(
             "API_KEY environment variable is not set and DEV_MODE is not enabled. "
             "Set API_KEY for production or DEV_MODE=1 for local development."
@@ -53,12 +58,7 @@ async def get_api_key(
             detail="Server configuration error: API_KEY not set",
         )
     
-    # Development mode - allow requests without authentication
-    if DEV_MODE:
-        logger.debug("Development mode: authentication disabled")
-        return "dev-mode"
-    
-    # Production mode - require valid API key
+    # Production mode - require valid API key in request
     if not api_key_header:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
