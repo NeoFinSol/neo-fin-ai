@@ -1,4 +1,4 @@
-# NeoFin AI Backend Dependencies
+# NeoFin AI Backend Dependencies (Production)
 # Pinned versions for reproducibility, security, and compatibility
 # Tested with Python 3.11.6
 #
@@ -31,18 +31,18 @@ requests~=2.31.0  # Sync HTTP client
 aiohttp~=3.9.0    # Async HTTP client
 
 # -----------------------------------------------------------------------------
-# Database (Async)
+# Database (Async) - PRODUCTION
 # -----------------------------------------------------------------------------
 # SQLAlchemy 2.0.x with async support
 # asyncpg 0.29.x - PostgreSQL async driver
 # alembic 1.13.x - Database migrations
-# psycopg2-binary 2.9.x - Sync PostgreSQL driver (for alembic CLI)
+# psycopg2 2.9.x - Sync PostgreSQL driver (for alembic CLI) - PRODUCTION
 # COMPATIBILITY: SQLAlchemy 2.0.30+ works with asyncpg 0.29.x
-# NOTE: psycopg2-binary is for development only; use psycopg2 in production
+# NOTE: psycopg2 (not -binary) is used in production for security patches
 SQLAlchemy[asyncio]~=2.0.30
 asyncpg~=0.29.0
 alembic~=1.13.0
-psycopg2-binary~=2.9.9
+psycopg2~=2.9.9
 
 # -----------------------------------------------------------------------------
 # PDF Processing

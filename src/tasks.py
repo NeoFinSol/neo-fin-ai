@@ -12,6 +12,48 @@ from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
+
+def _cleanup_temp_file(file_path) -> None:
+    """
+    Safely cleanup temporary file or file-like object.
+    
+    Supports:
+    - str: File path
+    - pathlib.Path: Path object
+    - file-like objects with .close() method
+    
+    Args:
+        file_path: Path to file or file-like object
+    """
+    if not file_path:
+        return
+    
+    # Handle file-like objects (BytesIO, etc.)
+    if hasattr(file_path, 'close'):
+        try:
+            file_path.close()
+            logger.debug("Closed file-like object")
+        except Exception as exc:
+            logger.debug("Failed to close file-like object: %s", exc)
+        return
+    
+    # Handle string paths and Path objects
+    from pathlib import Path
+    path = Path(file_path) if isinstance(file_path, str) else file_path
+    
+    try:
+        if path.is_file():
+            path.unlink(missing_ok=True)
+            logger.debug("Cleaned up temporary file: %s", path)
+        elif path.exists():
+            logger.warning("Temporary path is not a file, skipping: %s", path)
+    except FileNotFoundError:
+        logger.debug("Temporary file already deleted: %s", path)
+    except PermissionError as exc:
+        logger.warning("Permission denied deleting temporary file %s: %s", path, exc)
+    except Exception as exc:
+        logger.warning("Failed to delete temporary file %s: %s", path, exc)
+
 # Маппинг русских ключей ratios → camelCase English для frontend
 RATIO_KEY_MAP = {
     "Коэффициент текущей ликвидности": "current_ratio",
@@ -35,11 +77,34 @@ METRIC_KEY_MAP = {
 
 
 def _translate_ratios(ratios: dict) -> dict:
-    """Convert Russian ratio keys to camelCase English for frontend."""
-    return {
-        RATIO_KEY_MAP.get(k, k): v
-        for k, v in ratios.items()
-    }
+    """
+    Convert Russian ratio keys to camelCase English for frontend.
+    
+    Args:
+        ratios: Dictionary with Russian keys from calculate_ratios
+        
+    Returns:
+        dict: Dictionary with English keys
+        
+    Side Effects:
+        Logs warning for unmapped keys (for monitoring)
+    """
+    result = {}
+    unknown_keys = []
+    
+    for k, v in ratios.items():
+        en_key = RATIO_KEY_MAP.get(k)
+        if en_key:
+            result[en_key] = v
+        else:
+            # Keep unmapped keys but log them for monitoring
+            unknown_keys.append(k)
+            result[k] = v
+    
+    if unknown_keys:
+        logger.warning("Unmapped ratio keys (frontend may break): %s", unknown_keys)
+    
+    return result
 
 
 def _build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
@@ -219,18 +284,4 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         await update_analysis(task_id, "failed", {"error": str(exc)})
     finally:
         # Clean up temporary file with safer deletion pattern
-        if file_path:
-            try:
-                # Check if it's a file (not directory) before removing
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                    logger.debug("Cleaned up temporary file: %s", file_path)
-                elif os.path.exists(file_path):
-                    logger.warning("Temporary path is not a file, skipping: %s", file_path)
-            except FileNotFoundError:
-                # File already deleted - this is fine (race condition)
-                logger.debug("Temporary file already deleted: %s", file_path)
-            except PermissionError as exc:
-                logger.warning("Permission denied deleting temporary file %s: %s", file_path, exc)
-            except Exception as exc:
-                logger.warning("Failed to delete temporary file %s: %s", file_path, exc)
+        _cleanup_temp_file(file_path)

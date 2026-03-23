@@ -1,9 +1,46 @@
-﻿pytest~=8.3.4
-pytest-asyncio~=0.25.0
-httpx~=0.28.1
-mypy~=1.10.0
+﻿# NeoFin AI Development Dependencies
+# These packages are ONLY for development and testing
+# DO NOT include in production Docker images
 
-# Type stubs for mypy
-types-requests~=2.32.0
-types-aiofiles~=24.1.0
-types-PyYAML~=6.0.12
+# Include all production dependencies
+-r requirements.txt
+
+# -----------------------------------------------------------------------------
+# Database (Development)
+# -----------------------------------------------------------------------------
+# psycopg2-binary for local development (easier installation)
+# WARNING: Do NOT use in production - use psycopg2 instead
+psycopg2-binary~=2.9.9
+
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+pytest~=8.3.0
+pytest-asyncio~=0.25.0
+pytest-cov~=6.0.0
+httpx~=0.28.0  # Async test client for FastAPI
+
+# -----------------------------------------------------------------------------
+# Code Quality
+# -----------------------------------------------------------------------------
+mypy~=1.10.0
+types-requests
+types-aiofiles
+types-PyYAML
+flake8~=7.1.0
+black~=24.10.0
+isort~=5.13.0
+pre-commit~=4.0.0
+
+# -----------------------------------------------------------------------------
+# Security Scanning
+# -----------------------------------------------------------------------------
+bandit~=1.8.0
+pip-audit~=2.7.0
+safety~=3.0.0
+
+# -----------------------------------------------------------------------------
+# Debugging & Profiling
+# -----------------------------------------------------------------------------
+ipdb~=0.13.0
+memory-profiler~=0.61.0

@@ -10,9 +10,23 @@ from src.db.models import Analysis
 logger = logging.getLogger(__name__)
 
 
-class AnalysisAlreadyExistsError(Exception):
-    """Custom exception raised when an analysis with the same task_id already exists."""
-    pass
+class AnalysisAlreadyExistsError(IntegrityError):
+    """
+    Raised when an analysis with the same task_id already exists.
+    
+    Inherits from SQLAlchemy IntegrityError to maintain compatibility
+    with existing exception handling code.
+    """
+    def __init__(self, task_id: str, message: str = None):
+        self.task_id = task_id
+        stmt = f"Analysis with task_id '{task_id}' already exists"
+        super().__init__(
+            statement=stmt,
+            params={'task_id': task_id},
+            orig=None
+        )
+        if message:
+            self.args = (message,) + self.args
 
 
 async def create_analysis(task_id: str, status: str, result: dict | None = None) -> Analysis:

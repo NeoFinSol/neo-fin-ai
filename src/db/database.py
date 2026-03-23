@@ -21,6 +21,30 @@ Base = declarative_base()
 logger = logging.getLogger(__name__)
 
 
+def _redact_credentials(url: str) -> str:
+    """
+    Redact credentials from database URL for safe logging.
+    
+    Args:
+        url: Database URL that may contain credentials
+        
+    Returns:
+        str: URL with credentials replaced by ***
+    """
+    if not url:
+        return "***"
+    # Pattern: postgresql+asyncpg://user:password@host:port/db
+    if "@" in url:
+        try:
+            # Find the part between :// and @
+            start = url.index("://") + 3
+            end = url.index("@")
+            return url[:start] + "***REDACTED***" + url[end:]
+        except ValueError:
+            return "***REDACTED***"
+    return url
+
+
 def get_engine() -> AsyncEngine:
     """
     Get or create async engine (lazy initialization).
@@ -102,8 +126,9 @@ def get_engine() -> AsyncEngine:
             )
             logger.info("Database engine created successfully")
         except Exception as e:
-            logger.error("Failed to create database engine: %s", e)
-            raise RuntimeError(f"Failed to create database engine: {e}") from e
+            # Log error without exposing credentials
+            logger.error("Failed to create database engine: %s", type(e).__name__)
+            raise RuntimeError("Failed to create database engine") from None
 
     return _engine
 
