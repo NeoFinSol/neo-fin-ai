@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{87654321-4321-4321-4321-210987654321}</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>package.json</StartupFile>
+    <SearchPath>
+    </SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>Frontend</Name>
+    <RootNamespace>neo-fin-ai-frontend</RootNamespace>
+    <IsWindowsApplication>False</IsWindowsApplication>
+    <LaunchUrl>http://localhost:3000</LaunchUrl>
+    <NpmCommand>npm</NpmCommand>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <Optimize>false</Optimize>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>false</DebugSymbols>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- TypeScript Source Files -->
+    <Compile Include="src\**\*.ts">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="src\**\*.tsx">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="*.ts">
+      <SubType>Code</SubType>
+    </Compile>
+    <!-- TypeScript Config -->
+    <TypeScriptCompile Include="tsconfig.json">
+      <SubType>Code</SubType>
+    </TypeScriptCompile>
+    <TypeScriptCompile Include="vite.config.ts">
+      <SubType>Code</SubType>
+    </TypeScriptCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- HTML -->
+    <Content Include="index.html">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <!-- Configuration Files -->
+    <Content Include="package.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include=".env.example">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include="package-lock.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <!-- Docker -->
+    <Content Include="Dockerfile">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include="nginx.conf">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <!-- Documentation -->
+    <Content Include="README.md">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include="FRONTEND_DOCS.md">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <!-- Git -->
+    <Content Include="src\api\TYPES_CONSOLIDATION.md" />
+    <None Include=".gitignore">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+    <!-- TypeScript declarations -->
+    <TypeScriptCompile Include="src\vite-env.d.ts">
+      <SubType>Code</SubType>
+    </TypeScriptCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="src" />
+    <Folder Include="src\api" />
+    <Folder Include="src\components" />
+    <Folder Include="src\context" />
+    <Folder Include="src\hooks" />
+    <Folder Include="src\pages" />
+    <Folder Include="src\theme" />
+  </ItemGroup>
+  <Target Name="Build" Inputs="@(TypeScriptCompile);@(Compile)" Outputs="dist">
+    <Exec Command="npm run build" Condition="'$(Configuration)' == 'Release'" />
+    <Exec Command="npm run dev" Condition="'$(Configuration)' == 'Debug'" />
+  </Target>
+  <Target Name="Clean">
+    <Exec Command="npm run clean" />
+  </Target>
+  <Target Name="Install" Inputs="package.json" Outputs="$(MSBuildProjectDirectory)\node_modules">
+    <Exec Command="npm install" />
+  </Target>
+</Project>

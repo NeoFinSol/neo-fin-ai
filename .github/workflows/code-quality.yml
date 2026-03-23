@@ -1,0 +1,164 @@
+name: Code Quality
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    
+    # Service container без проброса портов - internal network
+    services:
+      postgres-test:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          POSTGRES_DB: neofin_test
+        # ports убраны - используем internal network
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 5s
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        pip install pytest-cov
+
+    - name: Set environment variables
+      # SECURITY: Pass env directly instead of creating .env file
+      run: |
+        echo "Environment configured securely via GitHub Actions"
+
+    - name: Run tests with coverage
+      env:
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+        QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
+      run: |
+        python -m pytest tests/ \
+          --cov=src \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          -v \
+          --junitxml=test-results.xml
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-report
+        path: |
+          htmlcov/
+          coverage.xml
+          test-results.xml
+
+    - name: Check coverage threshold
+      run: |
+        # Validate coverage.xml exists
+        if [ ! -f coverage.xml ]; then
+          echo "❌ CRITICAL: coverage.xml not found. Tests may have failed."
+          echo "Check test-results.xml artifact for details."
+          exit 1
+        fi
+        
+        # Extract coverage percentage with error handling
+        COVERAGE=$(python3 << 'PYTHON_SCRIPT'
+import xml.etree.ElementTree as ET
+import sys
+
+try:
+    tree = ET.parse('coverage.xml')
+    root = tree.getroot()
+    
+    # Проверка атрибута line-rate
+    if 'line-rate' not in root.attrib:
+        print("❌ ERROR: coverage.xml missing 'line-rate' attribute", file=sys.stderr)
+        sys.exit(1)
+    
+    coverage = float(root.attrib['line-rate']) * 100
+    print(f"{coverage:.2f}")
+except ET.ParseError as e:
+    print(f"❌ ERROR: Failed to parse coverage.xml: {e}", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"❌ ERROR: Unexpected error: {e}", file=sys.stderr)
+    sys.exit(1)
+PYTHON_SCRIPT
+)
+        
+        if [ -z "$COVERAGE" ]; then
+          echo "❌ ERROR: Failed to extract coverage value"
+          exit 1
+        fi
+        
+        echo "Coverage: $COVERAGE%"
+        
+        # Fail if coverage is below 70%
+        if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+          echo "❌ Coverage $COVERAGE% is below threshold (70%)"
+          exit 1
+        else
+          echo "✅ Coverage $COVERAGE% meets threshold (70%)"
+        fi
+
+  type-check:
+    name: Type Checking
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        pip install mypy
+        # Install type stubs for third-party libraries
+        pip install types-aiofiles types-PyYAML
+
+    - name: Run mypy type checking
+      run: |
+        # CRITICAL: Fail on type errors
+        # Using strict mode with stubs for third-party libraries
+        mypy src/ \
+          --warn-unused-configs \
+          --warn-redundant-casts \
+          --warn-unreachable \
+          --warn-return-any \
+          --strict-optional \
+          --pretty
+
+    - name: Upload mypy report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: mypy-report
+        path: |
+          .mypy_cache/

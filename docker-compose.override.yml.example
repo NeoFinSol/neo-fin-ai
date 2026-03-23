@@ -1,0 +1,43 @@
+# =============================================================================
+# Docker Compose Override for Local Development ONLY
+# =============================================================================
+# 
+# ⚠️  WARNING: THIS FILE IS FOR LOCAL DEVELOPMENT ONLY!
+# 
+# NEVER use this file or these credentials in:
+#   - Production environments
+#   - Staging environments  
+#   - CI/CD pipelines
+#   - Any shared or public environment
+#
+# This file contains WEAK DEFAULT CREDENTIALS that should only be used
+# on your local development machine.
+#
+# USAGE:
+#   1. Copy this file to docker-compose.override.yml (local only!)
+#      cp docker-compose.override.yml.example docker-compose.override.yml
+#   
+#   2. Start the project:
+#      docker-compose up --build
+#
+#   3. For better security, generate random passwords:
+#      python -c "import secrets; print(secrets.token_urlsafe(32))"
+#
+# =============================================================================
+
+# SECURITY NOTE: These are development-only credentials.
+# Generate secure passwords for production using:
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+services:
+  db:
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: neofin
+
+  db_test:
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: neofin_test

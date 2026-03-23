@@ -1,0 +1,136 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (e.g., v1.0.0)'
+        required: true
+        type: string
+      confirm:
+        description: 'Type "YES" to confirm production deployment'
+        required: true
+        type: string
+        default: 'NO'
+
+jobs:
+  validate-input:
+    name: Validate Deployment Input
+    runs-on: ubuntu-latest
+    outputs:
+      valid: ${{ steps.validate.outputs.valid }}
+    steps:
+    - name: Confirm deployment
+      id: validate
+      run: |
+        if [ "${{ github.event.inputs.confirm }}" != "YES" ]; then
+          echo "valid=false" >> $GITHUB_OUTPUT
+          echo "::error::Deployment not confirmed. Please type 'YES' to confirm."
+          exit 1
+        fi
+        echo "valid=true" >> $GITHUB_OUTPUT
+
+  deploy-production:
+    name: Deploy to Production Environment
+    runs-on: ubuntu-latest
+    needs: [validate-input]
+    if: needs.validate-input.outputs.valid == 'true'
+    environment:
+      name: production
+      url: https://neofin.ai
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.version }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      env:
+        VERSION: ${{ github.event.inputs.version }}
+      run: |
+        docker build -t ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION .
+        docker tag ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION ${{ secrets.DOCKER_USERNAME }}/neofin-backend:latest
+        docker push ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION
+        docker push ${{ secrets.DOCKER_USERNAME }}/neofin-backend:latest
+
+    - name: Create deployment backup
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USERNAME }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        script: |
+          cd /opt/neofin
+          
+          # Create backup BEFORE stopping containers
+          # Database must be running for pg_dump to work
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          
+          # Check if database container is healthy
+          if ! docker-compose ps | grep -q "db.*healthy\|db.*Up"; then
+            echo "::error::Database container is not running"
+            exit 1
+          fi
+          
+          # Create database backup
+          docker-compose exec -T db pg_dump -U postgres neofin > backup_$TIMESTAMP.sql
+          
+          # Verify backup was created
+          if [ ! -f backup_$TIMESTAMP.sql ]; then
+            echo "::error::Failed to create database backup"
+            exit 1
+          fi
+          
+          # Keep only last 5 backups
+          ls -t backup_*.sql | tail -n +6 | xargs -r rm
+          
+          echo "::notice::Database backup created: backup_$TIMESTAMP.sql"
+
+    - name: Deploy to production server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.PRODUCTION_HOST }}
+        username: ${{ secrets.PRODUCTION_USERNAME }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        envs: VERSION
+        script: |
+          cd /opt/neofin
+          docker pull ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION
+          docker-compose down
+          sed -i "s|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION|" docker-compose.yml
+          docker-compose run --rm backend alembic upgrade head
+          docker-compose up -d
+          
+          echo "Waiting for service to be healthy..."
+          for i in {1..30}; do
+            if curl -f http://localhost:8000/system/health; then
+              echo "Service is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Health check failed"
+          exit 1
+
+    - name: Tag release
+      if: success()
+      run: |
+        git tag -a ${{ github.event.inputs.version }} -m "Production release ${{ github.event.inputs.version }}"
+        git push origin ${{ github.event.inputs.version }}
+
+    - name: Notify deployment status
+      if: always()
+      run: |
+        echo "::notice::Production deployment completed with status: ${{ job.status }}"

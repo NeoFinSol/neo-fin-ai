@@ -1,0 +1,72 @@
+# NeoFin AI Backend Dependencies (Production)
+# Pinned versions for reproducibility, security, and compatibility
+# Tested with Python 3.11.6
+#
+# After changing versions, run:
+#   1. docker-compose build --no-cache
+#   2. pytest tests/ -v
+#   3. Check compatibility matrix below
+
+# -----------------------------------------------------------------------------
+# FastAPI Framework
+# -----------------------------------------------------------------------------
+# FastAPI 0.115.x is compatible with Pydantic 2.8.x
+# uvicorn 0.30.x is the stable ASGI server
+# COMPATIBILITY: FastAPI >=0.100 works with Pydantic 2.x
+fastapi[standard]~=0.115.0
+uvicorn[standard]~=0.30.0
+
+# -----------------------------------------------------------------------------
+# Data Validation & Settings
+# -----------------------------------------------------------------------------
+# Pydantic 2.8.x - major version 2 with v2 API
+pydantic~=2.8.0
+pydantic-settings~=2.4.0
+python-multipart~=0.0.9  # Form data parsing
+
+# -----------------------------------------------------------------------------
+# HTTP Clients
+# -----------------------------------------------------------------------------
+requests~=2.31.0  # Sync HTTP client
+aiohttp~=3.9.0    # Async HTTP client
+
+# -----------------------------------------------------------------------------
+# Database (Async) - PRODUCTION
+# -----------------------------------------------------------------------------
+# SQLAlchemy 2.0.x with async support
+# asyncpg 0.29.x - PostgreSQL async driver
+# alembic 1.13.x - Database migrations
+# psycopg2 2.9.x - Sync PostgreSQL driver (for alembic CLI) - PRODUCTION
+# COMPATIBILITY: SQLAlchemy 2.0.30+ works with asyncpg 0.29.x
+# NOTE: psycopg2 (not -binary) is used in production for security patches
+SQLAlchemy[asyncio]~=2.0.30
+asyncpg~=0.29.0
+alembic~=1.13.0
+psycopg2~=2.9.9
+
+# -----------------------------------------------------------------------------
+# PDF Processing
+# -----------------------------------------------------------------------------
+# pdfplumber 0.11.x - PDF text and table extraction
+# PyPDF2 3.0.x - PDF manipulation
+# pdf2image 1.16.x - Convert PDF to images (for OCR)
+# pytesseract 0.3.x - OCR engine wrapper
+pdfplumber~=0.11.9
+PyPDF2~=3.0.0
+pdf2image~=1.16.0
+pytesseract~=0.3.10
+
+# -----------------------------------------------------------------------------
+# Table Extraction from PDFs
+# -----------------------------------------------------------------------------
+# camelot-py 0.11.x - Table extraction from PDFs
+# opencv-python 4.13.x - Computer vision (compatible with numpy 2.x)
+# pillow 10.0.x - Image processing
+camelot-py~=0.11.0
+opencv-python~=4.13.0
+pillow~=10.0.0
+
+# -----------------------------------------------------------------------------
+# Rate Limiting
+# -----------------------------------------------------------------------------
+slowapi~=0.1.9  # Rate limiting for FastAPI

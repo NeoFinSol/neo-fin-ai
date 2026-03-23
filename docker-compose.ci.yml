@@ -1,0 +1,98 @@
+# Docker Compose для CI/CD
+# БЕЗ проброса хост-портов - используется только внутренняя сеть
+# Запускается в GitHub Actions для тестирования сборки
+#
+# SECURITY: 
+# - ВСЕ credentials передаются ТОЛЬКО через environment variables CI workflow
+# - Никаких default паролей или test ключей в этом файле
+# - Без внешних переменных окружения контейнеры не запустятся (ошибка безопасности)
+# - Не используйте этот файл локально с production данными
+# - Для локальной разработки создайте docker-compose.override.yml
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Нет ports: - не пробрасываем порты на хост в CI
+    environment:
+      # SECURITY: ALL credentials MUST be injected via CI workflow environment
+      # Эти переменные устанавливаются в .github/workflows/ci.yml через secrets
+      # DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/neofin
+      # TEST_DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db_test:5432/neofin_test
+      # QWEN_API_KEY: ${QWEN_API_KEY}
+      # QWEN_API_URL: ${QWEN_API_URL}
+      # CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
+      # CORS_ALLOW_METHODS: ${CORS_ALLOW_METHODS}
+      # CORS_ALLOW_HEADERS: ${CORS_ALLOW_HEADERS}
+      # CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS}
+      DB_WAIT_RETRIES: 30
+      DB_WAIT_SECONDS: 2
+    depends_on:
+      db:
+        condition: service_healthy
+      db_test:
+        condition: service_healthy
+    networks:
+      - ci-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: http://backend:8000
+    # Нет ports: - не пробрасываем порты на хост в CI
+    networks:
+      - ci-net
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      # SECURITY: Password MUST be provided via environment variable
+      # No default value - will fail if DB_PASSWORD not set (intentional security measure)
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: neofin
+    # Нет ports: - не пробрасываем порты на хост в CI
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d neofin"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - ci-net
+
+  db_test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      # SECURITY: Password MUST be provided via environment variable
+      # No default value - will fail if DB_PASSWORD not set (intentional security measure)
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: neofin_test
+    # Нет ports: - не пробрасываем порты на хост в CI
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d neofin_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+    networks:
+      - ci-net
+
+networks:
+  ci-net:
+    driver: bridge
+    # Эфемерная сеть - удаляется после завершения workflow
+
+volumes:
+  postgres-data:
+    # Временное хранилище для main DB - удаляется после workflow
+  postgres-test-data:
+    # Временное хранилище для test DB - удаляется после workflow

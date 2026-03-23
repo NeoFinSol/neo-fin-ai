@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{11223344-5566-7788-9900-AABBCCDDEEFF}</ProjectGuid>
+    <ProjectHome>.</ProjectHome>
+    <StartupFile>pytest.ini</StartupFile>
+    <SearchPath>
+    </SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>Tests</Name>
+    <RootNamespace>neo-fin-ai-tests</RootNamespace>
+    <IsWindowsApplication>False</IsWindowsApplication>
+    <InterpreterId>MSBuild|env2|$(MSBuildProjectFullPath)</InterpreterId>
+    <TestCommand>pytest</TestCommand>
+    <TestArguments>-v</TestArguments>
+    <TestFramework>Pytest</TestFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <Optimize>false</Optimize>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>false</DebugSymbols>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Test Files -->
+    <Compile Include="tests\conftest.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_agent.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_analysis_pdf_extractor.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_analysis_ratios.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_analysis_scoring.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_api.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_app.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_auth.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_benchmarks.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_controllers_analyze.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_db_crud.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_db_database.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_db_integration.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_e2e.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_frontend_e2e.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_models_settings.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_nlp_analysis.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_pdf_extractor.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_ratios.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_routers_pdf_tasks.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_scoring.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="tests\test_tasks.py">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Test Configuration -->
+    <Content Include="pytest.ini">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <Content Include=".coverage">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+    <None Include=".gitignore">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="tests" />
+    <Folder Include="docs" />
+    <Folder Include="docs\old_reports" />
+    <Folder Include="docs\old_bugs(corrected)" />
+    <Folder Include="docs\tasks" />
+  </ItemGroup>
+  <!-- Reference Backend project -->
+  <ItemGroup>
+    <ProjectReference Include="Backend.pyproj">
+      <Project>{12345678-1234-1234-1234-123456789012}</Project>
+      <Name>Backend</Name>
+    </ProjectReference>
+    <ProjectReference Include="frontend\Frontend.njsproj">
+      <Name>Frontend</Name>
+      <Project>{87654321-4321-4321-4321-210987654321}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Accessibility, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+      <Name>Accessibility</Name>
+      <AssemblyName>Accessibility.dll</AssemblyName>
+      <HintPath>C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.7.2\Accessibility.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Interpreter Include="env2\">
+      <Id>env2</Id>
+      <Version>3.11</Version>
+      <Description>env2 (Python 3.11 (64-bit))</Description>
+      <InterpreterPath>Scripts\python.exe</InterpreterPath>
+      <WindowsInterpreterPath>Scripts\pythonw.exe</WindowsInterpreterPath>
+      <PathEnvironmentVariable>PYTHONPATH</PathEnvironmentVariable>
+      <Architecture>X64</Architecture>
+    </Interpreter>
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+</Project>
