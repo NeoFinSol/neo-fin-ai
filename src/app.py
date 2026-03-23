@@ -11,6 +11,7 @@ import src.routers.system as system_router
 import src.routers.analyze as analyze_router
 import src.routers.pdf_tasks as pdf_tasks_router
 from src.core.agent import agent
+from src.core.gigachat_agent import gigachat_agent
 from src.models.settings import app_settings
 
 
@@ -80,10 +81,12 @@ def _parse_cors_list(list_str: str, default_values: List[str]) -> List[str]:
 async def lifespan(app: FastAPI):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    agent.set_config(
-        app_settings.qwen_api_key,
-        app_settings.qwen_api_url
-    )
+    # AI service auto-configures based on available credentials
+    # Priority: GigaChat > Qwen > Local LLM (Ollama)
+    if ai_service.is_configured:
+        logger.info("AI service configured with provider: %s", ai_service.provider)
+    else:
+        logger.warning("No AI service configured. NLP features will be disabled.")
 
     yield
 
