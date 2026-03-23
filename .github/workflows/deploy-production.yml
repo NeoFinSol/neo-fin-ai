@@ -73,11 +73,30 @@ jobs:
         key: ${{ secrets.PRODUCTION_SSH_KEY }}
         script: |
           cd /opt/neofin
-          docker-compose down
-          docker-compose up -d
+          
+          # Create backup BEFORE stopping containers
+          # Database must be running for pg_dump to work
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          
+          # Check if database container is healthy
+          if ! docker-compose ps | grep -q "db.*healthy\|db.*Up"; then
+            echo "::error::Database container is not running"
+            exit 1
+          fi
+          
+          # Create database backup
           docker-compose exec -T db pg_dump -U postgres neofin > backup_$TIMESTAMP.sql
+          
+          # Verify backup was created
+          if [ ! -f backup_$TIMESTAMP.sql ]; then
+            echo "::error::Failed to create database backup"
+            exit 1
+          fi
+          
+          # Keep only last 5 backups
           ls -t backup_*.sql | tail -n +6 | xargs -r rm
+          
+          echo "::notice::Database backup created: backup_$TIMESTAMP.sql"
 
     - name: Deploy to production server
       uses: appleboy/ssh-action@v1.0.3

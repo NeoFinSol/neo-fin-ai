@@ -138,17 +138,22 @@ PYTHON_SCRIPT
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install -r requirements-dev.txt
         pip install mypy
+        # Install type stubs for third-party libraries
+        pip install types-aiofiles types-PyYAML
 
     - name: Run mypy type checking
       run: |
         # CRITICAL: Fail on type errors
+        # Using strict mode with stubs for third-party libraries
         mypy src/ \
           --warn-unused-configs \
           --warn-redundant-casts \
           --warn-unreachable \
           --warn-return-any \
-          --strict-optional
+          --strict-optional \
+          --pretty
 
     - name: Upload mypy report
       uses: actions/upload-artifact@v4
