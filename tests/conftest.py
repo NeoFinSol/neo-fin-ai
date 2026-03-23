@@ -26,6 +26,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "benchmark: mark test as performance benchmark (slow, run separately)"
     )
+    config.addinivalue_line(
+        "markers", "frontend: mark test as frontend integration test"
+    )
 
 
 @pytest.fixture(autouse=True, scope="session")
