@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+import os
 import ssl
 from typing import Optional
 
@@ -18,10 +19,25 @@ RETRY_BACKOFF = 2.0  # multiplier
 GIGACHAT_AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
 GIGACHAT_CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
-# SSL context for GigaChat - using default secure settings
-# Note: If GigaChat uses self-signed certificates in production,
-# you should properly configure CA certificates instead of disabling verification
-_gigachat_ssl_context = ssl.create_default_context()
+# SSL context for GigaChat
+# By default, use secure SSL verification.
+# For development with self-signed certificates, set GIGACHAT_SSL_VERIFY=false
+# WARNING: Disabling SSL verification exposes you to MITM attacks!
+_gigachat_ssl_verify = os.getenv("GIGACHAT_SSL_VERIFY", "true").lower() != "false"
+
+if _gigachat_ssl_verify:
+    # Secure SSL verification (production mode)
+    _gigachat_ssl_context = ssl.create_default_context()
+    logger.info("GigaChat SSL verification enabled (secure)")
+else:
+    # Insecure SSL (development mode only!)
+    _gigachat_ssl_context = ssl.create_default_context()
+    _gigachat_ssl_context.check_hostname = False
+    _gigachat_ssl_context.verify_mode = ssl.CERT_NONE
+    logger.warning(
+        "GigaChat SSL verification DISABLED! This is insecure and should only be used "
+        "in development environments with self-signed certificates."
+    )
 
 
 class GigaChatAgent:

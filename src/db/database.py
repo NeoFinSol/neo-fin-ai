@@ -3,19 +3,16 @@
 import os
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
-# DATABASE_URL must be set via environment variable - no defaults for security
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL environment variable is required. "
-        "Please set it in your .env file or environment."
-    )
+# DATABASE_URL is read from environment variable.
+# Validation is deferred to get_engine() to allow module imports during testing.
+# Set TESTING=1 or CI=1 to bypass validation during tests.
+DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")
 
 # Engine будет создан лениво при первом вызове get_engine()
-_engine: Optional[create_async_engine] = None
+_engine: Optional[AsyncEngine] = None
 AsyncSessionLocal: Optional[async_sessionmaker] = None
 Base = declarative_base()
 
@@ -24,25 +21,43 @@ def get_engine() -> create_async_engine:
     """
     Get or create async engine (lazy initialization).
     
+    Validates DATABASE_URL presence unless TESTING or CI environment variable is set.
+
     Returns:
         create_async_engine: SQLAlchemy async engine instance
-        
+
     Raises:
-        RuntimeError: If engine creation fails
+        RuntimeError: If DATABASE_URL is not set and not in testing/CI mode
     """
     global _engine, AsyncSessionLocal
-    
+
     if _engine is None:
+        # Check DATABASE_URL - allow bypass for testing
+        is_testing = os.getenv("TESTING", "0") == "1"
+        is_ci = os.getenv("CI", "0") == "1"
+        
+        if not DATABASE_URL and not (is_testing or is_ci):
+            raise RuntimeError(
+                "DATABASE_URL environment variable is required. "
+                "Please set it in your .env file or environment. "
+                "For testing, set TESTING=1 or CI=1."
+            )
+        
+        # Use default for testing if DATABASE_URL not set
+        db_url = DATABASE_URL
+        if is_testing and not db_url:
+            db_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin_test"
+        
         try:
-            _engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+            _engine = create_async_engine(db_url, echo=False, future=True)
             AsyncSessionLocal = async_sessionmaker(
-                _engine, 
-                class_=AsyncSession, 
+                _engine,
+                class_=AsyncSession,
                 expire_on_commit=False
             )
         except Exception as e:
             raise RuntimeError(f"Failed to create database engine: {e}") from e
-    
+
     return _engine
 
 

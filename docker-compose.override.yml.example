@@ -1,0 +1,20 @@
+# Docker Compose override for local development
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+
+# SECURITY NOTE: This file contains default credentials for LOCAL DEVELOPMENT ONLY.
+# NEVER use these values in production or staging environments.
+# Generate secure passwords for production using:
+#   python -c "import secrets; print(secrets.token_urlsafe(32))"
+
+services:
+  db:
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: neofin
+
+  db_test:
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: neofin_test

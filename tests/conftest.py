@@ -13,6 +13,10 @@ import src.db.crud as crud
 import src.db.database as db
 from src.db.database import Base
 
+# Set testing flags to bypass validation in database.py and auth.py
+os.environ["TESTING"] = "1"
+os.environ["DEV_MODE"] = "1"
+
 
 @pytest_asyncio.fixture(scope="session")
 async def db_engine():

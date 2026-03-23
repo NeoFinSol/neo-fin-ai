@@ -92,6 +92,28 @@ class AIService:
         else:
             return await self._agent.invoke(input, timeout)
 
+    async def _invoke_once(self, input: dict, timeout: Optional[int] = None) -> Optional[str]:
+        """
+        Internal low-level invoke without retry logic.
+        Use this method inside invoke_with_retry to avoid recursive retries.
+
+        Args:
+            input: Input dictionary with tool_input and optional system prompt
+            timeout: Request timeout in seconds
+
+        Returns:
+            Optional[str]: AI response or None
+        """
+        if not self.is_configured:
+            logger.warning("AI service not configured - cannot invoke")
+            return None
+
+        if self._provider == "ollama":
+            return await self._invoke_ollama(input, timeout)
+        else:
+            # Call agent.invoke directly - it has its own retry logic
+            return await self._agent.invoke(input, timeout)
+
     async def invoke_with_retry(
         self,
         input: dict,
@@ -101,6 +123,8 @@ class AIService:
     ) -> Optional[str]:
         """
         Invoke AI service with retry logic.
+
+        Uses internal _invoke_once method to avoid recursive retry calls.
 
         Args:
             input: Input dictionary with tool_input and optional system prompt
@@ -116,7 +140,8 @@ class AIService:
         last_exception = None
         for attempt in range(max_retries):
             try:
-                return await self.invoke(input, timeout)
+                # Use _invoke_once to avoid recursive retry logic
+                return await self._invoke_once(input, timeout)
             except asyncio.TimeoutError:
                 # Don't retry timeout errors immediately
                 if attempt < max_retries - 1:
