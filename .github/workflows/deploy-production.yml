@@ -25,19 +25,21 @@ jobs:
       run: |
         if [ "${{ github.event.inputs.confirm }}" != "YES" ]; then
           echo "valid=false" >> $GITHUB_OUTPUT
-          echo "❌ Deployment not confirmed. Please type 'YES' to confirm."
+          echo "::error::Deployment not confirmed. Please type 'YES' to confirm."
           exit 1
         fi
         echo "valid=true" >> $GITHUB_OUTPUT
-        echo "✅ Deployment confirmed"
 
   deploy-production:
     name: Deploy to Production Environment
     runs-on: ubuntu-latest
-    needs: validate-input
+    needs: [validate-input]
+    if: needs.validate-input.outputs.valid == 'true'
     environment:
       name: production
       url: https://neofin.ai
+    permissions:
+      contents: write
     
     steps:
     - name: Checkout code
@@ -58,36 +60,27 @@ jobs:
       env:
         VERSION: ${{ github.event.inputs.version }}
       run: |
-        # Tag with version and latest
         docker build -t ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION .
         docker tag ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION ${{ secrets.DOCKER_USERNAME }}/neofin-backend:latest
         docker push ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION
         docker push ${{ secrets.DOCKER_USERNAME }}/neofin-backend:latest
 
     - name: Create deployment backup
-      uses: appleboy/ssh-action@master
+      uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.PRODUCTION_HOST }}
         username: ${{ secrets.PRODUCTION_USERNAME }}
         key: ${{ secrets.PRODUCTION_SSH_KEY }}
         script: |
           cd /opt/neofin
-          
-          # Backup current state
           docker-compose down
           docker-compose up -d
-          
-          # Backup database
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           docker-compose exec -T db pg_dump -U postgres neofin > backup_$TIMESTAMP.sql
-          
-          # Keep only last 5 backups
           ls -t backup_*.sql | tail -n +6 | xargs -r rm
-          
-          echo "✅ Backup created"
 
     - name: Deploy to production server
-      uses: appleboy/ssh-action@master
+      uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.PRODUCTION_HOST }}
         username: ${{ secrets.PRODUCTION_USERNAME }}
@@ -95,33 +88,21 @@ jobs:
         envs: VERSION
         script: |
           cd /opt/neofin
-          
-          # Pull new image
           docker pull ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION
-          
-          # Stop old containers
           docker-compose down
-          
-          # Update docker-compose.yml with new tag
           sed -i "s|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$VERSION|" docker-compose.yml
-          
-          # Run migrations
           docker-compose run --rm backend alembic upgrade head
-          
-          # Start new containers
           docker-compose up -d
           
-          # Health check with retries
           echo "Waiting for service to be healthy..."
           for i in {1..30}; do
             if curl -f http://localhost:8000/system/health; then
-              echo "✅ Service is healthy"
+              echo "Service is healthy"
               exit 0
             fi
             sleep 2
           done
-          
-          echo "❌ Health check failed"
+          echo "Health check failed"
           exit 1
 
     - name: Tag release
@@ -133,6 +114,4 @@ jobs:
     - name: Notify deployment status
       if: always()
       run: |
-        echo "Production deployment completed with status: ${{ job.status }}"
-        echo "Version: ${{ github.event.inputs.version }}"
-        echo "Commit: ${{ github.sha }}"
+        echo "::notice::Production deployment completed with status: ${{ job.status }}"

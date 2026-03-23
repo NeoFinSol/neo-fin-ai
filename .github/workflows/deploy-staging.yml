@@ -12,6 +12,8 @@ jobs:
     environment:
       name: staging
       url: https://staging.neofin.ai
+    permissions:
+      contents: read
     
     steps:
     - name: Checkout code
@@ -34,7 +36,7 @@ jobs:
         docker push ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$IMAGE_TAG
 
     - name: Deploy to staging server
-      uses: appleboy/ssh-action@master
+      uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.STAGING_HOST }}
         username: ${{ secrets.STAGING_USERNAME }}
@@ -42,30 +44,16 @@ jobs:
         envs: IMAGE_TAG
         script: |
           cd /opt/neofin
-          
-          # Pull new image
           docker pull ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$IMAGE_TAG
-          
-          # Stop old containers
           docker-compose down
-          
-          # Update docker-compose.yml with new tag
-          sed -i "s/image: .*/image: ${{ secrets.DOCKER_USERNAME }}\/neofin-backend:$IMAGE_TAG/" docker-compose.yml
-          
-          # Run migrations
+          sed -i "s|image: .*|image: ${{ secrets.DOCKER_USERNAME }}/neofin-backend:$IMAGE_TAG|" docker-compose.yml
           docker-compose run --rm backend alembic upgrade head
-          
-          # Start new containers
           docker-compose up -d
-          
-          # Health check
           sleep 10
           curl -f http://localhost:8000/system/health || exit 1
-          
-          # Cleanup old images
           docker image prune -f
 
     - name: Notify deployment status
       if: always()
       run: |
-        echo "Staging deployment completed with status: ${{ job.status }}"
+        echo "::notice::Staging deployment completed with status: ${{ job.status }}"
