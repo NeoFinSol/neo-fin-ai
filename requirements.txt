@@ -1,33 +1,64 @@
 # NeoFin AI Backend Dependencies
-# Pinned versions for reproducibility and security
+# Pinned versions for reproducibility, security, and compatibility
+# Tested with Python 3.11.6
 
-# FastAPI framework
+# -----------------------------------------------------------------------------
+# FastAPI Framework
+# -----------------------------------------------------------------------------
+# FastAPI 0.115.x is compatible with Pydantic 2.8.x
+# uvicorn 0.30.x is the stable ASGI server
 fastapi[standard]~=0.115.0
 uvicorn[standard]~=0.30.0
 
-# PDF processing
-pdfplumber~=0.11.9
-PyPDF2~=3.0.0
-pdf2image~=1.16.0
-pytesseract~=0.3.10
-camelot-py[cv]~=0.11.0
-opencv-python~=4.9.0
-pillow~=10.0.0
-
-# Data validation and settings
+# -----------------------------------------------------------------------------
+# Data Validation & Settings
+# -----------------------------------------------------------------------------
+# Pydantic 2.8.x - major version 2 with v2 API
 pydantic~=2.8.0
 pydantic-settings~=2.4.0
-python-multipart~=0.0.9
+python-multipart~=0.0.9  # Form data parsing
 
-# HTTP clients
-requests~=2.31.0
-aiohttp~=3.9.0
+# -----------------------------------------------------------------------------
+# HTTP Clients
+# -----------------------------------------------------------------------------
+requests~=2.31.0  # Sync HTTP client
+aiohttp~=3.9.0    # Async HTTP client
 
-# Database
+# -----------------------------------------------------------------------------
+# Database (Async)
+# -----------------------------------------------------------------------------
+# SQLAlchemy 2.0.x with async support
+# asyncpg 0.29.x - PostgreSQL async driver
+# alembic 1.13.x - Database migrations
+# psycopg2-binary 2.9.x - Sync PostgreSQL driver (for alembic)
 SQLAlchemy[asyncio]~=2.0.30
 asyncpg~=0.29.0
 alembic~=1.13.0
 psycopg2-binary~=2.9.9
 
-# Rate limiting
-slowapi~=0.1.9
+# -----------------------------------------------------------------------------
+# PDF Processing
+# -----------------------------------------------------------------------------
+# pdfplumber 0.11.x - PDF text and table extraction
+# PyPDF2 3.0.x - PDF manipulation
+# pdf2image 1.16.x - Convert PDF to images (for OCR)
+# pytesseract 0.3.x - OCR engine wrapper
+pdfplumber~=0.11.9
+PyPDF2~=3.0.0
+pdf2image~=1.16.0
+pytesseract~=0.3.10
+
+# -----------------------------------------------------------------------------
+# Table Extraction from PDFs
+# -----------------------------------------------------------------------------
+# camelot-py 0.11.x - Table extraction from PDFs
+# opencv-python 4.9.x - Computer vision (required by camelot)
+# pillow 10.0.x - Image processing
+camelot-py[cv]~=0.11.0
+opencv-python~=4.9.0
+pillow~=10.0.0
+
+# -----------------------------------------------------------------------------
+# Rate Limiting
+# -----------------------------------------------------------------------------
+slowapi~=0.1.9  # Rate limiting for FastAPI

@@ -7,7 +7,8 @@ import PyPDF2
 from src.analysis import pdf_extractor
 from src.analysis.ratios import calculate_ratios
 from src.analysis.scoring import calculate_integral_score
-from src.db.crud import create_analysis, update_analysis
+from src.db.crud import create_analysis, update_analysis, AnalysisAlreadyExistsError
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -156,12 +157,13 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         if existing is None:
             try:
                 await create_analysis(task_id, "processing", None)
-            except Exception as create_exc:
-                logger.debug(
-                    "Create failed for task %s (possibly already exists): %s",
-                    task_id, create_exc
-                )
+            except AnalysisAlreadyExistsError:
+                # Another process created the record - this is fine, try to update
+                logger.debug("Analysis already exists for task %s, updating instead", task_id)
                 await update_analysis(task_id, "processing", None)
+            except SQLAlchemyError as create_exc:
+                logger.exception("Database error creating analysis for task %s: %s", task_id, create_exc)
+                await update_analysis(task_id, "failed", {"error": "Database error during initialization"})
 
         # Process PDF
         scanned = await asyncio.to_thread(pdf_extractor.is_scanned_pdf, file_path)

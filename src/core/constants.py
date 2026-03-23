@@ -6,6 +6,16 @@
 """
 
 # =============================================================================
+# BACKWARD COMPATIBILITY ALIASES
+# =============================================================================
+# Aliases for old constant names to avoid breaking existing imports
+DEFAULT_TIMEOUT = AI_TIMEOUT  # Deprecated: use AI_TIMEOUT
+DEFAULT_RETRIES = AI_MAX_RETRIES  # Deprecated: use AI_MAX_RETRIES
+RETRY_DELAY = AI_RETRY_DELAY  # Deprecated: use AI_RETRY_DELAY
+RETRY_BACKOFF = AI_RETRY_BACKOFF  # Deprecated: use AI_RETRY_BACKOFF
+MAX_FILE_SIZE_MB = MAX_FILE_SIZE // (1024 * 1024)  # Derived constant
+
+# =============================================================================
 # PDF FILE VALIDATION
 # =============================================================================
 

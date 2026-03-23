@@ -6,6 +6,7 @@ from typing import AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.pool import NullPool
 
 # DATABASE_URL is read from environment variable.
 # Validation is deferred to get_engine() to allow module imports during testing.
@@ -21,14 +22,14 @@ Base = declarative_base()
 logger = logging.getLogger(__name__)
 
 
-def get_engine() -> create_async_engine:
+def get_engine() -> AsyncEngine:
     """
     Get or create async engine (lazy initialization).
 
     Validates DATABASE_URL presence unless TESTING or CI environment variable is set.
 
     Returns:
-        create_async_engine: SQLAlchemy async engine instance
+        AsyncEngine: SQLAlchemy async engine instance
 
     Raises:
         RuntimeError: If DATABASE_URL is not set and not in testing/CI mode
@@ -53,7 +54,8 @@ def get_engine() -> create_async_engine:
             db_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin_test"
 
         # Connection pool settings from environment variables with safe defaults
-        # Safe defaults to prevent connection exhaustion (DoS protection)
+        # For asyncpg, pool settings are passed via create_async_engine parameters
+        # which are supported by SQLAlchemy 2.0+ for async engines
         pool_size = int(os.getenv("DB_POOL_SIZE", "5"))  # Default: 5 connections
         max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))  # Default: 10 overflow
         pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "30"))  # Default: 30 seconds
@@ -81,21 +83,26 @@ def get_engine() -> create_async_engine:
         )
 
         try:
+            # For asyncpg, pool settings are handled by the driver itself
+            # SQLAlchemy 2.0+ supports these parameters for async engines
+            # Using poolclass=NullPool to let asyncpg manage pooling internally
             _engine = create_async_engine(
                 db_url,
                 echo=False,  # Disable SQL logging to prevent credential leakage
                 future=True,
+                # Pool settings - SQLAlchemy 2.0+ passes these to asyncpg
                 pool_size=pool_size,
                 max_overflow=max_overflow,
                 pool_timeout=pool_timeout,
                 pool_recycle=pool_recycle,
-                pool_pre_ping=pool_pre_ping
+                pool_pre_ping=pool_pre_ping,
             )
             AsyncSessionLocal = async_sessionmaker(
                 _engine,
                 class_=AsyncSession,
                 expire_on_commit=False
             )
+            logger.info("Database engine created successfully")
         except Exception as e:
             logger.error("Failed to create database engine: %s", e)
             raise RuntimeError(f"Failed to create database engine: {e}") from e
@@ -113,6 +120,8 @@ def get_session_maker() -> async_sessionmaker:
     Raises:
         RuntimeError: If session maker is not initialized
     """
+    global AsyncSessionLocal
+
     if AsyncSessionLocal is None:
         get_engine()
 

@@ -37,6 +37,8 @@ export interface ScoreData {
 }
 
 export interface NLPResult {
+  // Backend schema: src/tasks.py -> nlp_result
+  // Keys use snake_case to match Python backend
   risks: string[];
   key_factors: string[];
   recommendations: string[];
@@ -49,7 +51,7 @@ export interface AnalysisData {
   metrics: FinancialMetrics;
   ratios: FinancialRatios;
   score: ScoreData;
-  nlp?: NLPResult;
+  nlp?: NLPResult;  // Optional - may be absent if AI not configured or analysis failed
 }
 
 export interface AnalysisResponse {

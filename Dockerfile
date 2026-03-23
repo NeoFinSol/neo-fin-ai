@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+# Pin to specific Python version for reproducibility and security
+# See: https://hub.docker.com/_/python/tags?page=1&name=3.11-slim
+FROM python:3.11.6-slim
 
 WORKDIR /app
 
@@ -9,6 +11,9 @@ ENV VIRTUAL_ENV=/app/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install system dependencies (cache this layer)
+# libgl1: required for opencv-python (PDF table extraction)
+# tesseract-ocr: required for pytesseract (OCR)
+# poppler-utils: required for pdf2image (PDF to image conversion)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tesseract-ocr \
