@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analyze", tags=["system"])
 
 
+# Limiter will be accessed via request.app.state.limiter through SlowAPIMiddleware
+
+
 def _validate_pdf_content(content: bytes) -> bool:
     """Validate PDF file by checking magic header."""
     if not content or len(content) < 5:
@@ -85,7 +88,6 @@ def _read_and_validate_stream(file: UploadFile, max_size: int = MAX_FILE_SIZE) -
 
 @router.post("/pdf/file")
 async def post_analyze_pdf_file(request: Request, file: UploadFile, api_key: str = Depends(get_api_key)):
-    # Rate limiting is applied via app.state.limiter
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="PDF file expected")
 

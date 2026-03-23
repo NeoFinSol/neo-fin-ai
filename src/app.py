@@ -6,8 +6,9 @@ from typing import List
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import SlowAPI, _rate_limit_exceeded_handler
+from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 import uvicorn
 
@@ -120,32 +121,24 @@ def get_rate_limit() -> str:
     return os.getenv("RATE_LIMIT", "100/minute")
 
 
-limiter = SlowAPI(
-    limiter_func=get_remote_address,
+# Use Limiter from slowapi (correct API)
+limiter = Limiter(
+    key_func=get_remote_address,
     default_limits=[get_rate_limit()],
-    storage_uri="memory://",
+    # Use memory storage for single-instance deployments
+    # For production with multiple instances, use Redis:
+    # storage_uri="redis://localhost:6379"
 )
 
 app = FastAPI(version="0.1.0", lifespan=lifespan)
 
-# Add rate limiter to app
+# Add rate limiter to app state
 app.state.limiter = limiter
+
+# Add exception handler for rate limit exceeded
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Add rate limiting middleware
-@app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    """Apply rate limiting to all requests."""
-    try:
-        # Get limit from app state
-        limiter = app.state.limiter
-        # Apply rate limiting
-        await limiter(request)
-    except RateLimitExceeded:
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Rate limit exceeded. Please try again later."}
-        )
-    return await call_next(request)
+# Add SlowAPI middleware (correct way to apply rate limiting)
+app.add_middleware(SlowAPIMiddleware)
 
 # CORS configuration - restricted and validated for security

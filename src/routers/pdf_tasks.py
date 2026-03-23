@@ -44,7 +44,6 @@ async def _cleanup_temp_file(file_path: str) -> None:
 
 @router.post("/upload")
 async def upload_pdf(request: Request, file: UploadFile, background_tasks: BackgroundTasks, api_key: str = Depends(get_api_key)):
-    # Rate limiting is applied via app.state.limiter
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="PDF file expected")
 
@@ -136,7 +135,6 @@ async def upload_pdf(request: Request, file: UploadFile, background_tasks: Backg
 
 @router.get("/result/{task_id}")
 async def get_result(request: Request, task_id: str, api_key: str = Depends(get_api_key)):
-    # Rate limiting is applied via app.state.limiter
     analysis = await get_analysis(task_id)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Task not found")
