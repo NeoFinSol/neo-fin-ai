@@ -252,10 +252,11 @@ class TestAnalyzePdf:
 
             mock_ai_service.invoke_with_retry = AsyncMock(return_value="not valid json")
 
-            with pytest.raises(HTTPException) as exc_info:
-                await analyze_pdf(mock_file)
-
-            assert exc_info.value.status_code == 500
+            # Invalid JSON is now logged and skipped, returning empty result
+            result = await analyze_pdf(mock_file)
+            
+            # Should return empty dict when all JSON parsing fails
+            assert result == {}
 
     @pytest.mark.asyncio
     async def test_multiple_page_results_combined(self):

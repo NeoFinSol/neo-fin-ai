@@ -8,6 +8,7 @@ import pdfplumber
 from fastapi import HTTPException
 
 from src.core.ai_service import ai_service
+from src.core.constants import MAX_PDF_PAGES
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,13 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
             pdf_file = io.BytesIO(content)
 
         file_content = _read_pdf_file(pdf_file)
+        
+        # Check page limit to prevent DoS attacks
+        if len(file_content) > MAX_PDF_PAGES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"PDF has too many pages. Maximum is {MAX_PDF_PAGES} pages."
+            )
     except ValueError as e:
         logger.exception("Invalid PDF file: %s", e)
         raise HTTPException(status_code=400, detail="Invalid or corrupted PDF file")
@@ -122,7 +130,17 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
             )
             if res is not None:
                 logger.info("Successfully received AI response for pages %d-%d", page_idx + 1, end_idx)
-                all_results.append(json.loads(res))
+                try:
+                    # Parse JSON response with error handling
+                    result = json.loads(res)
+                    all_results.append(result)
+                except json.JSONDecodeError as json_exc:
+                    logger.error(
+                        "Failed to parse AI response as JSON for pages %d-%d: %s. Response: %s",
+                        page_idx + 1, end_idx, json_exc, res[:200] if res else "None"
+                    )
+                    # Skip this batch and continue with others
+                    continue
         except asyncio.TimeoutError:
             logger.error("AI request timeout for pages %d-%d", page_idx + 1, end_idx)
             raise HTTPException(status_code=504, detail="AI service timeout")

@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 def _extract_text_from_pdf(pdf_path: str) -> str:
     """
     Extract text from PDF using PyPDF2.
-    
+
     Args:
         pdf_path: Path to PDF file
-        
+
     Returns:
         str: Extracted text content
     """
@@ -35,16 +35,28 @@ def _extract_text_from_pdf(pdf_path: str) -> str:
 async def process_pdf(task_id: str, file_path: str) -> None:
     """
     Process PDF file and update analysis results.
-    
+
     Args:
         task_id: Unique task identifier
         file_path: Path to temporary PDF file
     """
     try:
-        # Update or create analysis record
+        # Use upsert pattern to avoid race conditions
+        # First try to update, if no rows affected then create
         existing = await update_analysis(task_id, "processing", None)
         if existing is None:
-            await create_analysis(task_id, "processing", None)
+            # Record doesn't exist, create it
+            # Use try-except to handle race condition where another process created it
+            try:
+                await create_analysis(task_id, "processing", None)
+            except Exception as create_exc:
+                # If creation fails due to unique constraint, another process created it
+                # Try to update instead
+                logger.debug(
+                    "Create failed for task %s (possibly already exists): %s",
+                    task_id, create_exc
+                )
+                await update_analysis(task_id, "processing", None)
 
         # Process PDF
         scanned = await asyncio.to_thread(pdf_extractor.is_scanned_pdf, file_path)
