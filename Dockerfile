@@ -25,7 +25,7 @@ RUN apt-get update \
         ca-certificates \
     && update-ca-certificates \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Copy only requirements first (better layer caching)
 COPY requirements.txt .

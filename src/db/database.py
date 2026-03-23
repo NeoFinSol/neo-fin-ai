@@ -7,6 +7,8 @@ from typing import AsyncGenerator, Optional
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
+from src.core.security import get_safe_db_url_for_logging
+
 # DATABASE_URL is read from environment variable.
 # Validation is deferred to get_engine() to allow module imports during testing.
 # Set TESTING=1 or CI=1 to bypass validation during tests.
@@ -19,30 +21,6 @@ Base = declarative_base()
 
 # Logger for database operations
 logger = logging.getLogger(__name__)
-
-
-def _redact_credentials(url: str) -> str:
-    """
-    Redact credentials from database URL for safe logging.
-    
-    Args:
-        url: Database URL that may contain credentials
-        
-    Returns:
-        str: URL with credentials replaced by ***
-    """
-    if not url:
-        return "***"
-    # Pattern: postgresql+asyncpg://user:password@host:port/db
-    if "@" in url:
-        try:
-            # Find the part between :// and @
-            start = url.index("://") + 3
-            end = url.index("@")
-            return url[:start] + "***REDACTED***" + url[end:]
-        except ValueError:
-            return "***REDACTED***"
-    return url
 
 
 def get_engine() -> AsyncEngine:
@@ -144,11 +122,12 @@ def get_engine() -> AsyncEngine:
             )
             logger.info("Database engine created with default pool settings")
         except Exception as e:
-            # Log error with redacted credentials, preserve exception chain
-            safe_msg = _redact_credentials(str(e))
+            # Log error without exposing credentials
+            # Use get_safe_db_url_for_logging to ensure no credentials leak
             logger.error(
-                "DB engine creation failed: %s | type=%s",
-                safe_msg, type(e).__name__,
+                "DB engine creation failed: error_type=%s | db=%s",
+                type(e).__name__,
+                get_safe_db_url_for_logging(db_url),
                 exc_info=True
             )
             raise RuntimeError("Failed to create database engine") from e

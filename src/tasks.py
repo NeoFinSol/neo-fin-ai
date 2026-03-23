@@ -1,6 +1,8 @@
 ﻿import asyncio
+import io
 import logging
 import os
+from pathlib import Path
 
 import PyPDF2
 
@@ -13,41 +15,76 @@ from sqlalchemy.exc import SQLAlchemyError
 logger = logging.getLogger(__name__)
 
 
-def _cleanup_temp_file(file_path) -> None:
+async def _ensure_analysis_exists(task_id: str) -> bool:
+    """
+    Ensure Analysis record exists for task_id.
+    
+    Uses upsert pattern to handle race conditions.
+    
+    Args:
+        task_id: Unique task identifier
+        
+    Returns:
+        bool: True if record exists/created, False if DB unavailable
+    """
+    existing = await update_analysis(task_id, "processing", None)
+    if existing is not None:
+        return True
+    
+    try:
+        await create_analysis(task_id, "processing", None)
+        return True
+    except AnalysisAlreadyExistsError:
+        # Race condition - another process created it
+        result = await update_analysis(task_id, "processing", None)
+        if result is None:
+            logger.critical("Failed to ensure analysis exists for task %s", task_id)
+            return False
+        return True
+    except SQLAlchemyError as e:
+        logger.exception("DB error ensuring analysis for task %s", task_id)
+        return False
+
+
+def _cleanup_temp_file(file_path: str | os.PathLike | io.IOBase | None) -> None:
     """
     Safely cleanup temporary file or file-like object.
     
     Supports:
     - str: File path
-    - pathlib.Path: Path object
-    - file-like objects with .close() method
+    - os.PathLike: Path object
+    - io.IOBase: file-like objects (BytesIO, StringIO, open files)
+    - None: No-op
     
     Args:
         file_path: Path to file or file-like object
     """
-    if not file_path:
+    if file_path is None:
         return
     
-    # Handle file-like objects (BytesIO, etc.)
-    if hasattr(file_path, 'close'):
+    # 1. File-like objects (BytesIO, StringIO, open files)
+    if hasattr(file_path, 'close') and callable(getattr(file_path, 'close')):
         try:
             file_path.close()
-            logger.debug("Closed file-like object")
+            logger.debug("Closed file-like object: %s", type(file_path).__name__)
         except Exception as exc:
-            logger.debug("Failed to close file-like object: %s", exc)
+            logger.warning("Failed to close file-like object: %s", exc)
         return
     
-    # Handle string paths and Path objects
-    from pathlib import Path
+    # 2. Path as str/Path/PathLike
+    from pathlib import Path, PurePath
     try:
-        path = Path(file_path)  # Works for str, Path, PathLike
+        # Path() accepts str, Path, PathLike — but not bytes without decoding
+        if isinstance(file_path, (str, PurePath)):
+            path = Path(file_path)
+        else:
+            path = Path(str(file_path))
+        
         if path.is_file():
             path.unlink(missing_ok=True)
-            logger.debug("Cleaned up temporary file: %s", path)
-        elif path.exists():
-            logger.warning("Temporary path is not a file, skipping: %s", path)
-    except (TypeError, OSError) as exc:
-        logger.warning("Failed to cleanup path %s: %s", file_path, type(exc).__name__)
+            logger.debug("Deleted temporary file: %s", path)
+    except (TypeError, OSError, ValueError) as exc:
+        logger.warning("Failed to cleanup path %r: %s", file_path, type(exc).__name__)
 
 # Маппинг русских ключей ratios → camelCase English для frontend
 RATIO_KEY_MAP = {
@@ -212,22 +249,11 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         file_path: Path to temporary PDF file
     """
     try:
-        # Use upsert pattern to avoid race conditions
-        existing = await update_analysis(task_id, "processing", None)
-        if existing is None:
-            try:
-                await create_analysis(task_id, "processing", None)
-            except AnalysisAlreadyExistsError:
-                # Another process created the record - this is fine, try to update
-                logger.debug("Analysis already exists for task %s, updating instead", task_id)
-                await update_analysis(task_id, "processing", None)
-            except SQLAlchemyError as create_exc:
-                logger.exception("Database error creating analysis for task %s: %s", task_id, create_exc)
-                try:
-                    await update_analysis(task_id, "failed", {"error": "Database error during initialization"})
-                except Exception as update_exc:
-                    logger.critical("Failed to update analysis status to 'failed': %s", update_exc)
-                return  # Exit early - cannot process without DB record
+        # Ensure analysis record exists (upsert pattern)
+        db_available = await _ensure_analysis_exists(task_id)
+        if not db_available:
+            logger.critical("Database unavailable for task %s - aborting processing", task_id)
+            return
 
         # Process PDF
         scanned = await asyncio.to_thread(pdf_extractor.is_scanned_pdf, file_path)
@@ -279,7 +305,10 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         )
     except Exception as exc:
         logger.exception("Failed to process PDF task %s: %s", task_id, exc)
-        await update_analysis(task_id, "failed", {"error": str(exc)})
+        try:
+            await update_analysis(task_id, "failed", {"error": str(exc)})
+        except Exception as update_exc:
+            logger.critical("Failed to update task %s status to 'failed': %s", task_id, update_exc)
     finally:
         # Clean up temporary file with safer deletion pattern
         _cleanup_temp_file(file_path)
