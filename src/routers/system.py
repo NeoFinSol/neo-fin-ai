@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import text
 
 from src.core.ai_service import ai_service
 from src.db.database import get_engine
@@ -34,10 +35,12 @@ async def healthz_check() -> dict:
         }
     }
     
-    # Check database connection
+    # Check database connection with actual query
     try:
         engine = get_engine()
-        # Engine exists
+        # Test actual connection with SELECT 1
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
         health_status["components"]["database"] = "healthy"
     except Exception as e:
         logger.error("Database health check failed: %s", e)
@@ -64,19 +67,17 @@ async def readiness_check() -> dict[str, str]:
     Raises:
         HTTPException: 503 if not ready
     """
-    # Check if database is available
+    # Check if database is available with actual connection test
     try:
         engine = get_engine()
-        if engine is None:
-            raise HTTPException(
-                status_code=503,
-                detail="Service not ready: database connection not available"
-            )
+        # Test actual connection with timeout
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
     except Exception as e:
         logger.error("Readiness check failed: %s", e)
         raise HTTPException(
             status_code=503,
-            detail=f"Service not ready: {str(e)}"
+            detail=f"Service not ready: database connection failed - {str(e)}"
         )
     
     return {"status": "ready"}

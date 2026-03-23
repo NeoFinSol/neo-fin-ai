@@ -1,7 +1,8 @@
 ﻿from pathlib import Path
 import logging
+import re
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -20,7 +21,7 @@ class AppSettings(BaseSettings):
         alias="QWEN_API_URL",
         description="URL for Qwen API service"
     )
-    
+
     # GigaChat AI settings
     gigachat_client_id: str | None = Field(
         None,
@@ -42,7 +43,7 @@ class AppSettings(BaseSettings):
         alias="GIGACHAT_CHAT_URL",
         description="GigaChat chat completions API URL"
     )
-    
+
     # Local LLM settings (Ollama)
     llm_url: str | None = Field(
         "http://localhost:11434/api/generate",
@@ -53,6 +54,25 @@ class AppSettings(BaseSettings):
         "llama3",
         alias="LLM_MODEL",
         description="Local LLM model name"
+    )
+
+    # Rate limiting settings
+    rate_limit: str = Field(
+        "100/minute",
+        alias="RATE_LIMIT",
+        description="Rate limit in format <count>/<period> (e.g., 100/minute)"
+    )
+
+    # Logging settings
+    log_level: str = Field(
+        "INFO",
+        alias="LOG_LEVEL",
+        description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+    )
+    log_format: str = Field(
+        "text",
+        alias="LOG_FORMAT",
+        description="Logging format: json or text"
     )
 
     model_config = SettingsConfigDict(env_file=str(ENV_FILE), extra="ignore")
@@ -69,16 +89,61 @@ class AppSettings(BaseSettings):
             raise ValueError("URL must start with http:// or https://")
         return v
 
+    @field_validator("rate_limit", mode="before")
+    @classmethod
+    def validate_rate_limit(cls, v: str | None) -> str:
+        """Validate rate limit format."""
+        if v is None:
+            return "100/minute"
+        # Validate format: <count>/<period>
+        pattern = r"^\d+/(second|minute|hour|day)$"
+        if not re.match(pattern, v):
+            logging.warning(f"Invalid rate limit format '{v}'. Using default '100/minute'")
+            return "100/minute"
+        return v
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def validate_log_level(cls, v: str | None) -> str:
+        """Validate log level."""
+        if v is None:
+            return "INFO"
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        v_upper = v.upper()
+        if v_upper not in valid_levels:
+            logging.warning(f"Invalid log level '{v}'. Using default 'INFO'")
+            return "INFO"
+        return v_upper
+
+    @field_validator("log_format", mode="before")
+    @classmethod
+    def validate_log_format(cls, v: str | None) -> str:
+        """Validate log format."""
+        if v is None:
+            return "text"
+        valid_formats = ["json", "text"]
+        v_lower = v.lower()
+        if v_lower not in valid_formats:
+            logging.warning(f"Invalid log format '{v}'. Using default 'text'")
+            return "text"
+        return v_lower
+
+    @model_validator(mode="after")
+    def validate_all(self) -> "AppSettings":
+        """Final validation after all fields are set."""
+        # Additional cross-field validation can be added here
+        return self
+
     @property
     def use_gigachat(self) -> bool:
         """Check if GigaChat is configured."""
         return bool(self.gigachat_client_id and self.gigachat_client_secret)
-    
+
     @property
     def use_qwen(self) -> bool:
         """Check if Qwen is configured."""
         return bool(self.qwen_api_key and self.qwen_api_url)
-    
+
     @property
     def use_local_llm(self) -> bool:
         """Check if local LLM (Ollama) is configured."""

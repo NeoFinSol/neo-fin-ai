@@ -83,23 +83,35 @@ def _parse_cors_list(list_str: str, default_values: List[str]) -> List[str]:
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Configure structured logging
+    # Configure structured logging with validation
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     log_format = os.getenv("LOG_FORMAT", "text").lower()
     
-    if log_format == "json":
-        # JSON format for production
-        logging.basicConfig(
-            level=getattr(logging, log_level, logging.INFO),
-            format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
-            datefmt="%Y-%m-%dT%H:%M:%S%z"
-        )
-    else:
-        # Text format for development
-        logging.basicConfig(
-            level=getattr(logging, log_level, logging.INFO),
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
+    # Validate log level
+    valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+    if log_level not in valid_levels:
+        log_level = "INFO"
+    
+    # Validate log format
+    if log_format not in ["json", "text"]:
+        log_format = "text"
+    
+    # Only configure logging if not already configured by uvicorn
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        if log_format == "json":
+            # JSON format for production
+            logging.basicConfig(
+                level=getattr(logging, log_level, logging.INFO),
+                format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
+                datefmt="%Y-%m-%dT%H:%M:%S"
+            )
+        else:
+            # Text format for development
+            logging.basicConfig(
+                level=getattr(logging, log_level, logging.INFO),
+                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
 
     # AI service auto-configures based on available credentials
     # Priority: GigaChat > Qwen > Local LLM (Ollama)
@@ -115,16 +127,10 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutdown complete")
 
 
-# Initialize rate limiter
-def get_rate_limit() -> str:
-    """Get rate limit from environment or use default."""
-    return os.getenv("RATE_LIMIT", "100/minute")
-
-
-# Use Limiter from slowapi (correct API)
+# Initialize rate limiter using validated settings
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=[get_rate_limit()],
+    default_limits=[app_settings.rate_limit],
     # Use memory storage for single-instance deployments
     # For production with multiple instances, use Redis:
     # storage_uri="redis://localhost:6379"
