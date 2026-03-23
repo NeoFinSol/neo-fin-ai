@@ -36,7 +36,8 @@ EXPOSE 80
 # Health check
 # Note: Frontend nginx serves static files, so we check root path
 # For full stack health check, use backend /system/health endpoint
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+# Using wget with timeout to avoid hanging
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
 
 # Start nginx

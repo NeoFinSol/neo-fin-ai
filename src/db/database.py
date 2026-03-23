@@ -108,16 +108,17 @@ def get_engine() -> AsyncEngine:
         try:
             # For asyncpg, pool settings are handled by the driver itself
             # SQLAlchemy 2.0+ supports these parameters for async engines
+            # If asyncpg doesn't support pool kwargs, it will raise TypeError
             _engine = create_async_engine(
                 db_url,
                 echo=False,  # Disable SQL logging to prevent credential leakage
                 future=True,
                 # Pool settings - SQLAlchemy 2.0+ passes these to asyncpg
+                # If these cause TypeError, asyncpg will use its internal pooling
                 pool_size=pool_size,
                 max_overflow=max_overflow,
-                pool_timeout=pool_timeout,
-                pool_recycle=pool_recycle,
                 pool_pre_ping=pool_pre_ping,
+                # Note: pool_timeout and pool_recycle may be ignored by asyncpg
             )
             AsyncSessionLocal = async_sessionmaker(
                 _engine,
@@ -125,10 +126,32 @@ def get_engine() -> AsyncEngine:
                 expire_on_commit=False
             )
             logger.info("Database engine created successfully")
+        except TypeError as e:
+            # Pool kwargs not supported by this asyncpg version - use defaults
+            logger.warning(
+                "Pool kwargs not supported by asyncpg (%s), using default pooling",
+                type(e).__name__
+            )
+            _engine = create_async_engine(
+                db_url,
+                echo=False,
+                future=True,
+            )
+            AsyncSessionLocal = async_sessionmaker(
+                _engine,
+                class_=AsyncSession,
+                expire_on_commit=False
+            )
+            logger.info("Database engine created with default pool settings")
         except Exception as e:
-            # Log error without exposing credentials
-            logger.error("Failed to create database engine: %s", type(e).__name__)
-            raise RuntimeError("Failed to create database engine") from None
+            # Log error with redacted credentials, preserve exception chain
+            safe_msg = _redact_credentials(str(e))
+            logger.error(
+                "DB engine creation failed: %s | type=%s",
+                safe_msg, type(e).__name__,
+                exc_info=True
+            )
+            raise RuntimeError("Failed to create database engine") from e
 
     return _engine
 

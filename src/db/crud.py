@@ -16,17 +16,16 @@ class AnalysisAlreadyExistsError(IntegrityError):
     
     Inherits from SQLAlchemy IntegrityError to maintain compatibility
     with existing exception handling code.
+    
+    Usage:
+        raise AnalysisAlreadyExistsError(task_id, orig=e) from e
     """
-    def __init__(self, task_id: str, message: str = None):
+    def __init__(self, task_id: str, message: str = None, orig: Exception = None):
+        # Positional args as required by SQLAlchemy IntegrityError
+        stmt = message or f"Analysis with task_id '{task_id}' already exists"
+        super().__init__(stmt, {'task_id': task_id}, orig)
         self.task_id = task_id
-        stmt = f"Analysis with task_id '{task_id}' already exists"
-        super().__init__(
-            statement=stmt,
-            params={'task_id': task_id},
-            orig=None
-        )
-        if message:
-            self.args = (message,) + self.args
+        self.orig = orig
 
 
 async def create_analysis(task_id: str, status: str, result: dict | None = None) -> Analysis:
@@ -57,7 +56,7 @@ async def create_analysis(task_id: str, status: str, result: dict | None = None)
         except IntegrityError as e:
             await session.rollback()
             logger.error("Analysis with task_id '%s' already exists: %s", task_id, e)
-            raise AnalysisAlreadyExistsError(f"Analysis with task_id '{task_id}' already exists") from e
+            raise AnalysisAlreadyExistsError(task_id, orig=e) from e
         except SQLAlchemyError as e:
             await session.rollback()
             logger.error("Database error creating analysis: %s", e)

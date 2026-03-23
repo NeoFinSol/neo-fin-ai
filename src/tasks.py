@@ -39,20 +39,15 @@ def _cleanup_temp_file(file_path) -> None:
     
     # Handle string paths and Path objects
     from pathlib import Path
-    path = Path(file_path) if isinstance(file_path, str) else file_path
-    
     try:
+        path = Path(file_path)  # Works for str, Path, PathLike
         if path.is_file():
             path.unlink(missing_ok=True)
             logger.debug("Cleaned up temporary file: %s", path)
         elif path.exists():
             logger.warning("Temporary path is not a file, skipping: %s", path)
-    except FileNotFoundError:
-        logger.debug("Temporary file already deleted: %s", path)
-    except PermissionError as exc:
-        logger.warning("Permission denied deleting temporary file %s: %s", path, exc)
-    except Exception as exc:
-        logger.warning("Failed to delete temporary file %s: %s", path, exc)
+    except (TypeError, OSError) as exc:
+        logger.warning("Failed to cleanup path %s: %s", file_path, type(exc).__name__)
 
 # Маппинг русских ключей ratios → camelCase English для frontend
 RATIO_KEY_MAP = {
@@ -228,7 +223,10 @@ async def process_pdf(task_id: str, file_path: str) -> None:
                 await update_analysis(task_id, "processing", None)
             except SQLAlchemyError as create_exc:
                 logger.exception("Database error creating analysis for task %s: %s", task_id, create_exc)
-                await update_analysis(task_id, "failed", {"error": "Database error during initialization"})
+                try:
+                    await update_analysis(task_id, "failed", {"error": "Database error during initialization"})
+                except Exception as update_exc:
+                    logger.critical("Failed to update analysis status to 'failed': %s", update_exc)
                 return  # Exit early - cannot process without DB record
 
         # Process PDF
