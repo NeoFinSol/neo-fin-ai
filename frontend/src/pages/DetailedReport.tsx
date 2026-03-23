@@ -16,7 +16,7 @@ import { AnalysisData } from '../api/interfaces';
 // Mock данные для графиков (замените на данные из API при наличии)
 const historicalData = [
     { year: '2023', current_ratio: 1.2, roe: 0.15, equity_ratio: 0.4 },
-    { year: '2024', current_ratio: 1.5, roe: 0.18, equity_ratio: 0.45 },
+    { year: '2024', current_ratio: 1.5, roe: 0.18, equity_ratio: 0.45 },rf
     { year: '2025', current_ratio: 1.8, roe: 0.20, equity_ratio: 0.5 },
 ];
 

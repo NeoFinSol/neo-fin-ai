@@ -245,6 +245,7 @@
     <Folder Include="migrations\versions" />
     <Folder Include="scripts" />
     <Folder Include="docs" />
+    <Folder Include="tests\" />
   </ItemGroup>
   <ItemGroup>
     <Interpreter Include="env1\">
