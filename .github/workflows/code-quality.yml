@@ -143,20 +143,12 @@ PYTHON_SCRIPT
     - name: Run mypy type checking
       run: |
         # CRITICAL: Fail on type errors
-        #
-        # TEMPORARY FLAGS (should be removed in future):
-        # --ignore-missing-imports: Third-party libraries без stub файлов
-        #   TODO: Удалить после добавления types-библиотек в requirements-dev.txt
-        #
-        # --no-strict-optional: Разрешает Optional[T] без явных проверок
-        #   TODO: Удалить после рефакторинга кода для strict optional checks
-        #
         mypy src/ \
-          --ignore-missing-imports \
-          --no-strict-optional \
           --warn-unused-configs \
           --warn-redundant-casts \
-          --warn-unreachable
+          --warn-unreachable \
+          --warn-return-any \
+          --strict-optional
 
     - name: Upload mypy report
       uses: actions/upload-artifact@v4
