@@ -3,9 +3,10 @@ import logging
 from io import BytesIO
 from tempfile import SpooledTemporaryFile
 
-from fastapi import APIRouter, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, HTTPException
 
 from src.controllers.analyze import analyze_pdf
+from src.core.auth import get_api_key
 from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
 from src.models.requests import AnalyzePdfRequest
 
@@ -83,18 +84,18 @@ def _read_and_validate_stream(file: UploadFile, max_size: int = MAX_FILE_SIZE) -
 
 
 @router.post("/pdf/file")
-async def post_analyze_pdf_file(file: UploadFile):
+async def post_analyze_pdf_file(file: UploadFile, api_key: str = Depends(get_api_key)):
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="PDF file expected")
-    
+
     spooled_file = None
     try:
         # Read and validate file efficiently
         spooled_file = _read_and_validate_stream(file)
-        
+
         # Pass spooled file to analyzer
         return await analyze_pdf(spooled_file)
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -110,7 +111,7 @@ async def post_analyze_pdf_file(file: UploadFile):
 
 
 @router.post("/pdf/base64")
-async def post_analyze_pdf_base64(request: AnalyzePdfRequest):
+async def post_analyze_pdf_base64(request: AnalyzePdfRequest, api_key: str = Depends(get_api_key)):
     try:
         # Decode base64 in chunks for large files
         decode_bytes: bytes = base64.b64decode(request.file_data)

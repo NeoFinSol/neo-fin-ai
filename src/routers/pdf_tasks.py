@@ -3,8 +3,9 @@ import os
 import tempfile
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 
+from src.core.auth import get_api_key
 from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
 from src.db.crud import create_analysis, get_analysis
 from src.tasks import process_pdf
@@ -22,7 +23,7 @@ def _validate_pdf_file(content: bytes) -> bool:
 
 
 @router.post("/upload")
-async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
+async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks, api_key: str = Depends(get_api_key)):
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="PDF file expected")
 
@@ -114,7 +115,7 @@ async def upload_pdf(file: UploadFile, background_tasks: BackgroundTasks):
 
 
 @router.get("/result/{task_id}")
-async def get_result(task_id: str):
+async def get_result(task_id: str, api_key: str = Depends(get_api_key)):
     analysis = await get_analysis(task_id)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Task not found")

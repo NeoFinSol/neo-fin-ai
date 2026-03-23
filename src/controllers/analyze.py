@@ -111,9 +111,9 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
             prompt += f"=== PAGE {i + 1} ===\n"
             prompt += json.dumps(file_content[i]) + "\n"
 
-        # Call the AI agent with the prepared prompt
+        # Call the AI service with the prepared prompt
         try:
-            res = await agent.invoke(
+            res = await ai_service.invoke_with_retry(
                 input={
                     "tool_input": prompt,
                     "intermediate_steps": []

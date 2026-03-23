@@ -1,7 +1,7 @@
-"""GigaChat AI agent implementation."""
 import asyncio
 import base64
 import logging
+import ssl
 from typing import Optional
 
 import aiohttp
@@ -18,10 +18,10 @@ RETRY_BACKOFF = 2.0  # multiplier
 GIGACHAT_AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
 GIGACHAT_CHAT_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
 
-# Create SSL context that allows self-signed certificates (required for GigaChat)
-_gigachat_ssl_context = __import__('ssl').create_default_context()
-_gigachat_ssl_context.check_hostname = False
-_gigachat_ssl_context.verify_mode = __import__('ssl').CERT_NONE
+# SSL context for GigaChat - using default secure settings
+# Note: If GigaChat uses self-signed certificates in production,
+# you should properly configure CA certificates instead of disabling verification
+_gigachat_ssl_context = ssl.create_default_context()
 
 
 class GigaChatAgent:

@@ -75,22 +75,73 @@ class AIService:
     async def invoke(self, input: dict, timeout: Optional[int] = None) -> Optional[str]:
         """
         Invoke AI service with automatic provider selection.
-        
+
         Args:
             input: Input dictionary with tool_input and optional system prompt
             timeout: Request timeout in seconds
-            
+
         Returns:
             Optional[str]: AI response or None
         """
         if not self.is_configured:
             logger.warning("AI service not configured - cannot invoke")
             return None
-        
+
         if self._provider == "ollama":
             return await self._invoke_ollama(input, timeout)
         else:
             return await self._agent.invoke(input, timeout)
+
+    async def invoke_with_retry(
+        self,
+        input: dict,
+        timeout: Optional[int] = None,
+        max_retries: int = 3,
+        retry_delay: float = 1.0
+    ) -> Optional[str]:
+        """
+        Invoke AI service with retry logic.
+
+        Args:
+            input: Input dictionary with tool_input and optional system prompt
+            timeout: Request timeout in seconds
+            max_retries: Maximum number of retry attempts
+            retry_delay: Base delay between retries in seconds
+
+        Returns:
+            Optional[str]: AI response or None
+        """
+        import asyncio
+
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                return await self.invoke(input, timeout)
+            except asyncio.TimeoutError:
+                # Don't retry timeout errors immediately
+                if attempt < max_retries - 1:
+                    delay = retry_delay * (2 ** attempt)  # Exponential backoff
+                    logger.warning(
+                        "AI request timeout (attempt %d/%d), retrying in %.2f seconds...",
+                        attempt + 1, max_retries, delay
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries - 1:
+                    delay = retry_delay * (2 ** attempt)
+                    logger.warning(
+                        "AI request error (attempt %d/%d): %s, retrying in %.2f seconds...",
+                        attempt + 1, max_retries, str(e), delay
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error("AI request failed after all retries: %s", e)
+                    raise
+
+        return None
     
     async def _invoke_ollama(self, input: dict, timeout: Optional[int] = None) -> Optional[str]:
         """Invoke local Ollama LLM."""

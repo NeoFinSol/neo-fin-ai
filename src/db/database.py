@@ -6,7 +6,13 @@ from typing import AsyncGenerator, Optional
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin")
+# DATABASE_URL must be set via environment variable - no defaults for security
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is required. "
+        "Please set it in your .env file or environment."
+    )
 
 # Engine будет создан лениво при первом вызове get_engine()
 _engine: Optional[create_async_engine] = None
