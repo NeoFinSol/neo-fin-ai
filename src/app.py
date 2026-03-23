@@ -3,8 +3,12 @@ import logging
 import os
 from typing import List
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import SlowAPI, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 import uvicorn
 
 import src.routers.system as system_router
@@ -20,30 +24,30 @@ logger = logging.getLogger(__name__)
 def _parse_cors_origins(origins_str: str) -> List[str]:
     """
     Parse and validate CORS origins from environment variable.
-    
+
     Args:
         origins_str: Comma-separated list of origins
-        
+
     Returns:
         List[str]: Validated list of origins
-        
+
     Raises:
         ValueError: If '*' is found in origins (security risk)
     """
     if not origins_str:
         return []
-    
+
     # Split by comma, strip whitespace, filter empty strings
     origins = [origin.strip() for origin in origins_str.split(',')]
     origins = [origin for origin in origins if origin]
-    
+
     # Security check: reject wildcard origins
     if '*' in origins:
         raise ValueError(
             "Wildcard '*' CORS origin is not allowed for security reasons. "
             "Specify explicit origins instead."
         )
-    
+
     # Validate origin format (must start with http:// or https://)
     valid_origins = []
     for origin in origins:
@@ -51,34 +55,50 @@ def _parse_cors_origins(origins_str: str) -> List[str]:
             valid_origins.append(origin)
         else:
             logger.warning(
-                "Skipping invalid CORS origin '%s' (must start with http:// or https://)", 
+                "Skipping invalid CORS origin '%s' (must start with http:// or https://)",
                 origin
             )
-    
+
     return valid_origins
 
 
 def _parse_cors_list(list_str: str, default_values: List[str]) -> List[str]:
     """
     Parse comma-separated list with defaults.
-    
+
     Args:
         list_str: Comma-separated list from environment
         default_values: Default values if list_str is empty
-        
+
     Returns:
         List[str]: Parsed and validated list
     """
     if not list_str:
         return default_values
-    
+
     items = [item.strip() for item in list_str.split(',')]
     return [item for item in items if item]
 
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    # Configure structured logging
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_format = os.getenv("LOG_FORMAT", "text").lower()
+    
+    if log_format == "json":
+        # JSON format for production
+        logging.basicConfig(
+            level=getattr(logging, log_level, logging.INFO),
+            format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
+            datefmt="%Y-%m-%dT%H:%M:%S%z"
+        )
+    else:
+        # Text format for development
+        logging.basicConfig(
+            level=getattr(logging, log_level, logging.INFO),
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
 
     # AI service auto-configures based on available credentials
     # Priority: GigaChat > Qwen > Local LLM (Ollama)
@@ -86,60 +106,46 @@ async def lifespan(app: FastAPI):
         logger.info("AI service configured with provider: %s", ai_service.provider)
     else:
         logger.warning("No AI service configured. NLP features will be disabled.")
+    
+    logger.info("Application startup complete")
 
     yield
+    
+    logger.info("Application shutdown complete")
 
+
+# Initialize rate limiter
+def get_rate_limit() -> str:
+    """Get rate limit from environment or use default."""
+    return os.getenv("RATE_LIMIT", "100/minute")
+
+
+limiter = SlowAPI(
+    limiter_func=get_remote_address,
+    default_limits=[get_rate_limit()],
+    storage_uri="memory://",
+)
 
 app = FastAPI(version="0.1.0", lifespan=lifespan)
 
+# Add rate limiter to app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add rate limiting middleware
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Apply rate limiting to all requests."""
+    try:
+        # Get limit from app state
+        limiter = app.state.limiter
+        # Apply rate limiting
+        await limiter(request)
+    except RateLimitExceeded:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Please try again later."}
+        )
+    return await call_next(request)
+
 # CORS configuration - restricted and validated for security
-try:
-    allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "false").lower() == "true"
-    
-    # Parse and validate CORS origins with secure defaults
-    default_origins = ["http://localhost", "http://localhost:80", "http://127.0.0.1", "http://127.0.0.1:80"]
-    allow_origins = _parse_cors_origins(
-        os.getenv("CORS_ALLOW_ORIGINS", ",".join(default_origins))
-    )
-    
-    # Parse methods and headers with defaults
-    allow_methods = _parse_cors_list(
-        os.getenv("CORS_ALLOW_METHODS", ""),
-        ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    )
-    
-    allow_headers = _parse_cors_list(
-        os.getenv("CORS_ALLOW_HEADERS", ""),
-        ["Content-Type", "Authorization", "X-Requested-With"]
-    )
-    
-    logger.info(
-        "CORS configured - Origins: %d, Methods: %d, Headers: %d",
-        len(allow_origins), len(allow_methods), len(allow_headers)
-    )
-    
-except ValueError as e:
-    logger.error("CORS configuration error: %s", e)
-    # Fall back to safe defaults (localhost only)
-    allow_origins = default_origins
-    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["Content-Type", "Authorization", "X-Requested-With"]
-    allow_credentials = False
-    logger.warning("Using safe default CORS configuration")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allow_origins,
-    allow_credentials=allow_credentials,
-    allow_methods=allow_methods,
-    allow_headers=allow_headers,
-)
-
-# Routers
-app.include_router(system_router.router)
-app.include_router(analyze_router.router)
-app.include_router(pdf_tasks_router.router)
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)

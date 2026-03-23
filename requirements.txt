@@ -16,3 +16,6 @@ pytesseract
 camelot-py[cv]
 opencv-python
 pillow
+
+# Rate limiting
+slowapi~=0.1.9
