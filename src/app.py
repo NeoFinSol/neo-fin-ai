@@ -142,3 +142,49 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 # CORS configuration - restricted and validated for security
+try:
+    allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "false").lower() == "true"
+
+    # Parse and validate CORS origins with secure defaults
+    default_origins = ["http://localhost", "http://localhost:80", "http://127.0.0.1", "http://127.0.0.1:80"]
+    allow_origins = _parse_cors_origins(
+        os.getenv("CORS_ALLOW_ORIGINS", ",".join(default_origins))
+    )
+
+    # Parse methods and headers with defaults
+    allow_methods = _parse_cors_list(
+        os.getenv("CORS_ALLOW_METHODS", ""),
+        ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    )
+
+    allow_headers = _parse_cors_list(
+        os.getenv("CORS_ALLOW_HEADERS", ""),
+        ["Content-Type", "Authorization", "X-Requested-With"]
+    )
+
+    logger.info(
+        "CORS configured - Origins: %d, Methods: %d, Headers: %d",
+        len(allow_origins), len(allow_methods), len(allow_headers)
+    )
+
+except ValueError as e:
+    logger.error("CORS configuration error: %s", e)
+    # Fall back to safe defaults (localhost only)
+    allow_origins = default_origins
+    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers = ["Content-Type", "Authorization", "X-Requested-With"]
+    allow_credentials = False
+    logger.warning("Using safe default CORS configuration")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=allow_credentials,
+    allow_methods=allow_methods,
+    allow_headers=allow_headers,
+)
+
+# Routers (must be added after middleware)
+app.include_router(system_router.router)
+app.include_router(analyze_router.router)
+app.include_router(pdf_tasks_router.router)

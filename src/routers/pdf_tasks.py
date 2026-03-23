@@ -43,7 +43,12 @@ async def _cleanup_temp_file(file_path: str) -> None:
 
 
 @router.post("/upload")
-async def upload_pdf(request: Request, file: UploadFile, background_tasks: BackgroundTasks, api_key: str = Depends(get_api_key)):
+async def upload_pdf(
+    file: UploadFile,
+    background_tasks: BackgroundTasks,
+    api_key: str = Depends(get_api_key),
+    request: Request | None = None  # keyword-only, not used directly (rate limiting via middleware)
+):
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="PDF file expected")
 
@@ -134,7 +139,11 @@ async def upload_pdf(request: Request, file: UploadFile, background_tasks: Backg
 
 
 @router.get("/result/{task_id}")
-async def get_result(request: Request, task_id: str, api_key: str = Depends(get_api_key)):
+async def get_result(
+    task_id: str,
+    api_key: str = Depends(get_api_key),
+    request: Request | None = None  # keyword-only, not used directly (rate limiting via middleware)
+):
     analysis = await get_analysis(task_id)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Task not found")
