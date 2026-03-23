@@ -7,7 +7,7 @@ from typing import BinaryIO
 import pdfplumber
 from fastapi import HTTPException
 
-from src.core.agent import agent
+from src.core.ai_service import ai_service
 
 logger = logging.getLogger(__name__)
 

@@ -1,15 +1,11 @@
 ﻿import json
 import logging
-import os
 import re
 from typing import Any
 
-import aiohttp
+from src.core.ai_service import ai_service
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_LLM_URL = "http://localhost:11434/api/generate"
-_DEFAULT_LLM_MODEL = "llama3"
 
 
 async def analyze_narrative(full_text: str) -> dict[str, list[str]]:
@@ -28,35 +24,33 @@ async def analyze_narrative(full_text: str) -> dict[str, list[str]]:
         f"{narrative_text}"
     )
 
-    llm_url = os.getenv("LLM_URL", _DEFAULT_LLM_URL)
-    llm_model = os.getenv("LLM_MODEL", _DEFAULT_LLM_MODEL)
-
-    payload = {
-        "model": llm_model,
-        "prompt": prompt,
-        "stream": False,
-    }
-
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(llm_url, json=payload, timeout=120) as response:
-                response.raise_for_status()
-                data = await response.json()
+        response = await ai_service.invoke(
+            input={
+                "tool_input": prompt,
+                "system": "Ты эксперт по финансовому анализу. Отвечай точно и структурированно."
+            },
+            timeout=120
+        )
+        
+        if not response:
+            logger.warning("AI service returned empty response")
+            return _empty_result()
+            
+        parsed = _parse_llm_json(response)
+        if parsed is None:
+            logger.warning("Failed to parse AI response, returning fallback")
+            return _empty_result()
+
+        return {
+            "risks": _ensure_list(parsed.get("risks")),
+            "key_factors": _ensure_list(parsed.get("key_factors")),
+            "recommendations": _ensure_list(parsed.get("recommendations")),
+        }
+        
     except Exception as exc:
-        logger.warning("LLM request failed: %s", exc)
+        logger.warning("AI analysis failed: %s", exc)
         return _empty_result()
-
-    response_text = data.get("response") or ""
-    parsed = _parse_llm_json(response_text)
-    if parsed is None:
-        logger.warning("Failed to parse LLM response, returning fallback")
-        return _empty_result()
-
-    return {
-        "risks": _ensure_list(parsed.get("risks")),
-        "key_factors": _ensure_list(parsed.get("key_factors")),
-        "recommendations": _ensure_list(parsed.get("recommendations")),
-    }
 
 
 def _extract_narrative(text: str) -> str:

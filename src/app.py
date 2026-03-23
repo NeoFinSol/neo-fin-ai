@@ -10,8 +10,7 @@ import uvicorn
 import src.routers.system as system_router
 import src.routers.analyze as analyze_router
 import src.routers.pdf_tasks as pdf_tasks_router
-from src.core.agent import agent
-from src.core.gigachat_agent import gigachat_agent
+from src.core.ai_service import ai_service
 from src.models.settings import app_settings
 
 
