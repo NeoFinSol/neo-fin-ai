@@ -6,27 +6,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Secure proxy configuration for development
-      // Only proxies specific API paths to backend
-      '/upload': {
+      // Consolidated API proxy configuration
+      // All API calls should use /api prefix
+      '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
-      },
-      '/result': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/analyze': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/system': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        secure: false,
+        // Remove /api prefix when proxying to backend
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },

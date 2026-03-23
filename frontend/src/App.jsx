@@ -20,6 +20,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
+// Use /api prefix for development (Vite proxy will strip it)
+const API_PREFIX = import.meta.env.DEV ? '/api' : '';
 
 const METRIC_LABELS = [
   { key: 'revenue', label: 'Выручка' },
@@ -99,7 +101,7 @@ function App() {
 
     pollingRef.current = setInterval(async () => {
       try {
-        const response = await fetch(`${API_BASE}/result/${id}`);
+        const response = await fetch(`${API_BASE}${API_PREFIX}/result/${id}`);
         if (response.status === 404) {
           return;
         }
@@ -148,7 +150,7 @@ function App() {
     formData.append('file', file);
 
     try {
-      const response = await fetch(`${API_BASE}/upload`, {
+      const response = await fetch(`${API_BASE}${API_PREFIX}/upload`, {
         method: 'POST',
         body: formData,
       });
