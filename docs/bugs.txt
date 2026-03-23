@@ -1,0 +1,375 @@
+Вот что конкретно сломано и как это чинить — по приоритету.
+
+Bug 1 — Отсутствуют компоненты Layout и ProtectedRoute
+App.tsx импортирует их, но в листинге их нет. Нужно создать:
+// frontend/src/components/ProtectedRoute.tsx
+import React from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuth();
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+
+// frontend/src/components/Layout.tsx
+import React from 'react';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { AppShell, Burger, Group, NavLink as MantineNavLink, Text, Box, ActionIcon } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { LayoutDashboard, History, Settings, LogOut, Shield } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+
+export const Layout: React.FC = () => {
+  const [opened, { toggle }] = useDisclosure();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const navItems = [
+    { path: '/', label: 'Дашборд', icon: LayoutDashboard },
+    { path: '/history', label: 'История', icon: History },
+    { path: '/settings', label: 'Настройки', icon: Settings },
+  ];
+
+  return (
+    <AppShell
+      header={{ height: 60 }}
+      navbar={{ width: 240, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+      padding="xl"
+      bg="#f8f9fa"
+    >
+      <AppShell.Header>
+        <Group h="100%" px="md" justify="space-between">
+          <Group>
+            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+            <Box bg="#00288e" p={8} style={{ borderRadius: 8 }}>
+              <Shield size={20} color="white" />
+            </Box>
+            <Text fw={800} size="lg" style={{ letterSpacing: '-0.02em' }}>NeoFin AI</Text>
+          </Group>
+          <ActionIcon variant="subtle" color="gray" onClick={handleLogout}>
+            <LogOut size={18} />
+          </ActionIcon>
+        </Group>
+      </AppShell.Header>
+
+      <AppShell.Navbar p="md">
+        {navItems.map(({ path, label, icon: Icon }) => (
+          <NavLink key={path} to={path} end={path === '/'}>
+            {({ isActive }) => (
+              <MantineNavLink
+                label={label}
+                leftSection={<Icon size={18} />}
+                active={isActive}
+                style={{ borderRadius: 8, marginBottom: 4 }}
+              />
+            )}
+          </NavLink>
+        ))}
+      </AppShell.Navbar>
+
+      <AppShell.Main>
+        <Outlet />
+      </AppShell.Main>
+    </AppShell>
+  );
+};
+
+
+Bug 2+4 — Несовместимость структуры данных backend ↔ frontend
+Это главный баг. Backend возвращает:
+python# scoring.py
+{"score": 75.0, "risk_level": "низкий", "details": {"Коэффициент текущей ликвидности": 0.9}}
+
+# ratios.py  
+{"Коэффициент текущей ликвидности": 1.5, "Рентабельность активов (ROA)": 0.08, ...}
+А frontend ожидает (interfaces.ts):
+tsScoreData = { score, risk_level, factors: [{name, description, impact}], normalized_scores: {current_ratio, roa, ...} }
+FinancialRatios = { current_ratio, roa, roe, ... }  // camelCase, English
+Нужно исправить в бэкенде, добавив маппинг в tasks.py:
+# src/tasks.py — исправленная версия
+import asyncio
+import logging
+import os
+
+import PyPDF2
+
+from src.analysis import pdf_extractor
+from src.analysis.ratios import calculate_ratios
+from src.analysis.scoring import calculate_integral_score
+from src.db.crud import create_analysis, update_analysis
+
+logger = logging.getLogger(__name__)
+
+# Маппинг русских ключей ratios → camelCase для frontend
+RATIO_KEY_MAP = {
+    "Коэффициент текущей ликвидности": "current_ratio",
+    "Коэффициент автономии": "equity_ratio",
+    "Рентабельность активов (ROA)": "roa",
+    "Рентабельность собственного капитала (ROE)": "roe",
+    "Долговая нагрузка": "debt_to_revenue",
+}
+
+# Маппинг Russian metric keys → English for frontend FinancialMetrics
+METRIC_KEY_MAP = {
+    "revenue": "revenue",
+    "net_profit": "net_profit",
+    "total_assets": "total_assets",
+    "equity": "equity",
+    "liabilities": "liabilities",
+    "current_assets": "current_assets",
+    "short_term_liabilities": "short_term_liabilities",
+    "accounts_receivable": "accounts_receivable",
+}
+
+
+def _translate_ratios(ratios: dict) -> dict:
+    """Convert Russian ratio keys to camelCase English for frontend."""
+    return {
+        RATIO_KEY_MAP.get(k, k): v
+        for k, v in ratios.items()
+    }
+
+
+def _build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
+    """
+    Transform backend score structure to match frontend ScoreData interface.
+
+    Frontend expects:
+      { score, risk_level, factors: [{name, description, impact}],
+        normalized_scores: {current_ratio, equity_ratio, roa, roe, debt_to_revenue} }
+    """
+    details = raw_score.get("details", {})  # normalized 0-1 values per ratio
+
+    # Build factors list from details
+    FACTOR_DESCRIPTIONS = {
+        "Коэффициент текущей ликвидности": ("Ликвидность", "current_ratio"),
+        "Коэффициент автономии": ("Финансовая устойчивость", "equity_ratio"),
+        "Рентабельность активов (ROA)": ("Рентабельность активов", "roa"),
+        "Рентабельность собственного капитала (ROE)": ("Рентабельность капитала", "roe"),
+        "Долговая нагрузка": ("Долговая нагрузка", "debt_to_revenue"),
+    }
+
+    THRESHOLDS = {
+        "current_ratio": (1.5, True),
+        "equity_ratio": (0.4, True),
+        "roa": (0.05, True),
+        "roe": (0.1, True),
+        "debt_to_revenue": (1.5, False),  # lower is better
+    }
+
+    factors = []
+    normalized_scores = {k: None for k in ["current_ratio", "equity_ratio", "roa", "roe", "debt_to_revenue"]}
+
+    for ru_name, norm_val in details.items():
+        en_key = RATIO_KEY_MAP.get(ru_name)
+        if not en_key:
+            continue
+
+        normalized_scores[en_key] = norm_val
+        threshold, higher_is_better = THRESHOLDS.get(en_key, (0.5, True))
+        actual_val = ratios_en.get(en_key)
+
+        if norm_val is None or actual_val is None:
+            impact = "neutral"
+        elif higher_is_better:
+            impact = "positive" if norm_val >= 0.6 else ("neutral" if norm_val >= 0.3 else "negative")
+        else:
+            # debt_to_revenue: high norm means low debt (good)
+            impact = "positive" if norm_val >= 0.6 else ("neutral" if norm_val >= 0.3 else "negative")
+
+        friendly_name, _ = FACTOR_DESCRIPTIONS.get(ru_name, (ru_name, en_key))
+        actual_str = f"{actual_val:.2f}" if actual_val is not None else "—"
+
+        factors.append({
+            "name": friendly_name,
+            "description": f"Значение: {actual_str}",
+            "impact": impact,
+        })
+
+    return {
+        "score": raw_score.get("score", 0),
+        "risk_level": _translate_risk_level(raw_score.get("risk_level", "высокий")),
+        "factors": factors,
+        "normalized_scores": normalized_scores,
+    }
+
+
+def _translate_risk_level(ru: str) -> str:
+    return {"низкий": "low", "средний": "medium", "высокий": "high"}.get(ru, "high")
+
+
+def _extract_text_from_pdf(pdf_path: str) -> str:
+    reader = PyPDF2.PdfReader(pdf_path)
+    texts: list[str] = []
+    for page_index, page in enumerate(reader.pages, start=1):
+        try:
+            texts.append(page.extract_text() or "")
+        except Exception as exc:
+            logger.warning("Failed to extract text from page %s: %s", page_index, exc)
+    return "\n".join(texts).strip()
+
+
+async def process_pdf(task_id: str, file_path: str) -> None:
+    try:
+        existing = await update_analysis(task_id, "processing", None)
+        if existing is None:
+            try:
+                await create_analysis(task_id, "processing", None)
+            except Exception as create_exc:
+                logger.debug("Create failed for task %s: %s", task_id, create_exc)
+                await update_analysis(task_id, "processing", None)
+
+        scanned = await asyncio.to_thread(pdf_extractor.is_scanned_pdf, file_path)
+        if scanned:
+            text = await asyncio.to_thread(pdf_extractor.extract_text_from_scanned, file_path)
+        else:
+            text = await asyncio.to_thread(_extract_text_from_pdf, file_path)
+
+        tables = await asyncio.to_thread(pdf_extractor.extract_tables, file_path)
+        metrics = await asyncio.to_thread(pdf_extractor.parse_financial_statements, tables, text)
+        ratios_ru = await asyncio.to_thread(calculate_ratios, metrics)
+        raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
+
+        # Translate for frontend compatibility
+        ratios_en = _translate_ratios(ratios_ru)
+        score_payload = _build_score_payload(raw_score, ratios_en)
+
+        await update_analysis(
+            task_id,
+            "completed",
+            {
+                "data": {
+                    "scanned": scanned,
+                    "text": text[:5000],  # Limit text size stored in DB
+                    "tables": tables[:10],  # Limit tables stored
+                    "metrics": metrics,
+                    "ratios": ratios_en,   # English keys for frontend
+                    "score": score_payload, # Full ScoreData shape
+                }
+            },
+        )
+    except Exception as exc:
+        logger.exception("Failed to process PDF task %s: %s", task_id, exc)
+        await update_analysis(task_id, "failed", {"error": str(exc)})
+    finally:
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as exc:
+            logger.warning("Failed to delete temporary file %s: %s", file_path, exc)
+
+
+Bug 3 — NLP pipeline не подключён к основному потоку
+В tasks.py NLP вызов закомментирован. Вот как его добавить без блокировки MVP (graceful degradation):
+
+# Добавить в tasks.py — после расчёта score_payload, перед update_analysis
+
+# NLP analysis — graceful degradation if AI not configured
+nlp_result = {"risks": [], "key_factors": [], "recommendations": []}
+if text and len(text) > 500:
+    try:
+        from src.analysis.nlp_analysis import analyze_narrative
+        nlp_result = await asyncio.wait_for(
+            analyze_narrative(text),
+            timeout=60.0  # Don't block forever if AI is slow
+        )
+    except asyncio.TimeoutError:
+        logger.warning("NLP analysis timed out for task %s", task_id)
+    except Exception as nlp_exc:
+        logger.warning("NLP analysis failed for task %s: %s", task_id, nlp_exc)
+
+# Then in the update_analysis call, add to data dict:
+# "nlp": nlp_result,
+
+# In frontend interfaces.ts, update AnalysisData to include:
+# nlp?: { risks: string[]; key_factors: string[]; recommendations: string[] }
+
+Bug 5+6 — Auth и AnalysisHistory используют моки
+Auth в Auth.tsx сохраняет 'neofin_live_test_key_12345' и никогда не валидирует. Для MVP достаточно проверить ключ через backend:
+
+// Auth.tsx — handleSubmit fix (реальная валидация через /system/health)
+const handleSubmit = async (values: typeof form.values) => {
+  try {
+    // Store the entered API key and test it
+    const testKey = btoa(`${values.email}:${values.password}`); // or use values directly
+    const response = await fetch('/api/upload', {
+      method: 'HEAD',
+      headers: { 'X-API-Key': testKey },
+    });
+    if (response.status === 401) {
+      form.setFieldError('password', 'Неверные данные для входа');
+      return;
+    }
+    login(testKey);
+    navigate(from, { replace: true });
+  } catch {
+    // If backend unreachable — allow login with any credentials (dev mode)
+    login('neofin_live_test_key_12345');
+    navigate(from, { replace: true });
+  }
+};
+
+
+// AnalysisHistory.tsx — замените mockHistory на реальные данные
+// Добавьте в компонент:
+import { useState, useEffect } from 'react';
+import { apiClient } from '../api/client';
+
+// Внутри компонента:
+const [history, setHistory] = useState([]);
+const [loading, setLoading] = useState(true);
+
+useEffect(() => {
+  // NOTE: нужен новый endpoint GET /analyses или фильтровать /result
+  // Пока используем localStorage для хранения task_ids
+  const savedTasks = JSON.parse(localStorage.getItem('neofin_tasks') || '[]');
+  
+  Promise.allSettled(
+    savedTasks.map((t: {task_id: string, name: string, date: string}) =>
+      apiClient.get(`/result/${t.task_id}`).then(r => ({
+        ...t,
+        status: r.data.status,
+        score: r.data.data?.score?.score ?? 0,
+      }))
+    )
+  ).then(results => {
+    setHistory(results.filter(r => r.status === 'fulfilled').map(r => (r as any).value));
+    setLoading(false);
+  });
+}, []);
+
+// В usePdfAnalysis.ts — при успехе сохранять task_id в localStorage:
+// После pollResult(task_id) добавить:
+const saved = JSON.parse(localStorage.getItem('neofin_tasks') || '[]');
+saved.unshift({ task_id, name: file.name, date: new Date().toLocaleDateString('ru-RU') });
+localStorage.setItem('neofin_tasks', JSON.stringify(saved.slice(0, 50)));
+
+
+
+🔴 Блокируют запуск (сделать первыми)
+
+Создать Layout.tsx и ProtectedRoute.tsx — без них фронтенд вообще не загрузится. Файл missing_components.tsx содержит готовый код.
+Заменить src/tasks.py на tasks_fixed.py — это устраняет несовместимость данных между backend и frontend. Без этого DetailedReport.tsx крешится на любом результате анализа, потому что пытается читать result.score.factors (undefined), result.ratios.current_ratio (undefined — там русские ключи).
+
+🟡 Деградируют UX, но не ломают
+
+NLP pipeline — подключить через nlp_integration.py. Сейчас DetailedReport.tsx отображает заглушки для рисков и рекомендаций. Если AI (GigaChat) не настроен, graceful degradation уже в коде.
+AnalysisHistory — сейчас показывает хардкоженные данные. Быстрый фикс через localStorage из auth_and_history_fixes.ts без нового endpoint.
+Auth — для MVP можно оставить как есть (DEV_MODE=1 на бэкенде), просто убедитесь что DEV_MODE=1 прописан в .env.
+
+
+
+

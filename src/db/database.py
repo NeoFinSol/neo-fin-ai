@@ -49,7 +49,16 @@ def get_engine() -> create_async_engine:
             db_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin_test"
         
         try:
-            _engine = create_async_engine(db_url, echo=False, future=True)
+            _engine = create_async_engine(
+                db_url,
+                echo=False,
+                future=True,
+                pool_size=20,
+                max_overflow=40,
+                pool_timeout=30,
+                pool_recycle=3600,
+                pool_pre_ping=True
+            )
             AsyncSessionLocal = async_sessionmaker(
                 _engine,
                 class_=AsyncSession,

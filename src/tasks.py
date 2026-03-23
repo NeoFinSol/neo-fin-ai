@@ -11,6 +11,106 @@ from src.db.crud import create_analysis, update_analysis
 
 logger = logging.getLogger(__name__)
 
+# Маппинг русских ключей ratios → camelCase English для frontend
+RATIO_KEY_MAP = {
+    "Коэффициент текущей ликвидности": "current_ratio",
+    "Коэффициент автономии": "equity_ratio",
+    "Рентабельность активов (ROA)": "roa",
+    "Рентабельность собственного капитала (ROE)": "roe",
+    "Долговая нагрузка": "debt_to_revenue",
+}
+
+# Маппинг Russian metric keys → English for frontend FinancialMetrics
+METRIC_KEY_MAP = {
+    "revenue": "revenue",
+    "net_profit": "net_profit",
+    "total_assets": "total_assets",
+    "equity": "equity",
+    "liabilities": "liabilities",
+    "current_assets": "current_assets",
+    "short_term_liabilities": "short_term_liabilities",
+    "accounts_receivable": "accounts_receivable",
+}
+
+
+def _translate_ratios(ratios: dict) -> dict:
+    """Convert Russian ratio keys to camelCase English for frontend."""
+    return {
+        RATIO_KEY_MAP.get(k, k): v
+        for k, v in ratios.items()
+    }
+
+
+def _build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
+    """
+    Transform backend score structure to match frontend ScoreData interface.
+
+    Frontend expects:
+      { score, risk_level, factors: [{name, description, impact}],
+        normalized_scores: {current_ratio, equity_ratio, roa, roe, debt_to_revenue} }
+    """
+    details = raw_score.get("details", {})  # normalized 0-1 values per ratio
+
+    # Build factors list from details
+    FACTOR_DESCRIPTIONS = {
+        "Коэффициент текущей ликвидности": ("Ликвидность", "current_ratio"),
+        "Коэффициент автономии": ("Финансовая устойчивость", "equity_ratio"),
+        "Рентабельность активов (ROA)": ("Рентабельность активов", "roa"),
+        "Рентабельность собственного капитала (ROE)": ("Рентабельность капитала", "roe"),
+        "Долговая нагрузка": ("Долговая нагрузка", "debt_to_revenue"),
+    }
+
+    THRESHOLDS = {
+        "current_ratio": (1.5, True),
+        "equity_ratio": (0.4, True),
+        "roa": (0.05, True),
+        "roe": (0.1, True),
+        "debt_to_revenue": (1.5, False),  # lower is better
+    }
+
+    factors = []
+    normalized_scores = {
+        k: None for k in ["current_ratio", "equity_ratio", "roa", "roe", "debt_to_revenue"]
+    }
+
+    for ru_name, norm_val in details.items():
+        en_key = RATIO_KEY_MAP.get(ru_name)
+        if not en_key:
+            continue
+
+        normalized_scores[en_key] = norm_val
+        threshold, higher_is_better = THRESHOLDS.get(en_key, (0.5, True))
+        actual_val = ratios_en.get(en_key)
+
+        if norm_val is None or actual_val is None:
+            impact = "neutral"
+        elif higher_is_better:
+            impact = "positive" if norm_val >= 0.6 else ("neutral" if norm_val >= 0.3 else "negative")
+        else:
+            # debt_to_revenue: high norm means low debt (good)
+            impact = "positive" if norm_val >= 0.6 else ("neutral" if norm_val >= 0.3 else "negative")
+
+        friendly_name, _ = FACTOR_DESCRIPTIONS.get(ru_name, (ru_name, en_key))
+        actual_str = f"{actual_val:.2f}" if actual_val is not None else "—"
+
+        factors.append({
+            "name": friendly_name,
+            "description": f"Значение: {actual_str}",
+            "impact": impact,
+        })
+
+    return {
+        "score": raw_score.get("score", 0),
+        "risk_level": _translate_risk_level(raw_score.get("risk_level", "высокий")),
+        "factors": factors,
+        "normalized_scores": normalized_scores,
+    }
+
+
+def _translate_risk_level(ru: str) -> str:
+    """Translate Russian risk level to English."""
+    return {"низкий": "low", "средний": "medium", "высокий": "high"}.get(ru, "high")
+
 
 def _extract_text_from_pdf(pdf_path: str) -> str:
     """
@@ -42,16 +142,11 @@ async def process_pdf(task_id: str, file_path: str) -> None:
     """
     try:
         # Use upsert pattern to avoid race conditions
-        # First try to update, if no rows affected then create
         existing = await update_analysis(task_id, "processing", None)
         if existing is None:
-            # Record doesn't exist, create it
-            # Use try-except to handle race condition where another process created it
             try:
                 await create_analysis(task_id, "processing", None)
             except Exception as create_exc:
-                # If creation fails due to unique constraint, another process created it
-                # Try to update instead
                 logger.debug(
                     "Create failed for task %s (possibly already exists): %s",
                     task_id, create_exc
@@ -68,8 +163,28 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         # Extract tables and calculate metrics
         tables = await asyncio.to_thread(pdf_extractor.extract_tables, file_path)
         metrics = await asyncio.to_thread(pdf_extractor.parse_financial_statements, tables, text)
-        ratios = await asyncio.to_thread(calculate_ratios, metrics)
-        score = await asyncio.to_thread(calculate_integral_score, ratios)
+        ratios_ru = await asyncio.to_thread(calculate_ratios, metrics)
+        raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
+
+        # Translate for frontend compatibility
+        ratios_en = _translate_ratios(ratios_ru)
+        score_payload = _build_score_payload(raw_score, ratios_en)
+
+        # NLP analysis — graceful degradation if AI not configured
+        nlp_result = {"risks": [], "key_factors": [], "recommendations": []}
+        if text and len(text) > 500:
+            try:
+                from src.analysis.nlp_analysis import analyze_narrative
+                nlp_result = await asyncio.wait_for(
+                    analyze_narrative(text),
+                    timeout=60.0  # Don't block forever if AI is slow
+                )
+            except ImportError:
+                logger.debug("NLP analysis module not available for task %s", task_id)
+            except asyncio.TimeoutError:
+                logger.warning("NLP analysis timed out for task %s", task_id)
+            except Exception as nlp_exc:
+                logger.warning("NLP analysis failed for task %s: %s", task_id, nlp_exc)
 
         await update_analysis(
             task_id,
@@ -77,11 +192,12 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             {
                 "data": {
                     "scanned": scanned,
-                    "text": text,
-                    "tables": tables,
+                    "text": text[:5000],  # Limit text size stored in DB
+                    "tables": tables[:10],  # Limit tables stored
                     "metrics": metrics,
-                    "ratios": ratios,
-                    "score": score,
+                    "ratios": ratios_en,   # English keys for frontend
+                    "score": score_payload,  # Full ScoreData shape
+                    "nlp": nlp_result,
                 }
             },
         )

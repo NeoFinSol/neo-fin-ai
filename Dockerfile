@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -13,8 +13,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tesseract-ocr \
         poppler-utils \
-        libgl1-mesa-glx \
+        libgl1 \
         curl \
+        ca-certificates \
+    && update-ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -23,7 +25,7 @@ COPY requirements.txt .
 
 # Create virtual environment and install dependencies
 RUN python -m venv $VIRTUAL_ENV \
-    && $VIRTUAL_ENV/bin/pip install --upgrade pip \
+    && $VIRTUAL_ENV/bin/pip install --upgrade pip setuptools wheel \
     && $VIRTUAL_ENV/bin/pip install --no-cache-dir -r requirements.txt
 
 # Create non-root user for security

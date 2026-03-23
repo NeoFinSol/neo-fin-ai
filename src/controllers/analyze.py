@@ -8,7 +8,7 @@ import pdfplumber
 from fastapi import HTTPException
 
 from src.core.ai_service import ai_service
-from src.core.constants import MAX_PDF_PAGES
+from src.core.constants import MAX_PDF_PAGES, AI_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
                     "tool_input": prompt,
                     "intermediate_steps": []
                 },
-                timeout=120
+                timeout=AI_TIMEOUT
             )
             if res is not None:
                 logger.info("Successfully received AI response for pages %d-%d", page_idx + 1, end_idx)

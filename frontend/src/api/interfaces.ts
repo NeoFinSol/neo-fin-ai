@@ -36,6 +36,12 @@ export interface ScoreData {
   };
 }
 
+export interface NLPResult {
+  risks: string[];
+  key_factors: string[];
+  recommendations: string[];
+}
+
 export interface AnalysisData {
   scanned: boolean;
   text: string;
@@ -43,6 +49,7 @@ export interface AnalysisData {
   metrics: FinancialMetrics;
   ratios: FinancialRatios;
   score: ScoreData;
+  nlp?: NLPResult;
 }
 
 export interface AnalysisResponse {
