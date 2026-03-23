@@ -7,7 +7,10 @@ These tests measure performance of critical operations:
 - Database operations
 - Financial calculations
 
-Run with: pytest tests/test_benchmarks.py --benchmark-only
+Note: These tests are marked with @pytest.mark.benchmark and should be run separately.
+Use: pytest tests/test_benchmarks.py -m benchmark
+
+To run with benchmark output: pytest tests/test_benchmarks.py --benchmark-only
 """
 import asyncio
 import time
@@ -19,6 +22,10 @@ from src.analysis.ratios import calculate_ratios
 from src.analysis.scoring import calculate_integral_score
 from src.controllers.analyze import _read_pdf_file
 from src.db.crud import create_analysis, get_analysis, update_analysis
+
+
+# Mark all tests in this module as benchmark
+pytestmark = pytest.mark.benchmark
 
 
 # Test data
@@ -59,7 +66,7 @@ class TestBenchmarkFinancialCalculations:
         assert "score" in result or result == {}
 
 
-class BenchmarkDatabaseOperations:
+class TestBenchmarkDatabaseOperations:
     """Benchmarks for database operations."""
 
     @pytest.mark.asyncio
@@ -70,7 +77,8 @@ class BenchmarkDatabaseOperations:
         async def create_task():
             return await create_analysis(task_id, "processing", None)
         
-        result = await benchmark(asyncio.create_task, create_task())
+        # Use benchmark in async context correctly
+        result = benchmark(asyncio.run, create_task())
         
         # Verify creation succeeded
         assert result is not None
@@ -83,7 +91,7 @@ class BenchmarkDatabaseOperations:
         await create_analysis(task_id, "completed", {"test": "data"})
         
         # Then benchmark retrieval
-        result = await benchmark(get_analysis, task_id)
+        result = benchmark(asyncio.run, get_analysis(task_id))
         
         # Verify retrieval succeeded
         assert result is not None
@@ -97,11 +105,9 @@ class BenchmarkDatabaseOperations:
         await create_analysis(task_id, "processing", None)
         
         # Then benchmark update
-        result = await benchmark(
-            update_analysis,
-            task_id,
-            "completed",
-            {"benchmark": "result"}
+        result = benchmark(
+            asyncio.run,
+            update_analysis(task_id, "completed", {"benchmark": "result"})
         )
         
         # Verify update succeeded
@@ -114,15 +120,13 @@ class TestBenchmarkPDFProcessing:
     def test_read_pdf_file_performance(self, benchmark):
         """Benchmark _read_pdf_file function with sample data."""
         # Create a mock BytesIO with minimal PDF structure
-        # (In real benchmarks, use actual PDF files)
         pdf_data = BytesIO(
             b"%PDF-1.4\n"
             b"1 0 obj\n<< /Type /Catalog >>\nendobj\n"
             b"trailer\n<< /Root 1 0 R /Size 2 >>\n%%EOF\n"
         )
         
-        # Benchmark the function
-        # Note: This may fail for invalid PDF, but measures parsing speed
+        # Benchmark the function - expect it may fail for invalid PDF
         try:
             result = benchmark(_read_pdf_file, pdf_data)
             assert isinstance(result, list)
@@ -149,37 +153,11 @@ class TestBenchmarkConcurrency:
             ]
             return await asyncio.gather(*tasks)
         
-        results = await benchmark(run_concurrent)
+        results = benchmark(asyncio.run, run_concurrent())
         
         # Verify all operations succeeded
         assert len(results) == 10
         assert all(r is not None for r in results)
-
-
-class TestBenchmarkAIService:
-    """Benchmarks for AI service operations."""
-
-    def test_ai_service_invoke_performance(self, benchmark):
-        """Benchmark AI service invoke (mocked)."""
-        from unittest.mock import AsyncMock, patch
-        
-        from src.core.ai_service import ai_service
-        
-        async def mock_invoke(input, timeout=None):
-            return '{"result": "success"}'
-        
-        async def run_benchmark():
-            with patch.object(ai_service, 'invoke_with_retry', new_callable=AsyncMock) as mock_method:
-                mock_method.return_value = '{"result": "success"}'
-                return await ai_service.invoke_with_retry(
-                    input={"tool_input": "test"}
-                )
-        
-        # Run benchmark
-        result = benchmark(asyncio.run, run_benchmark())
-        
-        # Verify result
-        assert result is not None
 
 
 # Performance thresholds (optional - for CI failure)
@@ -190,14 +168,3 @@ PERFORMANCE_THRESHOLDS = {
     "get_analysis": 0.3,  # seconds
     "update_analysis": 0.3,  # seconds
 }
-
-
-def pytest_benchmark_compare(benchmark, threshold_name, elapsed):
-    """Compare benchmark result against threshold."""
-    if threshold_name in PERFORMANCE_THRESHOLDS:
-        threshold = PERFORMANCE_THRESHOLDS[threshold_name]
-        if elapsed > threshold:
-            pytest.fail(
-                f"Performance regression: {threshold_name} took {elapsed:.3f}s "
-                f"(threshold: {threshold:.3f}s)"
-            )

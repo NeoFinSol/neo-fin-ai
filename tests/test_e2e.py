@@ -5,16 +5,15 @@ These tests verify the complete application flow:
 1. Upload a PDF document
 2. Wait for processing
 3. Retrieve and validate results
+
+Note: These tests are marked with @pytest.mark.e2e and should be run separately
+from unit tests. Use: pytest tests/test_e2e.py -m e2e
 """
 import asyncio
 import base64
 import io
-import os
 import time
 from pathlib import Path
-
-# Set DEV_MODE BEFORE importing app to bypass authentication in tests
-os.environ["DEV_MODE"] = "1"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +21,10 @@ from fastapi.testclient import TestClient
 from src.app import app
 from src.db.crud import get_analysis, create_analysis
 from src.db.database import get_session_maker
+
+
+# Mark all tests in this module as e2e
+pytestmark = pytest.mark.e2e
 
 
 # Test PDF content (minimal valid PDF)
@@ -36,9 +39,25 @@ MINIMAL_PDF = (
 
 @pytest.fixture
 def client():
-    """Create test client."""
+    """Create test client with DEV_MODE enabled."""
+    # Set DEV_MODE for this test only
+    import os
+    old_dev_mode = os.environ.get("DEV_MODE")
+    os.environ["DEV_MODE"] = "1"
+    
+    # Reload app to pick up new environment
+    import importlib
+    import src.core.auth as auth_module
+    importlib.reload(auth_module)
+    
     with TestClient(app) as client:
         yield client
+    
+    # Restore original value
+    if old_dev_mode is None:
+        os.environ.pop("DEV_MODE", None)
+    else:
+        os.environ["DEV_MODE"] = old_dev_mode
 
 
 @pytest.fixture
@@ -59,7 +78,7 @@ class TestE2EUploadAndAnalyze:
     """End-to-end tests for PDF upload and analysis flow."""
 
     @pytest.mark.asyncio
-    async def test_analyze_pdf_file_endpoint(self, client, test_pdf_file, dev_mode_enabled):
+    async def test_analyze_pdf_file_endpoint(self, client, test_pdf_file):
         """Test /analyze/pdf/file endpoint (direct analysis)."""
         with open(test_pdf_file, "rb") as f:
             response = client.post(
@@ -76,7 +95,7 @@ class TestE2EUploadAndAnalyze:
             assert isinstance(result, dict)
 
     @pytest.mark.asyncio
-    async def test_analyze_pdf_base64_endpoint(self, client, test_pdf_base64, dev_mode_enabled):
+    async def test_analyze_pdf_base64_endpoint(self, client, test_pdf_base64):
         """Test /analyze/pdf/base64 endpoint (direct analysis)."""
         response = client.post(
             "/analyze/pdf/base64",
@@ -91,7 +110,7 @@ class TestE2EUploadAndAnalyze:
             assert isinstance(result, dict)
 
     @pytest.mark.asyncio
-    async def test_error_handling_invalid_pdf(self, client, dev_mode_enabled):
+    async def test_error_handling_invalid_pdf(self, client):
         """Test error handling for invalid PDF files."""
         # Invalid PDF content
         invalid_pdf = b"This is not a PDF"
@@ -105,7 +124,7 @@ class TestE2EUploadAndAnalyze:
         assert "detail" in response.json()
 
     @pytest.mark.asyncio
-    async def test_error_handling_empty_file(self, client, dev_mode_enabled):
+    async def test_error_handling_empty_file(self, client):
         """Test error handling for empty files."""
         response = client.post(
             "/analyze/pdf/file",
@@ -116,7 +135,7 @@ class TestE2EUploadAndAnalyze:
         assert "detail" in response.json()
 
     @pytest.mark.asyncio
-    async def test_error_handling_invalid_base64(self, client, dev_mode_enabled):
+    async def test_error_handling_invalid_base64(self, client):
         """Test error handling for invalid base64 data."""
         response = client.post(
             "/analyze/pdf/base64",
@@ -131,7 +150,7 @@ class TestE2EMultipleUsers:
     """Test concurrent user scenarios."""
 
     @pytest.mark.asyncio
-    async def test_concurrent_analyze_requests(self, client, test_pdf_file, dev_mode_enabled):
+    async def test_concurrent_analyze_requests(self, client, test_pdf_file):
         """Test multiple concurrent analyze requests."""
         import concurrent.futures
         
@@ -157,7 +176,7 @@ class TestE2ELargeFiles:
     """Test handling of large files."""
 
     @pytest.mark.asyncio
-    async def test_file_size_limit(self, client, dev_mode_enabled):
+    async def test_file_size_limit(self, client):
         """Test that files exceeding size limit are rejected."""
         # Create a file larger than MAX_FILE_SIZE (50 MB) with valid PDF header
         large_content = b"%PDF-1.4\n" + b"x" * (51 * 1024 * 1024)  # 51 MB with PDF header
@@ -191,6 +210,9 @@ class TestE2EAPIAuthentication:
         """Test API requests with invalid API key."""
         # Ensure auth is enabled (no DEV_MODE)
         import os
+        old_dev_mode = os.environ.get("DEV_MODE")
+        old_api_key = os.environ.get("API_KEY")
+        
         os.environ["DEV_MODE"] = "0"
         os.environ["API_KEY"] = "correct-key"
         
@@ -199,11 +221,22 @@ class TestE2EAPIAuthentication:
         import src.core.auth as auth_module
         importlib.reload(auth_module)
         
-        with open(test_pdf_file, "rb") as f:
-            response = client.post(
-                "/analyze/pdf/file",
-                files={"file": ("test_report.pdf", f, "application/pdf")},
-                headers={"X-API-Key": "wrong-key"},
-            )
-        
-        assert response.status_code == 401
+        try:
+            with open(test_pdf_file, "rb") as f:
+                response = client.post(
+                    "/analyze/pdf/file",
+                    files={"file": ("test_report.pdf", f, "application/pdf")},
+                    headers={"X-API-Key": "wrong-key"},
+                )
+            
+            assert response.status_code == 401
+        finally:
+            # Restore original values
+            if old_dev_mode is None:
+                os.environ.pop("DEV_MODE", None)
+            else:
+                os.environ["DEV_MODE"] = old_dev_mode
+            if old_api_key is None:
+                os.environ.pop("API_KEY", None)
+            else:
+                os.environ["API_KEY"] = old_api_key

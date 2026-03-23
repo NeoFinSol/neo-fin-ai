@@ -18,6 +18,16 @@ from src.db.database import Base
 os.environ["TESTING"] = "1"
 
 
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers", "e2e: mark test as end-to-end test (requires full app setup)"
+    )
+    config.addinivalue_line(
+        "markers", "benchmark: mark test as performance benchmark (slow, run separately)"
+    )
+
+
 @pytest.fixture(autouse=True, scope="session")
 def setup_test_environment():
     """
