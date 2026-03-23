@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import logging
 import os
 from typing import AsyncGenerator, Optional
 
@@ -16,11 +17,14 @@ _engine: Optional[AsyncEngine] = None
 AsyncSessionLocal: Optional[async_sessionmaker] = None
 Base = declarative_base()
 
+# Logger for database operations
+logger = logging.getLogger(__name__)
+
 
 def get_engine() -> create_async_engine:
     """
     Get or create async engine (lazy initialization).
-    
+
     Validates DATABASE_URL presence unless TESTING or CI environment variable is set.
 
     Returns:
@@ -35,29 +39,57 @@ def get_engine() -> create_async_engine:
         # Check DATABASE_URL - allow bypass for testing
         is_testing = os.getenv("TESTING", "0") == "1"
         is_ci = os.getenv("CI", "0") == "1"
-        
+
         if not DATABASE_URL and not (is_testing or is_ci):
             raise RuntimeError(
                 "DATABASE_URL environment variable is required. "
                 "Please set it in your .env file or environment. "
                 "For testing, set TESTING=1 or CI=1."
             )
-        
+
         # Use default for testing if DATABASE_URL not set
         db_url = DATABASE_URL
         if is_testing and not db_url:
             db_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin_test"
-        
+
+        # Connection pool settings from environment variables with safe defaults
+        # Safe defaults to prevent connection exhaustion (DoS protection)
+        pool_size = int(os.getenv("DB_POOL_SIZE", "5"))  # Default: 5 connections
+        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))  # Default: 10 overflow
+        pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "30"))  # Default: 30 seconds
+        pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # Default: 1 hour
+        pool_pre_ping = os.getenv("DB_POOL_PRE_PING", "true").lower() == "true"
+
+        # Validate pool settings to prevent misconfiguration
+        if pool_size < 1:
+            logger.warning("DB_POOL_SIZE=%d is too low, using 5", pool_size)
+            pool_size = 5
+        elif pool_size > 50:
+            logger.warning("DB_POOL_SIZE=%d is too high, using 50", pool_size)
+            pool_size = 50
+
+        if max_overflow < 0:
+            logger.warning("DB_MAX_OVERFLOW=%d is negative, using 10", max_overflow)
+            max_overflow = 10
+        elif max_overflow > 100:
+            logger.warning("DB_MAX_OVERFLOW=%d is too high, using 100", max_overflow)
+            max_overflow = 100
+
+        logger.info(
+            "Database pool configured: pool_size=%d, max_overflow=%d, timeout=%ds, recycle=%ds",
+            pool_size, max_overflow, pool_timeout, pool_recycle
+        )
+
         try:
             _engine = create_async_engine(
                 db_url,
-                echo=False,
+                echo=False,  # Disable SQL logging to prevent credential leakage
                 future=True,
-                pool_size=20,
-                max_overflow=40,
-                pool_timeout=30,
-                pool_recycle=3600,
-                pool_pre_ping=True
+                pool_size=pool_size,
+                max_overflow=max_overflow,
+                pool_timeout=pool_timeout,
+                pool_recycle=pool_recycle,
+                pool_pre_ping=pool_pre_ping
             )
             AsyncSessionLocal = async_sessionmaker(
                 _engine,
@@ -65,6 +97,7 @@ def get_engine() -> create_async_engine:
                 expire_on_commit=False
             )
         except Exception as e:
+            logger.error("Failed to create database engine: %s", e)
             raise RuntimeError(f"Failed to create database engine: {e}") from e
 
     return _engine
@@ -73,29 +106,29 @@ def get_engine() -> create_async_engine:
 def get_session_maker() -> async_sessionmaker:
     """
     Get or create session maker (lazy initialization).
-    
+
     Returns:
         async_sessionmaker: Session maker instance
-        
+
     Raises:
         RuntimeError: If session maker is not initialized
     """
     if AsyncSessionLocal is None:
         get_engine()
-    
+
     if AsyncSessionLocal is None:
         raise RuntimeError("Session maker failed to initialize")
-    
+
     return AsyncSessionLocal
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Get database session context manager.
-    
+
     Yields:
         AsyncSession: SQLAlchemy async session
-        
+
     Raises:
         RuntimeError: If session creation fails
     """
@@ -104,6 +137,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         async with session_maker() as session:
             yield session
     except Exception as e:
+        logger.error("Failed to get database session: %s", e)
         raise RuntimeError(f"Failed to get database session: {e}") from e
 
 
@@ -113,8 +147,9 @@ async def dispose_engine() -> None:
     Should be called on application shutdown.
     """
     global _engine, AsyncSessionLocal
-    
+
     if _engine is not None:
         await _engine.dispose()
         _engine = None
         AsyncSessionLocal = None
+        logger.info("Database engine disposed")

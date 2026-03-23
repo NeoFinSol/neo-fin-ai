@@ -91,7 +91,17 @@ def _build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
             impact = "positive" if norm_val >= 0.6 else ("neutral" if norm_val >= 0.3 else "negative")
 
         friendly_name, _ = FACTOR_DESCRIPTIONS.get(ru_name, (ru_name, en_key))
-        actual_str = f"{actual_val:.2f}" if actual_val is not None else "—"
+        # Safe numeric formatting with type check
+        if actual_val is None:
+            actual_str = "—"
+        elif isinstance(actual_val, (int, float)):
+            actual_str = f"{actual_val:.2f}"
+        else:
+            # Handle non-numeric values (strings, etc.)
+            try:
+                actual_str = f"{float(actual_val):.2f}"
+            except (TypeError, ValueError):
+                actual_str = str(actual_val)
 
         factors.append({
             "name": friendly_name,
@@ -205,9 +215,19 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         logger.exception("Failed to process PDF task %s: %s", task_id, exc)
         await update_analysis(task_id, "failed", {"error": str(exc)})
     finally:
-        # Clean up temporary file
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception as exc:
-            logger.warning("Failed to delete temporary file %s: %s", file_path, exc)
+        # Clean up temporary file with safer deletion pattern
+        if file_path:
+            try:
+                # Check if it's a file (not directory) before removing
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    logger.debug("Cleaned up temporary file: %s", file_path)
+                elif os.path.exists(file_path):
+                    logger.warning("Temporary path is not a file, skipping: %s", file_path)
+            except FileNotFoundError:
+                # File already deleted - this is fine (race condition)
+                logger.debug("Temporary file already deleted: %s", file_path)
+            except PermissionError as exc:
+                logger.warning("Permission denied deleting temporary file %s: %s", file_path, exc)
+            except Exception as exc:
+                logger.warning("Failed to delete temporary file %s: %s", file_path, exc)

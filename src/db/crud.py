@@ -10,6 +10,11 @@ from src.db.models import Analysis
 logger = logging.getLogger(__name__)
 
 
+class AnalysisAlreadyExistsError(Exception):
+    """Custom exception raised when an analysis with the same task_id already exists."""
+    pass
+
+
 async def create_analysis(task_id: str, status: str, result: dict | None = None) -> Analysis:
     """
     Create a new analysis record.
@@ -23,7 +28,7 @@ async def create_analysis(task_id: str, status: str, result: dict | None = None)
         Analysis: Created analysis object
 
     Raises:
-        IntegrityError: If task_id already exists
+        AnalysisAlreadyExistsError: If task_id already exists
         SQLAlchemyError: On database errors
     """
     session_maker = get_session_maker()
@@ -38,7 +43,7 @@ async def create_analysis(task_id: str, status: str, result: dict | None = None)
         except IntegrityError as e:
             await session.rollback()
             logger.error("Analysis with task_id '%s' already exists: %s", task_id, e)
-            raise IntegrityError(f"Analysis with task_id '{task_id}' already exists") from e
+            raise AnalysisAlreadyExistsError(f"Analysis with task_id '{task_id}' already exists") from e
         except SQLAlchemyError as e:
             await session.rollback()
             logger.error("Database error creating analysis: %s", e)
