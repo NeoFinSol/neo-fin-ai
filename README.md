@@ -40,7 +40,7 @@ Ratios (13 коэффициентов)
 Scoring (0–100, risk_level, factors)
  │
  ▼
-AI Pipeline: GigaChat → Qwen → Ollama → rule-based fallback
+AI Pipeline: GigaChat → DeepSeek → Ollama → rule-based fallback
  │
  ▼
 React / Mantine UI  ←→  FastAPI  ←→  PostgreSQL
@@ -64,7 +64,7 @@ React / Mantine UI  ←→  FastAPI  ←→  PostgreSQL
 **NLP и рекомендации**
 - Выявляет финансовые риски и ключевые факторы через языковые модели
 - Генерирует рекомендации с явными ссылками на конкретные метрики
-- Fallback chain: GigaChat → Qwen → Ollama → встроенные правила
+- Fallback chain: GigaChat → DeepSeek → Ollama → встроенные правила
 
 **Многопериодный анализ**
 - Сравнивает до 5 отчётных периодов в одной сессии
@@ -179,7 +179,7 @@ curl http://localhost/api/multi-analysis/xyz-456 -H "X-API-Key: your_key"
 | `API_KEY` | — | Ключ доступа к API (обязательно) |
 | `CONFIDENCE_THRESHOLD` | `0.5` | Порог надёжности: показатели ниже исключаются из расчётов |
 | `GIGACHAT_CREDENTIALS` | — | Ключ GigaChat API |
-| `QWEN_API_KEY` | — | Ключ Qwen API |
+| `HF_API_KEY` | — | Ключ DeepSeek API |
 | `USE_LOCAL_LLM` | `false` | Использовать Ollama (offline-режим) |
 | `DEMO_MODE` | `0` | Маскировать числовые данные в ответах API |
 
