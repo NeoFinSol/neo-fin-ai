@@ -1,6 +1,30 @@
 # Project Log
 
-## 2026-03-24 | Этап 2 завершён: покрытие тестами 71% → 90% ✅
+## 2026-03-24 | Checkpoint Этапа 3: все тесты зелёные ✅
+- Backend: 24 passed — `test_masking.py` (12), `test_crud_analyses.py` (4), `test_analyses_router.py` (8)
+- Frontend: 24 passed — `AnalysisHistory.test.tsx` (11), `DetailedReport.test.tsx` (13)
+- Итого: **48 тестов, 0 failed, 0 skipped**
+- **Дальше**: валидация API key в Auth.tsx; проверка nlp_analysis на реальных данных
+
+---
+
+
+- **`src/utils/masking.py`** — чистая функция `mask_analysis_data(data, demo_mode)`: маскирует `metrics`/`ratios` (формат `X,XXX`), заменяет `text` на `[DEMO: текст скрыт]`, сохраняет `score`/`risk_level`/`factors`/`nlp`; идемпотентна
+- **`src/db/crud.py`** — добавлена `get_analyses_list(page, page_size)`: `SELECT ... ORDER BY created_at DESC LIMIT/OFFSET` + параллельный `COUNT(*)`
+- **`src/models/schemas.py`** — три новые Pydantic v2 схемы: `AnalysisSummaryResponse`, `AnalysisListResponse`, `AnalysisDetailResponse`
+- **`src/routers/analyses.py`** — новый роутер: `GET /analyses` (пагинация, auth) + `GET /analyses/{task_id}` (404 если не найден); маскировка при `DEMO_MODE=1`
+- **`src/app.py`** — подключён новый роутер `analyses`
+- **`src/routers/result.py`** — применена маскировка при `DEMO_MODE=1`
+- **`frontend/src/api/interfaces.ts`** — добавлены `AnalysisSummary` и `AnalysisListResponse`
+- **`frontend/src/pages/AnalysisHistory.tsx`** — переписана на реальный API: `GET /analyses` при монтировании, skeleton/error states, пагинация Mantine, клик → `GET /analyses/{task_id}` → DetailedReport; убран localStorage как источник данных
+- **`frontend/src/pages/DetailedReport.tsx`** — удалён `historicalData`; добавлены `buildChartData(ratios)`, `getBarColor(key, value)`, `THRESHOLDS`; `BarChart` из реальных `result.ratios`; fallback "Недостаточно данных" при < 2 ненулевых коэффициентах
+- **Тесты backend**: `tests/test_masking.py` (Property 5, 6, 7 + unit), `tests/test_crud_analyses.py` (Property 3 + unit), `tests/test_analyses_router.py` (Property 1, 2, 4 + unit)
+- **Тесты frontend**: `frontend/src/pages/__tests__/AnalysisHistory.test.tsx` (unit + Property 10), `frontend/src/pages/__tests__/DetailedReport.test.tsx` (Property 8, 9 + unit — 13 тестов, все зелёные)
+- **Дальше**: задача 9 — финальный прогон всех тестов; валидация API key в Auth.tsx
+
+---
+
+
 - Добавлено 12 новых тест-файлов: `test_core_auth.py`, `test_core_security.py`, `test_core_ai_service.py`, `test_core_gigachat_agent.py`, `test_routers_system.py`, `test_core_agent_request.py`, `test_tasks_coverage.py`, `test_nlp_analysis_coverage.py`, `test_app_coverage.py`, `test_controllers_analyze_coverage.py`, `test_security_coverage.py`, `test_settings_coverage.py`
 - Покрытие по модулям: `auth.py` 100%, `security.py` 100%, `system.py` 100%, `settings.py` 97%, `agent.py` 97%, `ai_service.py` 93%, `tasks.py` 92%, `nlp_analysis.py` 95%
 - Итого: 493 passed, 1 skipped, 0 failures

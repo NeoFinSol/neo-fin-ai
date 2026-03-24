@@ -1,45 +1,46 @@
 # NeoFin AI — Обзор проекта
 
 ## Статус
-- **Фаза**: Phase 1 (MVP) — Этап 2 завершён: покрытие тестами 90% (493 passed)
-- **Последний коммит**: `test(coverage): add tests for auth, security, ai_service, gigachat, system, tasks, nlp — coverage 71% -> 90%`
-- **Последняя сессия**: 2026-03-24 — Этап 2: добавлено 12 новых тест-файлов, покрытие поднято с 71% до 90%
+- **Фаза**: Phase 1 (MVP) — Этап 3 полностью завершён и верифицирован: 48 тестов, 0 failed
+- **Последний коммит**: `test(checkpoint): all 48 Этап 3 tests pass — backend 24, frontend 24`
+- **Последняя сессия**: 2026-03-24 — финальный checkpoint Этапа 3: все тесты зелёные
 - **Контекст**: Полная архитектура в `.agent/architecture.md`. Читать его перед любой разработкой.
 
 ---
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
-✅ **GET /result/{task_id}** — polling статуса из БД; frontend поллит каждые 2000ms
+✅ **GET /result/{task_id}** — polling статуса из БД; frontend поллит каждые 2000ms; маскировка при `DEMO_MODE=1`
 ✅ **PDF extraction** — PyPDF2 (текст), camelot/pdfplumber (таблицы), pytesseract (OCR для сканов)
 ✅ **Financial ratios** — 13 коэффициентов (4 группы: ликвидность, рентабельность, устойчивость, активность); RU-ключи → EN через `RATIO_KEY_MAP` в `tasks.py`
 ✅ **Integral scoring** — скоринг 0–100, risk_level (пороги 75/50), factors, normalized_scores (`scoring.py` + `_build_score_payload()`)
 ✅ **NLP analysis** — риски и ключевые факторы через `ai_service.py` (GigaChat → Qwen → Ollama → graceful degrade)
 ✅ **Recommendations** — `src/analysis/recommendations.py`: 3–5 рекомендаций с явными ссылками на метрики; timeout 65s; fallback при недоступности AI; подключено в `tasks.py`
+✅ **GET /analyses** — список анализов с пагинацией (page, page_size ≤ 100), сортировка по created_at DESC, auth X-API-Key
+✅ **GET /analyses/{task_id}** — детали анализа по task_id, 404 если не найден, auth X-API-Key
+✅ **Masking** — `src/utils/masking.py`: чистая функция `mask_analysis_data(data, demo_mode)`, применяется во всех трёх эндпоинтах при `DEMO_MODE=1`
+✅ **AnalysisHistory.tsx** — подключена к реальному API (`GET /analyses`), пагинация Mantine, skeleton/error states, клик → `GET /analyses/{task_id}` → DetailedReport
+✅ **DetailedReport.tsx** — BarChart из реальных `result.ratios` (ненулевые значения), цветовое кодирование по порогам, fallback "Недостаточно данных"
 ✅ **БД** — PostgreSQL 16, SQLAlchemy async, 2 миграции Alembic (`analyses` + индексы)
 ✅ **Auth** — X-API-Key header; `DEV_MODE=1` отключает проверку
 ✅ **CI/CD** — GitHub Actions: lint → test → security → build
 ✅ **Docker** — backend, frontend/nginx, db, db_test, ollama
-✅ **Тесты** — 319 passed, 1 skipped (test_auth.py — pre-existing DEV_MODE import bug)
+✅ **Тесты** — backend: property-тесты (hypothesis) + unit; frontend: property-тесты (fast-check) + unit (vitest)
 
 ---
 
 ## Что разрабатывается
-🔄 **Этап 3** — доработка под конкурс: AnalysisHistory API, визуализация, маскировка данных
-🔄 **AnalysisHistory.tsx** — страница есть, но данные только в localStorage; реальных API-вызовов нет [HIGH]
 🔄 **Auth.tsx** — `handleSubmit` сохраняет API key без валидации на backend [HIGH]
 🔄 **nlp_analysis.py** — модуль реализован, вызов подключён в `tasks.py`, но не проверен на реальных данных [MEDIUM]
 
 ---
 
 ## Что будет дальше
-❌ Проверить скоринг на реальных данных после фикса (следующая сессия)
-❌ Реализовать реальный API для `AnalysisHistory` (эндпоинт GET /analyses + frontend)
+❌ Финальный прогон всех тестов (задача 9 в tasks.md)
 ❌ Валидация API key на backend в `Auth.tsx`
 ❌ Устранить дублирование `types.ts` vs `interfaces.ts` (оставить только `interfaces.ts`)
 ❌ Celery + Redis вместо BackgroundTasks (для персистентности задач при рестарте)
 ❌ WebSocket / SSE вместо polling
-❌ Trend data в `DetailedReport.tsx` из реального API (сейчас "+2.4%" захардкожено)
 
 ---
 

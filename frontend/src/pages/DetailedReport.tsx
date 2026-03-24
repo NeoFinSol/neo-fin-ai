@@ -4,17 +4,72 @@ import {
     Table, ThemeIcon, Button, Divider, Container, Box
 } from '@mantine/core';
 // Импорт графиков
-import { LineChart, BarChart } from '@mantine/charts';
+import { BarChart } from '@mantine/charts';
 import {
     ShieldCheck, TrendingUp, TrendingDown, Activity,
     AlertTriangle, Printer, Download, PieChart,
     BarChart3, Wallet, Minus
 } from 'lucide-react';
-import { AnalysisData } from '../api/interfaces';
+import { AnalysisData, FinancialRatios } from '../api/interfaces';
 
 interface DetailedReportProps {
     result: AnalysisData;
     filename?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Chart helpers (exported for testing)
+// ---------------------------------------------------------------------------
+
+export const THRESHOLDS: Partial<Record<keyof FinancialRatios, number>> = {
+    current_ratio: 2.0,
+    quick_ratio: 1.0,
+    roa: 0.05,
+    roe: 0.10,
+    equity_ratio: 0.5,
+};
+
+const RATIO_LABELS: Partial<Record<keyof FinancialRatios, string>> = {
+    current_ratio: 'Тек. ликвидность',
+    quick_ratio: 'Быстрая ликв.',
+    absolute_liquidity_ratio: 'Абс. ликвидность',
+    roa: 'ROA',
+    roe: 'ROE',
+    ros: 'ROS',
+    ebitda_margin: 'EBITDA margin',
+    equity_ratio: 'Автономия',
+    financial_leverage: 'Фин. рычаг',
+    interest_coverage: 'Покрытие %',
+    asset_turnover: 'Оборач. активов',
+    inventory_turnover: 'Оборач. запасов',
+    receivables_turnover: 'Оборач. деб. зад.',
+};
+
+export interface ChartDataPoint {
+    label: string;
+    value: number;
+    color: string;
+    key: string;
+}
+
+export function buildChartData(ratios: FinancialRatios): ChartDataPoint[] {
+    return (Object.keys(ratios) as Array<keyof FinancialRatios>)
+        .filter((key) => {
+            const v = ratios[key];
+            return v !== null && v !== 0;
+        })
+        .map((key) => ({
+            key,
+            label: RATIO_LABELS[key] ?? key,
+            value: ratios[key] as number,
+            color: getBarColor(key, ratios[key] as number),
+        }));
+}
+
+export function getBarColor(key: keyof FinancialRatios, value: number): string {
+    const threshold = THRESHOLDS[key];
+    if (threshold === undefined) return 'blue.6';
+    return value >= threshold ? 'teal.6' : 'red.5';
 }
 
 export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
@@ -22,23 +77,8 @@ export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
         Math.random().toString(36).substring(2, 11).toUpperCase(),
         []);
 
-    // Строим данные для графиков из реальных значений ratios
-    const historicalData = useMemo(() => [
-        { year: '2023', current_ratio: 1.2, roe: 0.15, equity_ratio: 0.4 },
-        { year: '2024', current_ratio: 1.5, roe: 0.18, equity_ratio: 0.45 },
-        {
-            year: '2025',
-            current_ratio: result.ratios?.current_ratio ?? 1.8,
-            roe: result.ratios?.roe ?? 0.20,
-            equity_ratio: result.ratios?.equity_ratio ?? 0.5,
-        },
-    ], [result.ratios]);
-
-    const comparisonData = useMemo(() => [
-        { metric: 'Ликвидность', company_value: result.ratios?.current_ratio ?? 0, industry_average: 2.0 },
-        { metric: 'ROE', company_value: result.ratios?.roe ?? 0, industry_average: 0.15 },
-        { metric: 'Автономия', company_value: result.ratios?.equity_ratio ?? 0, industry_average: 0.4 },
-    ], [result.ratios]);
+    // Build chart data from real ratios
+    const chartData = useMemo(() => buildChartData(result.ratios ?? {} as FinancialRatios), [result.ratios]);
 
     const getRiskColor = (risk: string) => {
         switch (risk) {
@@ -229,46 +269,37 @@ export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
                     </SimpleGrid>
                 </Card>
 
-                {/* NEW: VISUALIZATION SECTION */}
+                {/* VISUALIZATION SECTION — BarChart из реальных ratios */}
                 <Card padding="xl" radius="md" shadow="sm" bg="white" style={{ border: 'none' }}>
-                    <Title order={3} mb="xl">Динамика показателей</Title>
-                    <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="3rem">
-                        <Box>
-                            <Text fw={700} size="xs" c="dimmed" tt="uppercase" mb="lg">Исторический тренд (3 года)</Text>
-                            <LineChart
-                                h={300}
-                                data={historicalData}
-                                dataKey="year"
-                                withLegend
-                                legendProps={{ verticalAlign: 'bottom', height: 40 }}
-                                series={[
-                                    { name: 'current_ratio', color: 'blue.6', label: 'Ликвидность' },
-                                    { name: 'roe', color: 'teal.6', label: 'ROE' },
-                                    { name: 'equity_ratio', color: 'indigo.6', label: 'Автономия' },
-                                ]}
-                                curveType="monotone"
-                                withTooltip
-                                gridAxis="xy"
-                            />
-                        </Box>
-                        <Box>
-                            <Text fw={700} size="xs" c="dimmed" tt="uppercase" mb="lg">Сравнение с отраслью</Text>
-                            <BarChart
-                                h={300}
-                                data={comparisonData}
-                                dataKey="metric"
-                                withLegend
-                                legendProps={{ verticalAlign: 'bottom', height: 40 }}
-                                series={[
-                                    { name: 'company_value', color: 'blue.6', label: 'Компания' },
-                                    { name: 'industry_average', color: 'gray.4', label: 'Отрасль' },
-                                ]}
-                                withTooltip
-                                gridAxis="y"
-                                barProps={{ radius: [4, 4, 0, 0] }}
-                            />
-                        </Box>
-                    </SimpleGrid>
+                    <Title order={3} mb="xl">Финансовые коэффициенты</Title>
+                    {chartData.length < 2 ? (
+                        <Text c="dimmed" ta="center" py="xl">
+                            Недостаточно данных для построения графика
+                        </Text>
+                    ) : (
+                        <BarChart
+                            h={320}
+                            data={chartData.map((d) => ({ label: d.label, value: d.value, color: d.color }))}
+                            dataKey="label"
+                            series={[{ name: 'value', label: 'Значение' }]}
+                            withTooltip
+                            tooltipProps={{
+                                content: ({ payload }) => {
+                                    if (!payload?.length) return null;
+                                    const item = payload[0];
+                                    return (
+                                        <Box p="xs" bg="white" style={{ border: '1px solid #e5e7eb', borderRadius: 8 }}>
+                                            <Text size="xs" fw={700}>{item.payload?.label}</Text>
+                                            <Text size="xs">{Number(item.value).toFixed(2)}</Text>
+                                        </Box>
+                                    );
+                                },
+                            }}
+                            gridAxis="y"
+                            barProps={{ radius: [4, 4, 0, 0] }}
+                            getBarColor={(_, index) => chartData[index]?.color ?? 'blue.6'}
+                        />
+                    )}
                 </Card>
 
                 {/* FINANCIAL COEFFICIENTS GRID */}

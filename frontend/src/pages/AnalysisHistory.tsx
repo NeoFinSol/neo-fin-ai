@@ -1,87 +1,168 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Title, Text, Card, Table, Group, Badge, ThemeIcon, Stack, Button,
-  Container, ActionIcon, ScrollArea, Anchor,
+  Container, ActionIcon, ScrollArea, Anchor, Skeleton, Pagination, Alert,
 } from '@mantine/core';
-import {
-  FileText, Download, MoreVertical, FileCheck, Hourglass, XCircle, Eye, Trash2,
-} from 'lucide-react';
+import { FileText, FileCheck, Hourglass, XCircle, Eye, AlertCircle, RefreshCw } from 'lucide-react';
 import { DetailedReport } from './DetailedReport';
-import { useHistory, HistoryEntry } from '../context/AnalysisHistoryContext';
+import { apiClient } from '../api/client';
+import { AnalysisSummary, AnalysisListResponse, AnalysisData } from '../api/interfaces';
+
+const PAGE_SIZE = 20;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+export function formatDate(isoDate: string): string {
+  const d = new Date(isoDate);
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const year = d.getUTCFullYear();
+  return `${day}.${month}.${year}`;
+}
+
+function getStatusBadge(riskLevel: string | null) {
+  const labels: Record<string, { bg: string; c: string; label: string; icon: React.ReactNode }> = {
+    low: { bg: '#6cf8bb', c: '#00714d', label: 'НИЗКИЙ', icon: <FileCheck size={12} /> },
+    medium: { bg: '#fef3c7', c: '#f59e0b', label: 'СРЕДНИЙ', icon: <Hourglass size={12} /> },
+    high: { bg: '#ffdad6', c: '#ba1a1a', label: 'ВЫСОКИЙ', icon: <XCircle size={12} /> },
+  };
+  const cfg = riskLevel ? (labels[riskLevel] ?? labels.medium) : labels.medium;
+  return (
+    <Badge variant="filled" bg={cfg.bg} c={cfg.c} radius="xl" size="sm" fw={700}
+      style={{ border: 'none' }} leftSection={cfg.icon}>
+      {cfg.label}
+    </Badge>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export const AnalysisHistory = () => {
-  const { history, removeEntry, clearHistory } = useHistory();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [items, setItems] = useState<AnalysisSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const selectedEntry = selectedId ? history.find((e) => e.id === selectedId) : null;
+  // Detail view state
+  const [detailData, setDetailData] = useState<AnalysisData | null>(null);
+  const [detailFilename, setDetailFilename] = useState<string | undefined>(undefined);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  const getStatusBadge = (status: string) => {
-    const labels: Record<string, { bg: string; c: string; label: string; icon: React.ReactNode }> = {
-      low: { bg: '#6cf8bb', c: '#00714d', label: 'НИЗКИЙ', icon: <FileCheck size={12} /> },
-      medium: { bg: '#fef3c7', c: '#f59e0b', label: 'СРЕДНИЙ', icon: <Hourglass size={12} /> },
-      high: { bg: '#ffdad6', c: '#ba1a1a', label: 'ВЫСОКИЙ', icon: <XCircle size={12} /> },
-    };
-    const cfg = labels[status] || labels.medium;
-    return (
-      <Badge variant="filled" bg={cfg.bg} c={cfg.c} radius="xl" size="sm" fw={700}
-        style={{ border: 'none' }} leftSection={cfg.icon}>
-        {cfg.label}
-      </Badge>
-    );
+  const fetchList = useCallback(async (p: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.get<AnalysisListResponse>(
+        `/analyses?page=${p}&page_size=${PAGE_SIZE}`
+      );
+      setItems(res.data.items);
+      setTotal(res.data.total);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail ?? e?.message ?? 'Ошибка загрузки истории');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchList(page);
+  }, [page, fetchList]);
+
+  const handleRowClick = async (item: AnalysisSummary) => {
+    setDetailLoading(true);
+    try {
+      const res = await apiClient.get<{ task_id: string; status: string; created_at: string; data: AnalysisData | null }>(
+        `/analyses/${item.task_id}`
+      );
+      if (res.data.data) {
+        setDetailData(res.data.data);
+        setDetailFilename(item.filename ?? undefined);
+      }
+    } catch {
+      // stay on list view, error is non-critical
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
-  if (selectedEntry) {
+  // --- Detail view ---
+  if (detailData) {
     return (
       <Stack gap="md">
-        <Button variant="subtle" onClick={() => setSelectedId(null)} style={{ alignSelf: 'flex-start' }}>
+        <Button variant="subtle" onClick={() => setDetailData(null)} style={{ alignSelf: 'flex-start' }}>
           ← Назад к истории
         </Button>
-        <DetailedReport result={selectedEntry.result} filename={selectedEntry.filename} />
+        <DetailedReport result={detailData} filename={detailFilename} />
       </Stack>
     );
   }
 
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
   return (
     <Container size="xl" py="2rem">
       <Stack gap="xl">
-        <Group justify="space-between" align="flex-end">
-          <Stack gap={4}>
-            <Title order={1} style={{ letterSpacing: '-0.02em', fontWeight: 800 }}>История анализов</Title>
-            <Text c="dimmed" size="lg">
-              {history.length === 0
-                ? 'Пока нет проведённых анализов. Загрузите PDF на вкладке Dashboard.'
-                : `Всего анализов: ${history.length}`}
-            </Text>
-          </Stack>
-          {history.length > 0 && (
-            <Button variant="light" color="red" onClick={clearHistory}>
-              Очистить историю
-            </Button>
-          )}
-        </Group>
+        {/* Header */}
+        <Stack gap={4}>
+          <Title order={1} style={{ letterSpacing: '-0.02em', fontWeight: 800 }}>История анализов</Title>
+          <Text c="dimmed" size="lg">
+            {!loading && total === 0 && !error
+              ? 'Пока нет проведённых анализов. Загрузите PDF на вкладке Dashboard.'
+              : `Всего анализов: ${total}`}
+          </Text>
+        </Stack>
 
-        {history.length > 0 && (
+        {/* Error state */}
+        {error && (
+          <Alert icon={<AlertCircle size={16} />} color="red" title="Ошибка загрузки">
+            {error}
+            <Button
+              variant="subtle"
+              color="red"
+              size="xs"
+              mt="xs"
+              leftSection={<RefreshCw size={14} />}
+              onClick={() => fetchList(page)}
+            >
+              Повторить
+            </Button>
+          </Alert>
+        )}
+
+        {/* Skeleton while loading */}
+        {loading && (
+          <Stack gap="sm">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} height={48} radius="md" />
+            ))}
+          </Stack>
+        )}
+
+        {/* Table */}
+        {!loading && !error && items.length > 0 && (
           <Card padding={0} radius="md" shadow="sm" bg="white" style={{ border: 'none', overflow: 'hidden' }}>
             <ScrollArea>
               <Table verticalSpacing="md" horizontalSpacing="xl">
                 <Table.Thead>
                   <Table.Tr style={{ backgroundColor: '#f8f9fa' }}>
-                    <Table.Th style={{ border: 'none', color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Файл</Table.Th>
-                    <Table.Th style={{ border: 'none', color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Дата</Table.Th>
-                    <Table.Th style={{ border: 'none', color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Скоринг</Table.Th>
-                    <Table.Th style={{ border: 'none', color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Риск</Table.Th>
-                    <Table.Th style={{ border: 'none' }}></Table.Th>
+                    {['Файл', 'Дата', 'Скоринг', 'Риск', ''].map((h, i) => (
+                      <Table.Th key={i} style={{ border: 'none', color: '#6b7280', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {h}
+                      </Table.Th>
+                    ))}
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {history.map((item, index) => (
+                  {items.map((item, index) => (
                     <Table.Tr
-                      key={item.id}
-                      style={{
-                        backgroundColor: index % 2 === 1 ? '#f3f4f5' : 'transparent',
-                        cursor: 'pointer',
-                      }}
-                      onClick={() => setSelectedId(item.id)}
+                      key={item.task_id}
+                      style={{ backgroundColor: index % 2 === 1 ? '#f3f4f5' : 'transparent', cursor: 'pointer' }}
+                      onClick={() => handleRowClick(item)}
                     >
                       <Table.Td style={{ border: 'none' }}>
                         <Group gap="sm">
@@ -89,30 +170,30 @@ export const AnalysisHistory = () => {
                             <FileText size={18} />
                           </ThemeIcon>
                           <Anchor size="sm" fw={600} underline="hover">
-                            {item.filename}
+                            {item.filename ?? '—'}
                           </Anchor>
                         </Group>
                       </Table.Td>
                       <Table.Td style={{ border: 'none' }}>
-                        <Text size="sm" c="dimmed">{item.date}</Text>
+                        <Text size="sm" c="dimmed">{formatDate(item.created_at)}</Text>
                       </Table.Td>
                       <Table.Td style={{ border: 'none' }}>
                         <Text fw={700} size="sm" style={{ fontFamily: 'JetBrains Mono' }}>
-                          {item.score.toFixed(1)}
+                          {item.score != null ? item.score.toFixed(1) : '—'}
                         </Text>
                       </Table.Td>
                       <Table.Td style={{ border: 'none' }}>
-                        {getStatusBadge(item.riskLevel)}
+                        {item.risk_level != null ? getStatusBadge(item.risk_level) : <Text size="sm">—</Text>}
                       </Table.Td>
-                      <Table.Td style={{ border: 'none' }} align="right" onClick={(e) => e.stopPropagation()}>
-                        <Group gap="xs" justify="flex-end">
-                          <ActionIcon variant="subtle" color="blue" onClick={() => setSelectedId(item.id)}>
-                            <Eye size={16} />
-                          </ActionIcon>
-                          <ActionIcon variant="subtle" color="red" onClick={() => removeEntry(item.id)}>
-                            <Trash2 size={16} />
-                          </ActionIcon>
-                        </Group>
+                      <Table.Td style={{ border: 'none' }} align="right">
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          loading={detailLoading}
+                          onClick={(e) => { e.stopPropagation(); handleRowClick(item); }}
+                        >
+                          <Eye size={16} />
+                        </ActionIcon>
                       </Table.Td>
                     </Table.Tr>
                   ))}
@@ -120,6 +201,13 @@ export const AnalysisHistory = () => {
               </Table>
             </ScrollArea>
           </Card>
+        )}
+
+        {/* Pagination */}
+        {!loading && totalPages > 1 && (
+          <Group justify="center">
+            <Pagination total={totalPages} value={page} onChange={setPage} />
+          </Group>
         )}
       </Stack>
     </Container>

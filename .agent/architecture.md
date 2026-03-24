@@ -2,7 +2,7 @@
 
 ## 1. Быстрый старт для агента
 
-NeoFin AI — ИИ-ассистент финансового директора: принимает PDF-отчёты компаний, извлекает финансовые данные, вычисляет 5 коэффициентов, строит интегральный скоринг 0–100, генерирует NLP-рекомендации через GigaChat/Ollama.
+NeoFin AI — ИИ-ассистент финансового директора: принимает PDF-отчёты компаний, извлекает финансовые данные, вычисляет 13 коэффициентов, строит интегральный скоринг 0–100, генерирует NLP-рекомендации через GigaChat/Ollama. Предоставляет API истории анализов с пагинацией и маскировкой данных для демо-режима.
 Точка входа backend: `src/app.py` (FastAPI app, middleware, routers, lifespan).
 Точка входа frontend: `frontend/src/App.tsx` (роутинг, провайдеры, lazy-загрузка страниц).
 Локальный запуск: `docker-compose up --build` — поднимает backend, frontend/nginx, db, db_test, ollama.
@@ -81,9 +81,10 @@ src/
 ├── analysis/
 │   ├── __init__.py
 │   ├── pdf_extractor.py          # извлечение текста (PyPDF2), таблиц (camelot/pdfplumber), OCR (tesseract)
-│   ├── ratios.py                 # 5 финансовых коэффициентов; возвращает русскоязычные ключи
-│   ├── scoring.py                # интегральный скоринг 0–100; weights dict; возвращает details: dict
-│   └── nlp_analysis.py           # NLP-анализ через ai_service; [MEDIUM] закомментирован в tasks.py
+│   ├── ratios.py                 # 13 финансовых коэффициентов; возвращает русскоязычные ключи
+│   ├── scoring.py                # интегральный скоринг 0–100; 4 группы весов; возвращает details: dict
+│   ├── nlp_analysis.py           # NLP-анализ через ai_service; подключён в tasks.py
+│   └── recommendations.py        # 3–5 рекомендаций с ссылками на метрики; timeout 65s; graceful degrade
 ├── core/
 │   ├── __init__.py
 │   ├── ai_service.py             # AIService: _configure(), выбор провайдера, graceful degrade
@@ -93,17 +94,21 @@ src/
 │   ├── __init__.py
 │   ├── database.py               # get_engine() lazy init, AsyncSession factory, get_db() dependency
 │   ├── models.py                 # ORM-модель Analysis (таблица analyses)
-│   └── crud.py                   # create_analysis(), get_analysis(), update_analysis() — только здесь SQL
+│   └── crud.py                   # create_analysis(), get_analysis(), update_analysis(),
+│                                 # get_analyses_list() — только здесь SQL
 ├── models/
 │   ├── __init__.py
-│   ├── schemas.py                # Pydantic-схемы: UploadResponse, AnalysisResult, RatiosSchema и др.
+│   ├── schemas.py                # Pydantic-схемы: UploadResponse, AnalysisResult,
+│                                 # AnalysisSummaryResponse, AnalysisListResponse, AnalysisDetailResponse
 │   └── settings.py               # Settings(BaseSettings): все env-переменные с валидацией
 ├── routers/
 │   ├── __init__.py
 │   ├── upload.py                 # POST /upload: валидация PDF, magic header, size ≤50MB, BackgroundTask
-│   └── result.py                 # GET /result/{task_id}: чтение статуса из БД
+│   ├── result.py                 # GET /result/{task_id}: чтение статуса из БД; маскировка при DEMO_MODE
+│   └── analyses.py               # GET /analyses (пагинация), GET /analyses/{task_id}; маскировка при DEMO_MODE
 └── utils/
-    └── __init__.py
+    ├── __init__.py
+    └── masking.py                # mask_analysis_data(data, demo_mode): чистая функция, без FastAPI/SQLAlchemy
 
 frontend/
 ├── index.html
@@ -118,15 +123,15 @@ frontend/
     │   ├── interfaces.ts         # ОСНОВНОЙ контракт данных: AnalysisResult, Ratios, Score и др.
     │   └── types.ts              # [БАГ] дублирует interfaces.ts с расхождениями — не использовать
     ├── components/
-    │   ├── Layout.tsx            # [CRITICAL] файл не создан, импортируется в App.tsx
-    │   └── ProtectedRoute.tsx    # [CRITICAL] файл не создан, импортируется в App.tsx
+    │   ├── Layout.tsx            # AppShell с навигацией и logout
+    │   └── ProtectedRoute.tsx    # redirect на /login при !isAuthenticated
     ├── hooks/
     │   └── usePdfAnalysis.ts     # polling каждые 2000ms, upload логика, notification system
     └── pages/
         ├── Dashboard.tsx         # MetricCard компоненты, навигация к /reports
-        ├── DetailedReport.tsx    # полный отчёт: ratios, score, NLP; ожидаемые поля — читать перед правками
-        ├── AnalysisHistory.tsx   # [HIGH] использует mockHistory, нет реальных API-вызовов
-        └── Auth.tsx              # [HIGH] handleSubmit сохраняет fake API key без валидации
+        ├── DetailedReport.tsx    # полный отчёт: BarChart из реальных ratios, score, NLP
+        ├── AnalysisHistory.tsx   # список анализов из GET /analyses; пагинация; клик → DetailedReport
+        └── Auth.tsx              # [HIGH] handleSubmit сохраняет API key без валидации на backend
 
 migrations/
 ├── env.py                        # Alembic env: async engine, target_metadata
@@ -191,16 +196,15 @@ AnalysisData:
     text: str             # извлечённый текст
     tables: list[dict]    # сырые таблицы из camelot/pdfplumber
     metrics: dict         # сырые финансовые метрики из pdf_extractor
-    ratios: RatiosSchema  # коэффициенты (EN-ключи после маппинга)
+    ratios: RatiosSchema  # 13 коэффициентов (EN-ключи после маппинга)
     score: ScoreSchema    # интегральный скоринг
     nlp: NLPSchema        # результат NLP-анализа
 
-RatiosSchema:
-    current_ratio: Optional[float]
-    quick_ratio: Optional[float]
-    debt_to_equity: Optional[float]
-    roa: Optional[float]
-    roe: Optional[float]
+RatiosSchema:             # 13 коэффициентов по 4 группам
+    current_ratio, quick_ratio, absolute_liquidity_ratio  # ликвидность
+    roa, roe, ros, ebitda_margin                          # рентабельность
+    equity_ratio, financial_leverage, interest_coverage   # устойчивость
+    asset_turnover, inventory_turnover, receivables_turnover  # активность
 
 ScoreSchema:
     score: float                    # 0–100
@@ -218,7 +222,26 @@ NLPSchema:
     key_factors: list[str]
     recommendations: list[str]
 
-# [UNUSED] AnalyzeResponse определён в schemas.py, но не используется в /upload flow
+# Схемы истории анализов (Этап 3):
+AnalysisSummaryResponse:
+    task_id: str
+    status: str
+    created_at: datetime
+    score: float | None
+    risk_level: str | None
+    filename: str | None
+
+AnalysisListResponse:
+    items: list[AnalysisSummaryResponse]
+    total: int
+    page: int
+    page_size: int
+
+AnalysisDetailResponse:
+    task_id: str
+    status: str
+    created_at: datetime
+    data: dict | None
 ```
 
 ### Frontend-интерфейсы — `frontend/src/api/interfaces.ts`
@@ -236,18 +259,30 @@ interface AnalysisData {
   scanned: boolean
   text: string
   tables: Record<string, unknown>[]
-  metrics: Record<string, number | null>
-  ratios: Ratios
+  metrics: FinancialMetrics
+  ratios: FinancialRatios   // 13 коэффициентов
   score: Score
   nlp: NLPResult
 }
 
-interface Ratios {
+interface FinancialRatios {
+  // Ликвидность
   current_ratio: number | null
   quick_ratio: number | null
-  debt_to_equity: number | null
+  absolute_liquidity_ratio: number | null
+  // Рентабельность
   roa: number | null
   roe: number | null
+  ros: number | null
+  ebitda_margin: number | null
+  // Устойчивость
+  equity_ratio: number | null
+  financial_leverage: number | null
+  interest_coverage: number | null
+  // Активность
+  asset_turnover: number | null
+  inventory_turnover: number | null
+  receivables_turnover: number | null
 }
 
 interface Score {
@@ -268,6 +303,23 @@ interface NLPResult {
   key_factors: string[]
   recommendations: string[]
 }
+
+// История анализов (Этап 3):
+interface AnalysisSummary {
+  task_id: string
+  status: string
+  created_at: string        // ISO 8601
+  score: number | null
+  risk_level: string | null
+  filename: string | null
+}
+
+interface AnalysisListResponse {
+  items: AnalysisSummary[]
+  total: number
+  page: number
+  page_size: number
+}
 ```
 
 ### ⚠️ Критичные несоответствия backend ↔ frontend
@@ -275,18 +327,8 @@ interface NLPResult {
 **Несоответствие 1: ключи коэффициентов**
 - `src/analysis/ratios.py` возвращает русскоязычные ключи:
   `{"Коэффициент текущей ликвидности": 1.5, "Рентабельность активов": 0.08, ...}`
-- Frontend ожидает camelCase/snake_case английские ключи:
-  `{current_ratio: 1.5, roa: 0.08, ...}`
-- Маппинг происходит в `src/tasks.py` через `RATIO_KEY_MAP`:
-  ```python
-  RATIO_KEY_MAP = {
-      "Коэффициент текущей ликвидности": "current_ratio",
-      "Коэффициент быстрой ликвидности": "quick_ratio",
-      "Долг к собственному капиталу":    "debt_to_equity",
-      "Рентабельность активов":          "roa",
-      "Рентабельность собственного капитала": "roe",
-  }
-  ```
+- Frontend ожидает EN snake_case ключи: `{current_ratio: 1.5, roa: 0.08, ...}`
+- Маппинг происходит в `src/tasks.py` через `RATIO_KEY_MAP` (13 ключей).
 - Функция `_translate_ratios()` в `tasks.py` применяет этот маппинг перед сохранением в БД.
 
 **Несоответствие 2: структура scoring**
@@ -294,7 +336,7 @@ interface NLPResult {
 - Frontend ожидает `factors: [{name, description, impact}]` (список объектов)
 - Преобразование выполняет `_build_score_payload()` в `src/tasks.py`
 
-**Несоответствие 3: дублирование типов**
+**Несоответствие 3: дублирование типов** *(технический долг)*
 - `frontend/src/api/types.ts` дублирует `interfaces.ts` с расхождениями в типах
 - Использовать только `interfaces.ts` — `types.ts` не трогать до рефакторинга
 
@@ -359,14 +401,36 @@ GET /result/{task_id}
  ├─ status == "failed"     → показать ошибку, остановить polling
  └─ status == "completed"  → остановить polling
      │
+     ├─ [если DEMO_MODE=1] mask_analysis_data(result, True)  ← src/utils/masking.py
+     │
      ▼
      data: {scanned, text, tables, metrics, ratios, score, nlp}
       │
       ├─ Dashboard.tsx → MetricCard (score, risk_level, ratios)
       └─ navigate /reports → DetailedReport.tsx
-          ├─ ratios таблица (current_ratio, quick_ratio, debt_to_equity, roa, roe)
+          ├─ BarChart из реальных ratios (buildChartData, getBarColor, THRESHOLDS)
           ├─ score gauge + factors список
           └─ nlp секция (risks, key_factors, recommendations)
+
+История анализов (AnalysisHistory.tsx, Этап 3)
+ │
+ ▼
+GET /analyses?page=1&page_size=20
+ │
+ ├─ get_analyses_list(page, page_size)  ← crud.py
+ ├─ [если DEMO_MODE=1] mask_analysis_data(item.result, True) для каждого элемента
+ └─ AnalysisListResponse {items, total, page, page_size}
+     │
+     ▼
+     AnalysisHistory.tsx: таблица с пагинацией Mantine
+      │
+      └─ клик на строку → GET /analyses/{task_id}
+          │
+          ├─ get_analysis(task_id)  ← crud.py
+          ├─ [если DEMO_MODE=1] mask_analysis_data(result, True)
+          └─ AnalysisDetailResponse {task_id, status, created_at, data}
+              │
+              └─ DetailedReport.tsx (тот же компонент)
 ```
 
 ---
@@ -582,34 +646,14 @@ CHUNK_SIZE       = 8192       # размер чанка при чтении фа
 ## 11. Известные проблемы и технический долг
 
 ```
-[CRITICAL] frontend/src/components/Layout.tsx
-           — файл не создан; App.tsx импортирует его → приложение не компилируется
-
-[CRITICAL] frontend/src/components/ProtectedRoute.tsx
-           — файл не создан; App.tsx импортирует его → приложение не компилируется
-
-[CRITICAL] frontend/src/api/types.ts vs interfaces.ts
-           — дублирование типов с расхождениями в полях; часть компонентов может
-             импортировать из types.ts и получать неверные типы
-
-[HIGH]     frontend/src/pages/AnalysisHistory.tsx
-           — использует локальный mockHistory массив; нет вызовов к API;
-             история анализов не отображается реально
-
 [HIGH]     frontend/src/pages/Auth.tsx (handleSubmit)
            — сохраняет введённый API key в localStorage без валидации на backend;
              любая строка принимается как валидный ключ
 
-[MEDIUM]   src/analysis/nlp_analysis.py
-           — модуль реализован, но вызов закомментирован в src/tasks.py;
-             NLP-анализ не выполняется даже при доступном AI-провайдере
-
-[MEDIUM]   src/models/schemas.py (AnalyzeResponse)
-           — схема определена, но не используется в /upload flow;
-             /upload возвращает UploadResponse, не AnalyzeResponse
-
-[LOW]      frontend/src/pages/DetailedReport.tsx (trend data)
-           — значения "+2.4%" и "-1.1%" захардкожены в JSX; не берутся из API
+[MEDIUM]   frontend/src/api/types.ts vs interfaces.ts
+           — дублирование типов с расхождениями в полях; часть компонентов может
+             импортировать из types.ts и получать неверные типы;
+             использовать только interfaces.ts
 
 [LOW]      корень репозитория: GIT_COMMIT_SUCCESS.txt, GIT_PUSH_SUCCESS.txt
            — мусорные файлы от CI артефактов; не несут логики; можно удалить
