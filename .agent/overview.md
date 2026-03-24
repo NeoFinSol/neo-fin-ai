@@ -2,8 +2,8 @@
 
 ## Статус
 - **Фаза**: Phase 1 (MVP) — Этап 3 полностью завершён и верифицирован: 48 тестов, 0 failed
-- **Последний коммит**: `fix(dashboard): persist analysis result across navigation; fix history crash on null data`
-- **Последняя сессия**: 2026-03-24 — Auth валидация, Vite proxy, DATABASE_URL fix, два frontend бага
+- **Последний коммит**: `refactor(analysis): lift analysis state to AnalysisContext; remove usePdfAnalysis hook`
+- **Последняя сессия**: 2026-03-24 — Auth валидация, Vite proxy, DATABASE_URL fix, два frontend бага (чистое решение через AnalysisContext)
 - **Контекст**: Полная архитектура в `.agent/architecture.md`. Читать его перед любой разработкой.
 
 ---

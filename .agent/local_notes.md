@@ -68,23 +68,31 @@ score_payload = _build_score_payload(raw_score, ratios_en)
 ### Dashboard теряет результат анализа при навигации
 **Статус**: Решено ✅
 **Дата решения**: 2026-03-24
-**Корневая причина**: `usePdfAnalysis` хранит состояние локально в хуке. При переходе на другую страницу `Dashboard` размонтируется → хук сбрасывается → `data = null`. Анализ продолжается в фоне, но результат некуда записать при возврате.
+**Корневая причина**: `usePdfAnalysis` хранил состояние локально в хуке. При переходе на другую страницу `Dashboard` размонтировался → хук сбрасывался → `data = null`. Анализ продолжался в фоне, но результат некуда было записать при возврате.
 
-**Решение**: поднять `pendingResult` / `pendingFilename` в `HistoryContext` (уже существующий глобальный контекст). `Dashboard` при получении результата вызывает `setPending(filename, data)`, при монтировании читает `pendingResult` из контекста.
+**Решение (чистое)**: создан `AnalysisContext` — отдельный контекст на уровне приложения, который владеет всем состоянием анализа (`status`, `result`, `filename`, `error`, `analyze`, `reset`). `usePdfAnalysis.ts` удалён. `Dashboard` только читает из `useAnalysis()`, не владеет состоянием.
 
 ```tsx
-// AnalysisHistoryContext.tsx — добавлены поля
-pendingResult: AnalysisData | null;
-pendingFilename: string;
-setPending: (filename: string, result: AnalysisData | null) => void;
+// frontend/src/context/AnalysisContext.tsx — новый контекст
+export const AnalysisProvider: React.FC<...> = ({ children }) => {
+    const [status, setStatus] = useState<AnalysisStatus>('idle');
+    const [result, setResult] = useState<AnalysisData | null>(null);
+    // ... analyze(), reset()
+};
 
-// Dashboard.tsx
-const displayData = data ?? pendingResult;
+// frontend/src/App.tsx — обёрнут вокруг роутов
+<AnalysisProvider>
+  <BrowserRouter>...</BrowserRouter>
+</AnalysisProvider>
+
+// frontend/src/pages/Dashboard.tsx — только читает
+const { status, result, filename, error, analyze, reset } = useAnalysis();
 ```
-Где применено: `frontend/src/context/AnalysisHistoryContext.tsx`, `frontend/src/pages/Dashboard.tsx`
+
+Где применено: `frontend/src/context/AnalysisContext.tsx` (новый), `frontend/src/pages/Dashboard.tsx`, `frontend/src/App.tsx`, `frontend/src/context/AnalysisHistoryContext.tsx` (очищен от `pending*`)
 Проверка: загрузить PDF → перейти на Settings → вернуться на Dashboard → результат отображается.
 
-> ⚠️ Паттерн: состояние, которое должно пережить навигацию — поднимать в Context, не держать в локальном хуке.
+> ⚠️ Паттерн: состояние, которое должно пережить навигацию — выносить в отдельный Context на уровне приложения, не хранить в локальном хуке и не примешивать к несвязанным контекстам.
 
 ---
 

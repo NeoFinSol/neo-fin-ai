@@ -1,6 +1,17 @@
 # Project Log
 
-## 2026-03-24 | Fix: два frontend бага — навигация и белый экран ✅
+## 2026-03-24 | Refactor: чистое решение — AnalysisContext вместо pendingResult ✅
+- `frontend/src/context/AnalysisContext.tsx` — новый контекст на уровне приложения: владеет `status`, `result`, `filename`, `error`, `analyze()`, `reset()`; переживает навигацию
+- `frontend/src/pages/Dashboard.tsx` — переписан: только читает из `useAnalysis()`, не владеет состоянием анализа
+- `frontend/src/hooks/usePdfAnalysis.ts` — удалён (логика перенесена в `AnalysisContext`)
+- `frontend/src/context/AnalysisHistoryContext.tsx` — очищен от `pendingResult`/`pendingFilename`/`setPending`; только история записей
+- `frontend/src/App.tsx` — добавлен `<AnalysisProvider>` вокруг роутов
+- **Корневая причина**: локальный хук не переживает размонтирование компонента; правильное решение — отдельный Context на уровне приложения
+- **Дальше**: проверить полный flow анализа; документация; production build
+
+---
+
+
 - `AnalysisHistoryContext.tsx` — добавлены `pendingResult`, `pendingFilename`, `setPending` для персистентности результата анализа между навигациями
 - `Dashboard.tsx` — `displayData = data ?? pendingResult`; сброс `setPending('', null)` при "Новый анализ"
 - `AnalysisHistory.tsx` — `handleRowClick` теперь показывает `setError(...)` при `data === null` вместо молчаливого игнора → нет белого экрана
