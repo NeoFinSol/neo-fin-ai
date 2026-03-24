@@ -1,11 +1,12 @@
 ﻿from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from src.db.database import get_session_maker
-from src.db.models import Analysis
+from src.db.models import Analysis, MultiAnalysisSession
 
 logger = logging.getLogger(__name__)
 
@@ -149,4 +150,109 @@ async def get_analysis(task_id: str) -> Analysis | None:
             return await session.scalar(stmt)
         except SQLAlchemyError as e:
             logger.error("Database error getting analysis: %s", e)
+            return None
+
+
+async def create_multi_session(
+    session_id: str,
+    user_id: str | None = None,
+) -> MultiAnalysisSession:
+    """
+    Create a new multi-analysis session record.
+
+    Args:
+        session_id: Unique session identifier
+        user_id: Optional user identifier
+
+    Returns:
+        MultiAnalysisSession: Created session object
+    """
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            record = MultiAnalysisSession(
+                session_id=session_id,
+                user_id=user_id,
+                status="processing",
+                progress={"completed": 0, "total": 0},
+            )
+            session.add(record)
+            await session.commit()
+            await session.refresh(record)
+            logger.info("Created multi_analysis_session: session_id=%s", session_id)
+            return record
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error creating multi_analysis_session: %s", e)
+            raise
+
+
+async def update_multi_session(
+    session_id: str,
+    *,
+    status: str | None = None,
+    progress: dict | None = None,
+    result: dict | None = None,
+) -> MultiAnalysisSession | None:
+    """
+    Update an existing multi-analysis session.
+
+    Args:
+        session_id: Unique session identifier
+        status: New status value (optional)
+        progress: New progress dict (optional)
+        result: New result dict (optional)
+
+    Returns:
+        MultiAnalysisSession | None: Updated object or None if not found
+    """
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(MultiAnalysisSession).where(
+                MultiAnalysisSession.session_id == session_id
+            )
+            record = await session.scalar(stmt)
+
+            if record is None:
+                logger.debug("MultiAnalysisSession '%s' not found", session_id)
+                return None
+
+            if status is not None:
+                record.status = status
+            if progress is not None:
+                record.progress = progress
+            if result is not None:
+                record.result = result
+            record.updated_at = datetime.now(timezone.utc)
+
+            await session.commit()
+            await session.refresh(record)
+            logger.info("Updated multi_analysis_session: session_id=%s, status=%s", session_id, record.status)
+            return record
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error updating multi_analysis_session: %s", e)
+            raise
+
+
+async def get_multi_session(session_id: str) -> MultiAnalysisSession | None:
+    """
+    Get multi-analysis session by session_id.
+
+    Args:
+        session_id: Unique session identifier
+
+    Returns:
+        MultiAnalysisSession | None: Session object or None if not found
+    """
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(MultiAnalysisSession).where(
+                MultiAnalysisSession.session_id == session_id
+            )
+            return await session.scalar(stmt)
+        except SQLAlchemyError as e:
+            logger.error("Database error getting multi_analysis_session: %s", e)
             return None

@@ -1,10 +1,10 @@
 # NeoFin AI — Обзор проекта
 
 ## Статус
-- **Фаза**: Phase 1 (MVP) — Этап 3 полностью завершён и верифицирован: 48 тестов, 0 failed
+- **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён
 - **Последний коммит**: `refactor(analysis): lift analysis state to AnalysisContext; remove usePdfAnalysis hook`
-- **Последняя сессия**: 2026-03-24 — Auth валидация, Vite proxy, DATABASE_URL fix, два frontend бага (чистое решение через AnalysisContext)
-- **Контекст**: Полная архитектура в `.agent/architecture.md`. Читать его перед любой разработкой.
+- **Последняя сессия**: 2026-03-25 — docs/ARCHITECTURE.md написан (Task 10 завершён)
+- **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
 ---
 

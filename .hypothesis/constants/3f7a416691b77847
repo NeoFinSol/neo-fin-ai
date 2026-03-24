@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\routers\analyses.py
+# hypothesis_version: 6.151.9
+
+[100, 404, '/analyses', '/{task_id}', '1', 'Analysis not found', 'DEMO_MODE', 'analyses', 'data', 'filename', 'risk_level', 'score']

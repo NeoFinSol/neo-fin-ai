@@ -71,6 +71,13 @@ class AppSettings(BaseSettings):
         description="Rate limit in format <count>/<period> (e.g., 100/minute)",
     )
 
+    # Confidence threshold for extraction filtering
+    confidence_threshold: float = Field(
+        0.5,
+        alias="CONFIDENCE_THRESHOLD",
+        description="Minimum confidence score to include an extracted metric [0.0–1.0]",
+    )
+
     # Logging settings
     log_level: str = Field(
         "INFO",
@@ -100,6 +107,24 @@ class AppSettings(BaseSettings):
         if not (v.startswith("http://") or v.startswith("https://")):
             raise ValueError("URL must start with http:// or https://")
         return v
+
+    @field_validator("confidence_threshold", mode="before")
+    @classmethod
+    def validate_confidence_threshold(cls, v: str | float | None) -> float:
+        """Validate confidence threshold; fall back to 0.5 on invalid input."""
+        if v is None:
+            return 0.5
+        try:
+            value = float(v)
+        except (TypeError, ValueError):
+            logging.warning("Invalid CONFIDENCE_THRESHOLD=%r. Using default 0.5", v)
+            return 0.5
+        if not (0.0 <= value <= 1.0):
+            logging.warning(
+                "CONFIDENCE_THRESHOLD=%s out of [0.0, 1.0]. Using default 0.5", value
+            )
+            return 0.5
+        return value
 
     @field_validator("rate_limit", mode="before")
     @classmethod

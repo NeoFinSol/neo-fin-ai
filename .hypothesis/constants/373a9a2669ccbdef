@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\analysis\recommendations.py
+# hypothesis_version: 6.151.9
+
+[0.1, 65.0, 100, 999, '\\{.*\\}', 'current_ratio', 'debt_to_revenue', 'equity', 'equity_ratio', 'key_factors', 'liabilities', 'net_profit', 'recommendations', 'revenue', 'risks', 'roa', 'roe', 'system', 'tool_input', 'total_assets', '—']

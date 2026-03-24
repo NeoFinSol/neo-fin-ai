@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\core\huggingface_agent.py
+# hypothesis_version: 6.151.9
+
+[0.7, 120, 200, 2048, 'Authorization', 'Content-Type', 'HF API error %d: %s', 'application/json', 'choices', 'content', 'max_tokens', 'message', 'messages', 'model', 'role', 'system', 'temperature', 'tool_input', 'user']

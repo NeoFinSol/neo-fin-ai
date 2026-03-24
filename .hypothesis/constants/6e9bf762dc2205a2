@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\models\settings.py
+# hypothesis_version: 6.151.9
+
+['.env', '100/minute', 'API_KEY', 'AppSettings', 'CRITICAL', 'DEBUG', 'DEV_MODE', 'ERROR', 'GIGACHAT_AUTH_URL', 'GIGACHAT_CHAT_URL', 'GIGACHAT_CLIENT_ID', 'GigaChat Client ID', 'HF_MODEL', 'HF_TOKEN', 'INFO', 'LLM_MODEL', 'LLM_URL', 'LOG_FORMAT', 'LOG_LEVEL', 'Local LLM model name', 'QWEN_API_KEY', 'QWEN_API_URL', 'RATE_LIMIT', 'URL must be a string', 'WARNING', 'after', 'before', 'gigachat_auth_url', 'gigachat_chat_url', 'http://', 'https://', 'ignore', 'json', 'llama3', 'llm_url', 'log_format', 'log_level', 'none', 'qwen_api_url', 'rate_limit', 'text', 'your-', 'your-api-key', 'your-client-id', 'your-client-secret']

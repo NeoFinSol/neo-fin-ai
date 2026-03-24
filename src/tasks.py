@@ -2,17 +2,34 @@
 import io
 import logging
 import os
+import re
+import time
 from pathlib import Path
 
 import PyPDF2
 
 from src.analysis import pdf_extractor
+from src.analysis.pdf_extractor import ExtractionMetadata
 from src.analysis.ratios import calculate_ratios
 from src.analysis.scoring import calculate_integral_score
-from src.db.crud import create_analysis, update_analysis, AnalysisAlreadyExistsError
+from src.db.crud import create_analysis, update_analysis, update_multi_session, AnalysisAlreadyExistsError
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
+
+_RAW_THRESHOLD = os.getenv("CONFIDENCE_THRESHOLD", "0.5")
+try:
+    CONFIDENCE_THRESHOLD: float = float(_RAW_THRESHOLD)
+    if not (0.0 <= CONFIDENCE_THRESHOLD <= 1.0):
+        logger.warning(
+            "CONFIDENCE_THRESHOLD=%s out of [0.0, 1.0], using default 0.5", _RAW_THRESHOLD
+        )
+        CONFIDENCE_THRESHOLD = 0.5
+except ValueError:
+    logger.warning(
+        "CONFIDENCE_THRESHOLD=%r is not a valid float, using default 0.5", _RAW_THRESHOLD
+    )
+    CONFIDENCE_THRESHOLD = 0.5
 
 
 async def _ensure_analysis_exists(task_id: str) -> bool:
@@ -85,6 +102,44 @@ def _cleanup_temp_file(file_path: str | os.PathLike | io.IOBase | None) -> None:
             logger.debug("Deleted temporary file: %s", path)
     except (TypeError, OSError, ValueError) as exc:
         logger.warning("Failed to cleanup path %r: %s", file_path, type(exc).__name__)
+
+
+def _apply_confidence_filter(
+    metadata: dict[str, ExtractionMetadata],
+    threshold: float | None = None,
+) -> tuple[dict[str, float | None], dict[str, dict]]:
+    """
+    Filter extraction metadata by confidence threshold.
+
+    Args:
+        metadata: Per-metric extraction results from parse_financial_statements_with_metadata.
+        threshold: Minimum confidence to keep a value. Defaults to CONFIDENCE_THRESHOLD.
+                   confidence >= threshold → keep value; confidence < threshold → None.
+                   value=None is always preserved as None regardless of confidence.
+
+    Returns:
+        filtered_metrics: All keys preserved; low-confidence values replaced with None.
+        extraction_metadata_payload: {key: {"confidence": float, "source": str}} for all keys.
+    """
+    if threshold is None:
+        threshold = CONFIDENCE_THRESHOLD
+
+    filtered_metrics: dict[str, float | None] = {}
+    extraction_metadata_payload: dict[str, dict] = {}
+
+    for key, meta in metadata.items():
+        if meta.value is None or meta.confidence < threshold:
+            filtered_metrics[key] = None
+        else:
+            filtered_metrics[key] = meta.value
+
+        extraction_metadata_payload[key] = {
+            "confidence": meta.confidence,
+            "source": meta.source,
+        }
+
+    return filtered_metrics, extraction_metadata_payload
+
 
 # Маппинг русских ключей ratios → snake_case English для frontend
 # Порядок соответствует группам: ликвидность, рентабельность, устойчивость, активность
@@ -277,7 +332,10 @@ async def process_pdf(task_id: str, file_path: str) -> None:
 
         # Extract tables and calculate metrics
         tables = await asyncio.to_thread(pdf_extractor.extract_tables, file_path)
-        metrics = await asyncio.to_thread(pdf_extractor.parse_financial_statements, tables, text)
+        metadata = await asyncio.to_thread(
+            pdf_extractor.parse_financial_statements_with_metadata, tables, text
+        )
+        metrics, extraction_metadata_payload = _apply_confidence_filter(metadata)
         ratios_ru = await asyncio.to_thread(calculate_ratios, metrics)
         raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
 
@@ -330,6 +388,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
                     "ratios": ratios_en,   # English keys for frontend
                     "score": score_payload,  # Full ScoreData shape
                     "nlp": nlp_result,
+                    "extraction_metadata": extraction_metadata_payload,
                 }
             },
         )
@@ -342,3 +401,150 @@ async def process_pdf(task_id: str, file_path: str) -> None:
     finally:
         # Clean up temporary file with safer deletion pattern
         _cleanup_temp_file(file_path)
+
+
+# ---------------------------------------------------------------------------
+# Multi-Period Analysis (neofin-competition-release)
+# Requirements: 2.4
+# ---------------------------------------------------------------------------
+
+_MULTI_ANALYSIS_TIMEOUT = 600  # seconds
+
+
+def parse_period_label(label: str) -> tuple[int, int]:
+    """
+    Parse period label into a sortable (year, quarter) tuple.
+
+    Formats:
+        "YYYY"      → (year, 0)
+        "Qn/YYYY"   → (year, n)
+        invalid     → (9999, 0)
+    """
+    label = label.strip()
+
+    m = re.fullmatch(r"Q([1-4])/(\d{4})", label, re.IGNORECASE)
+    if m:
+        return int(m.group(2)), int(m.group(1))
+
+    m = re.fullmatch(r"(\d{4})", label)
+    if m:
+        return int(m.group(1)), 0
+
+    return 9999, 0
+
+
+def sort_periods_chronologically(periods: list[dict]) -> list[dict]:
+    """Sort period result dicts by parse_period_label on 'period_label' key."""
+    return sorted(periods, key=lambda p: parse_period_label(p.get("period_label", "")))
+
+
+async def _process_single_period(period_label: str, file_path: str) -> dict:
+    """
+    Run the full financial analysis pipeline for one period's PDF.
+
+    Reuses existing pipeline functions: extractor → confidence filter → ratios → scoring.
+    NLP/recommendations are skipped for multi-period to keep latency bounded.
+
+    Args:
+        period_label: Human-readable period identifier (e.g. "2023", "Q1/2023")
+        file_path: Path to the PDF file for this period
+
+    Returns:
+        dict with keys: period_label, ratios, score, risk_level, extraction_metadata
+        On failure: {period_label, error: "processing_failed"}
+    """
+    try:
+        scanned = await asyncio.to_thread(pdf_extractor.is_scanned_pdf, file_path)
+        if scanned:
+            text = await asyncio.to_thread(pdf_extractor.extract_text_from_scanned, file_path)
+        else:
+            text = await asyncio.to_thread(_extract_text_from_pdf, file_path)
+
+        tables = await asyncio.to_thread(pdf_extractor.extract_tables, file_path)
+        metadata = await asyncio.to_thread(
+            pdf_extractor.parse_financial_statements_with_metadata, tables, text
+        )
+        metrics, extraction_metadata_payload = _apply_confidence_filter(metadata)
+        ratios_ru = await asyncio.to_thread(calculate_ratios, metrics)
+        raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
+
+        ratios_en = _translate_ratios(ratios_ru)
+        score_payload = _build_score_payload(raw_score, ratios_en)
+
+        return {
+            "period_label": period_label,
+            "ratios": ratios_en,
+            "score": score_payload.get("score", None),
+            "risk_level": score_payload.get("risk_level", None),
+            "extraction_metadata": extraction_metadata_payload,
+        }
+    except Exception as exc:
+        logger.warning(
+            "Period '%s' processing failed: %s", period_label, exc, exc_info=True
+        )
+        return {"period_label": period_label, "error": "processing_failed"}
+
+
+async def process_multi_analysis(
+    session_id: str,
+    periods: list,  # list[PeriodInput] — avoid circular import; duck-typed
+) -> None:
+    """
+    Orchestrate multi-period financial analysis.
+
+    Processes each period sequentially, survives partial failures,
+    persists progress after each period, and stores sorted results on completion.
+
+    Args:
+        session_id: Unique multi-analysis session identifier
+        periods: List of PeriodInput objects with .period_label and .file_path attributes
+    """
+    total = len(periods)
+    start_time = time.monotonic()
+
+    await update_multi_session(
+        session_id,
+        status="processing",
+        progress={"completed": 0, "total": total},
+    )
+
+    collected: list[dict] = []
+
+    for idx, period in enumerate(periods):
+        if time.monotonic() - start_time > _MULTI_ANALYSIS_TIMEOUT:
+            logger.error(
+                "session %s exceeded timeout (%ss) after %d/%d periods",
+                session_id, _MULTI_ANALYSIS_TIMEOUT, idx, total,
+            )
+            await update_multi_session(
+                session_id,
+                status="failed",
+                progress={"completed": idx, "total": total},
+            )
+            return
+
+        period_label: str = period.period_label
+        file_path: str = period.file_path
+
+        logger.info(
+            "session %s: processing period %d/%d '%s'",
+            session_id, idx + 1, total, period_label,
+        )
+
+        result = await _process_single_period(period_label, file_path)
+        collected.append(result)
+
+        await update_multi_session(
+            session_id,
+            progress={"completed": idx + 1, "total": total},
+        )
+
+    sorted_results = sort_periods_chronologically(collected)
+
+    await update_multi_session(
+        session_id,
+        status="completed",
+        progress={"completed": total, "total": total},
+        result={"periods": sorted_results},
+    )
+    logger.info("session %s completed: %d periods processed", session_id, total)

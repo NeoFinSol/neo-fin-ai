@@ -58,6 +58,22 @@ export interface NLPResult {
   recommendations: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Confidence & Explainability types (neofin-competition-release)
+// Requirement: 1.4
+// ---------------------------------------------------------------------------
+
+export type ExtractionSource =
+  | 'table_exact'
+  | 'table_partial'
+  | 'text_regex'
+  | 'derived';
+
+export interface ExtractionMetadataItem {
+  confidence: number; // expected range [0.0, 1.0]
+  source: ExtractionSource;
+}
+
 export interface AnalysisData {
   scanned: boolean;
   text: string;
@@ -66,6 +82,7 @@ export interface AnalysisData {
   ratios: FinancialRatios;
   score: ScoreData;
   nlp?: NLPResult;
+  extraction_metadata?: Record<string, ExtractionMetadataItem>;
 }
 
 export interface AnalysisResponse {
@@ -99,3 +116,45 @@ export interface AnalysisListResponse {
   page: number;
   page_size: number;
 }
+
+// ---------------------------------------------------------------------------
+// Multi-Period Analysis types (neofin-competition-release)
+// Requirement: 2.6
+// ---------------------------------------------------------------------------
+
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+export interface PeriodResult {
+  period_label: string;
+  ratios: Partial<Record<string, number | null>>;
+  score: number | null;
+  risk_level: RiskLevel | null;
+  extraction_metadata: Record<string, ExtractionMetadataItem>;
+  error?: string;
+}
+
+export interface MultiAnalysisProgress {
+  completed: number;
+  total: number;
+}
+
+export interface MultiAnalysisAcceptedResponse {
+  session_id: string;
+  status: 'processing';
+}
+
+export interface MultiAnalysisProcessingResponse {
+  session_id: string;
+  status: 'processing';
+  progress: MultiAnalysisProgress;
+}
+
+export interface MultiAnalysisCompletedResponse {
+  session_id: string;
+  status: 'completed';
+  periods: PeriodResult[];
+}
+
+export type MultiAnalysisResponse =
+  | MultiAnalysisProcessingResponse
+  | MultiAnalysisCompletedResponse;

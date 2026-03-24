@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class FinanceMetric(BaseModel):
@@ -37,11 +40,22 @@ class AnalyzeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Confidence & Explainability schemas (neofin-competition-release)
+# Requirements: 1.2, 1.6
+# ---------------------------------------------------------------------------
+
+
+class ExtractionMetadataItem(BaseModel):
+    confidence: float = Field(ge=0.0, le=1.0, description="Уверенность извлечения [0.0–1.0]")
+    source: Literal["table_exact", "table_partial", "text_regex", "derived"] = Field(
+        description="Метод извлечения показателя"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Analysis History API schemas (analysis-history-visualization)
 # Requirements: 6.1, 6.2, 6.3
 # ---------------------------------------------------------------------------
-
-from datetime import datetime
 
 
 class AnalysisSummaryResponse(BaseModel):
@@ -65,3 +79,61 @@ class AnalysisDetailResponse(BaseModel):
     status: str
     created_at: datetime
     data: dict | None = None
+    extraction_metadata: dict[str, ExtractionMetadataItem] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Multi-Period Analysis schemas (neofin-competition-release)
+# Requirements: 2.3
+# ---------------------------------------------------------------------------
+
+RiskLevel = Literal["low", "medium", "high"]
+
+
+class PeriodInput(BaseModel):
+    period_label: str = Field(min_length=1, max_length=20)
+
+    @field_validator("period_label", mode="before")
+    @classmethod
+    def strip_period_label(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("period_label must not be blank")
+        return stripped
+
+
+class PeriodResult(BaseModel):
+    period_label: str
+    ratios: dict[str, float | None]
+    score: float | None
+    risk_level: RiskLevel | None
+    extraction_metadata: dict[str, ExtractionMetadataItem]
+
+
+class MultiAnalysisRequest(BaseModel):
+    periods: list[PeriodInput] = Field(min_length=1, max_length=5)
+
+
+class MultiAnalysisProgress(BaseModel):
+    completed: int = Field(ge=0)
+    total: int = Field(ge=0)
+
+
+class MultiAnalysisAcceptedResponse(BaseModel):
+    session_id: str
+    status: Literal["processing"]
+
+
+class MultiAnalysisProcessingResponse(BaseModel):
+    session_id: str
+    status: Literal["processing"]
+    progress: MultiAnalysisProgress
+
+
+class MultiAnalysisCompletedResponse(BaseModel):
+    session_id: str
+    status: Literal["completed"]
+    periods: list[PeriodResult] = Field(min_length=1)
+
+
+MultiAnalysisResponse = MultiAnalysisProcessingResponse | MultiAnalysisCompletedResponse

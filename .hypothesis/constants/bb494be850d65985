@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\core\gigachat_agent.py
+# hypothesis_version: 6.151.9
+
+[1.0, 2.0, 120, 200, 300, 401, 3600, '/', 'Authorization', 'Content-Type', 'GIGACHAT_API_PERS', 'GIGACHAT_SSL_VERIFY', 'GigaChat-Pro', 'RqUID', 'access_token', 'application/json', 'choices', 'content', 'expires_in', 'false', 'message', 'messages', 'model', 'role', 'scope', 'system', 'tool_input', 'true', 'user', 'utf-8']

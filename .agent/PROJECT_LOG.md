@@ -1,5 +1,14 @@
 # Project Log
 
+## 2026-03-25 | docs/ARCHITECTURE.md — Task 10 завершён ✅
+- Создан `docs/ARCHITECTURE.md` (11 разделов): общий обзор, layered architecture, pipeline обработки данных, гибридная AI-архитектура, Explainability/Confidence, Multi-Period Analysis, AI Service Layer (fallback chain), хранение данных, frontend архитектура, production архитектура, преимущества
+- Документ написан на русском языке для жюри конкурса
+- Включены ASCII-диаграммы pipeline и production-архитектуры
+- **Файлы**: `docs/ARCHITECTURE.md`
+- **Дальше**: все задачи neofin-competition-release завершены
+
+---
+
 ## 2026-03-24 | Refactor: чистое решение — AnalysisContext вместо pendingResult ✅
 - `frontend/src/context/AnalysisContext.tsx` — новый контекст на уровне приложения: владеет `status`, `result`, `filename`, `error`, `analyze()`, `reset()`; переживает навигацию
 - `frontend/src/pages/Dashboard.tsx` — переписан: только читает из `useAnalysis()`, не владеет состоянием анализа

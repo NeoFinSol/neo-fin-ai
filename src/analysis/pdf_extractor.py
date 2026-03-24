@@ -1,7 +1,8 @@
 import logging
 import os
 import re
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 import camelot
 from pdf2image import convert_from_path
@@ -17,6 +18,39 @@ if os.path.exists(_tesseract_path):
     )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Extraction metadata types
+# ---------------------------------------------------------------------------
+
+ExtractionSource = Literal["table_exact", "table_partial", "text_regex", "derived"]
+
+
+@dataclass
+class ExtractionMetadata:
+    value: float | None
+    confidence: float  # always in [0.0, 1.0]
+    source: ExtractionSource
+
+
+def determine_source(
+    match_type: str,
+    is_exact: bool = False,
+    is_derived: bool = False,
+) -> tuple[ExtractionSource, float]:
+    """Return (source, confidence) deterministically based on extraction method."""
+    if is_derived:
+        return ("derived", 0.3)
+    if match_type == "table":
+        if is_exact:
+            return ("table_exact", 0.9)
+        return ("table_partial", 0.7)
+    if match_type == "text_regex":
+        return ("text_regex", 0.5)
+    return ("derived", 0.3)
+
+
+# ---------------------------------------------------------------------------
 
 _NUMBER_PATTERN = re.compile(r"[-(]?\d[\d\s.,]*\d|\d")
 
@@ -188,63 +222,59 @@ def extract_tables(pdf_path: str) -> list[dict[str, Any]]:
     return tables_data
 
 
-def parse_financial_statements(tables: list, text: str) -> dict[str, float | None]:
-    metrics: dict[str, float | None] = {key: None for key in _METRIC_KEYWORDS}
+def parse_financial_statements_with_metadata(
+    tables: list, text: str
+) -> dict[str, ExtractionMetadata]:
+    """
+    Returns ExtractionMetadata per metric for all keys in _METRIC_KEYWORDS.
+    Missing metrics: ExtractionMetadata(value=None, confidence=0.0, source="derived").
+    Always returns exactly len(_METRIC_KEYWORDS) keys.
+    """
+    # raw[key] = (value, match_type, is_exact)
+    # match_type: "table" | "text_regex" | "derived"
+    raw: dict[str, tuple[float, str, bool]] = {}
 
-    # First pass: parse tables (most reliable source)
+    # Pass 1: tables
     for table in tables or []:
         rows = _table_to_rows(table)
         for row in rows:
             row_text = " ".join(str(cell) for cell in row if cell is not None)
             row_text_lower = row_text.lower()
             for metric_key, keywords in _METRIC_KEYWORDS.items():
-                if metrics[metric_key] is not None:
+                if metric_key in raw:
                     continue
-                if any(keyword in row_text_lower for keyword in keywords):
-                    # Find index of the label cell (first cell containing the keyword)
-                    label_idx = 0
-                    for i, cell in enumerate(row):
-                        if cell is not None and any(kw in str(cell).lower() for kw in keywords):
-                            label_idx = i
-                            break
+                if not any(kw in row_text_lower for kw in keywords):
+                    continue
 
-                    # Take the FIRST numeric cell after the label (current period column)
-                    # Skip code cells (pure 4-digit numbers like "1200", "2110")
-                    value = None
-                    for cell in row[label_idx + 1:]:
-                        if cell is None:
-                            continue
-                        cell_str = str(cell).strip()
-                        if not cell_str or not any(c.isdigit() for c in cell_str):
-                            continue
-                        # Skip row code cells (4-digit codes like 1200, 2110)
-                        digits_only = cell_str.replace(" ", "").replace("\xa0", "")
-                        if digits_only.isdigit() and len(digits_only) == 4:
-                            continue
-                        candidate = _normalize_number(cell_str)
-                        if candidate is not None:
-                            value = candidate
-                            break
+                label_idx = 0
+                for i, cell in enumerate(row):
+                    if cell is not None and any(kw in str(cell).lower() for kw in keywords):
+                        label_idx = i
+                        break
 
-                    if value is None:
-                        value = _extract_number_from_text(row_text)
-                    if value is not None:
-                        metrics[metric_key] = value
+                value = _extract_first_numeric_cell(row[label_idx + 1:])
+                if value is None:
+                    value = _extract_number_from_text(row_text)
+                if value is None:
+                    continue
 
-    # Second pass: parse free text (for cases where tables weren't extracted)
+                # is_exact: the label cell itself matches a keyword fully
+                label_cell = str(row[label_idx]).lower().strip() if row[label_idx] is not None else ""
+                is_exact = any(label_cell == kw for kw in keywords)
+                raw[metric_key] = (value, "table", is_exact)
+
+    # Pass 2: free text keyword proximity
     text_lower = (text or "").lower()
     for metric_key, keywords in _METRIC_KEYWORDS.items():
-        if metrics[metric_key] is not None:
+        if metric_key in raw:
             continue
         value = _extract_number_near_keywords(text_lower, keywords)
         if value is not None:
-            metrics[metric_key] = value
+            raw[metric_key] = (value, "text_regex", False)
 
-    # Third pass: broader regex for common Russian financial report formats
-    # This handles cases where the table extraction failed
-    # Handles pipe separator format: "Выручка | 312 567 000"
+    # Pass 3: broad regex patterns
     num_group = r"([-]?\(?\d[\d\s.,]*\d\)?)"
-    broad_patterns = {
+    broad_patterns: dict[str, list[str]] = {
         "revenue": [
             r"выручка от реализации\s*\|\s*" + num_group,
             r"выручка[^\d]{0,80}" + num_group,
@@ -278,33 +308,70 @@ def parse_financial_statements(tables: list, text: str) -> dict[str, float | Non
             r"себестоимость продаж[^\d]{0,80}" + num_group,
         ],
     }
-
     for metric_key, pattern_list in broad_patterns.items():
-        if metrics[metric_key] is not None:
+        if metric_key in raw:
             continue
         for pattern in pattern_list:
             match = re.search(pattern, text_lower)
             if match:
                 value = _normalize_number(match.group(1))
                 if value is not None:
-                    metrics[metric_key] = value
+                    raw[metric_key] = (value, "text_regex", False)
                     break
 
-    # Fourth pass: derive missing metrics from available ones
-    # liabilities = total_assets - equity (balance sheet identity) if not found directly
-    if metrics["liabilities"] is None:
+    # Pass 4: derive liabilities if still missing
+    if "liabilities" not in raw:
         long_term = _extract_section_total(tables, text_lower, [
             "итого по разделу iv", "итого долгосрочных обязательств"
         ])
-        short_term = metrics.get("short_term_liabilities")
-        if long_term is not None and short_term is not None:
-            metrics["liabilities"] = long_term + short_term
-            logger.debug("Derived liabilities = IV(%s) + V(%s) = %s", long_term, short_term, metrics["liabilities"])
-        elif metrics.get("total_assets") is not None and metrics.get("equity") is not None:
-            metrics["liabilities"] = metrics["total_assets"] - metrics["equity"]
-            logger.debug("Derived liabilities = assets - equity = %s", metrics["liabilities"])
+        short_term = raw["short_term_liabilities"][0] if "short_term_liabilities" in raw else None
+        total_assets = raw["total_assets"][0] if "total_assets" in raw else None
+        equity = raw["equity"][0] if "equity" in raw else None
 
-    return metrics
+        if long_term is not None and short_term is not None:
+            derived = long_term + short_term
+            logger.debug("Derived liabilities = IV(%s) + V(%s) = %s", long_term, short_term, derived)
+            raw["liabilities"] = (derived, "derived", False)
+        elif total_assets is not None and equity is not None:
+            derived = total_assets - equity
+            logger.debug("Derived liabilities = assets - equity = %s", derived)
+            raw["liabilities"] = (derived, "derived", False)
+
+    # Build final result — all keys guaranteed present
+    result: dict[str, ExtractionMetadata] = {}
+    for key in _METRIC_KEYWORDS:
+        if key in raw:
+            value, match_type, is_exact = raw[key]
+            source, confidence = determine_source(
+                match_type, is_exact=is_exact, is_derived=(match_type == "derived")
+            )
+            result[key] = ExtractionMetadata(value=value, confidence=confidence, source=source)
+        else:
+            result[key] = ExtractionMetadata(value=None, confidence=0.0, source="derived")
+
+    return result
+
+
+def parse_financial_statements(tables: list, text: str) -> dict[str, float | None]:
+    metadata = parse_financial_statements_with_metadata(tables, text)
+    return {k: v.value for k, v in metadata.items()}
+
+
+def _extract_first_numeric_cell(cells: list) -> float | None:
+    """Return the first parseable numeric value from a list of cells, skipping 4-digit row codes."""
+    for cell in cells:
+        if cell is None:
+            continue
+        cell_str = str(cell).strip()
+        if not cell_str or not any(c.isdigit() for c in cell_str):
+            continue
+        digits_only = cell_str.replace(" ", "").replace("\xa0", "")
+        if digits_only.isdigit() and len(digits_only) == 4:
+            continue
+        value = _normalize_number(cell_str)
+        if value is not None:
+            return value
+    return None
 
 
 def _extract_section_total(tables: list, text_lower: str, keywords: list[str]) -> float | None:
@@ -314,17 +381,9 @@ def _extract_section_total(tables: list, text_lower: str, keywords: list[str]) -
         for row in rows:
             row_text_lower = " ".join(str(c) for c in row if c is not None).lower()
             if any(kw in row_text_lower for kw in keywords):
-                for cell in row[1:]:
-                    if cell is None:
-                        continue
-                    cell_str = str(cell).strip()
-                    digits_only = cell_str.replace(" ", "").replace("\xa0", "")
-                    if digits_only.isdigit() and len(digits_only) == 4:
-                        continue
-                    val = _normalize_number(cell_str)
-                    if val is not None:
-                        return val
-    # fallback: text
+                val = _extract_first_numeric_cell(row[1:])
+                if val is not None:
+                    return val
     for kw in keywords:
         pattern = re.compile(rf"{re.escape(kw)}[^0-9\-]{{0,40}}([-]?\(?\d[\d\s.,]*\d\)?)")
         m = pattern.search(text_lower)

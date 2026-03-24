@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\controllers\analyze.py
+# hypothesis_version: 6.151.9
+
+[0.0, 200, 400, 500, 504, 5000, '(\\d[\\d\\s,\\.]*\\d|\\d)', ',', '-', '.', '.pdf', 'AI processing failed', 'AI service timeout', 'Empty file content', 'Invalid PDF file: %s', 'None', '[^0-9.\\-\\s]', '\\(.*\\d.*\\)', 'accounts_receivable', 'cost_of_goods_sold', 'current_assets', 'current_ratio', 'debt_to_revenue', 'equity', 'equity_ratio', 'factors', 'intermediate_steps', 'inventory', 'liabilities', 'medium', 'metrics', 'net_profit', 'normalized_scores', 'pages', 'ratios', 'revenue', 'risk_level', 'roa', 'roe', 'scanned', 'score', 'tables', 'text', 'tool_input', 'total_assets', 'БАЛАНС[^\\d]{0,60}', 'БАЛАНС\\s*\\|\\s*', 'Выручка[^\\d]{0,60}', 'Выручка\\s*\\|\\s*', 'Запасы[^\\d]{0,60}', 'Запасы\\s*\\|\\s*']

@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\app.py
+# hypothesis_version: 6.151.9
+
+['%Y-%m-%dT%H:%M:%S', '*', ',', '0.1.0', 'Authorization', 'CORS_ALLOW_HEADERS', 'CORS_ALLOW_METHODS', 'CORS_ALLOW_ORIGINS', 'CRITICAL', 'Content-Type', 'DEBUG', 'DELETE', 'ERROR', 'GET', 'INFO', 'LOG_FORMAT', 'LOG_LEVEL', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'WARNING', 'X-API-Key', 'X-Requested-With', 'false', 'http://', 'http://127.0.0.1', 'http://127.0.0.1:*', 'http://127.0.0.1:80', 'http://localhost', 'http://localhost:*', 'http://localhost:80', 'https://', 'json', 'text', 'true']
