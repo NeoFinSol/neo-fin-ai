@@ -2,25 +2,23 @@
 
 ## 1. Общий обзор
 
-**NeoFin AI** — гибридная AI-платформа финансового анализа предприятий.
+**NeoFin AI** — гибридная платформа финансового анализа предприятий на основе PDF-отчётности.
 
-Система решает задачу, которую не решает ни один классический финансовый инструмент: она не просто считает коэффициенты — она **объясняет, откуда взялось каждое число**, оценивает надёжность источника и генерирует рекомендации, привязанные к конкретным метрикам.
+Система решает задачу, которую не решают классические финансовые инструменты: она не просто считает коэффициенты, но и **объясняет происхождение каждого числа**, оценивает надёжность источника, генерирует рекомендации, привязанные к конкретным метрикам, и поддерживает анализ динамики за несколько периодов.
 
 **Ключевые задачи:**
-- Автоматическое извлечение финансовых показателей из PDF-отчётов (текст, таблицы, сканы)
+- Автоматическое извлечение 15 финансовых показателей из PDF-отчётов (текст, таблицы, сканы через OCR)
+- Оценка надёжности каждого извлечённого показателя через Confidence Score
 - Расчёт 13 коэффициентов по четырём группам (РСБУ/МСФО) с нормализацией по отраслевым бенчмаркам
 - Интегральный скоринг 0–100 с уровнем риска, факторами влияния и нормализованными значениями
 - NLP-анализ рисков и генерация рекомендаций через языковые модели
 - Многопериодный анализ с хронологической сортировкой и визуализацией динамики
 
-**Почему это AI-система, а не калькулятор:**
 ---
 
 ## 2. Архитектурный подход
 
-### Layered Architecture
-
-Система построена на **строгой послойной архитектуре**. Каждый слой имеет единственную зону ответственности и взаимодействует только с соседними слоями.
+Система построена на **строгой послойной архитектуре**. Каждый слой имеет единственную зону ответственности и взаимодействует только с соседним нижним слоем. Зависимости строго однонаправлены — сверху вниз.
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -37,8 +35,8 @@
 │   recommendations · ExtractionMetadata              │
 ├─────────────────────────────────────────────────────┤
 │              AI Service (LLM Abstraction)           │
-│   GigaChat · DeepSeek/HF · Ollama · graceful degrade│
-│   Единый интерфейс · Fallback chain · Timeout guard │
+│   Единый интерфейс · Выбор провайдера при старте    │
+│   GigaChat · HuggingFace · Ollama · деградация      │
 ├─────────────────────────────────────────────────────┤
 │                  DB (Persistence)                   │
 │   PostgreSQL · SQLAlchemy async · JSONB · Alembic   │
@@ -49,37 +47,62 @@
 
 | Слой | Модуль | Ответственность |
 |---|---|---|
+| Routers | `src/routers/` | HTTP-контракт, валидация входных данных, аутентификация, rate limiting |
+| Tasks | `src/tasks.py` | Оркестрация pipeline, фильтрация по Confidence Score, маппинг ключей, отслеживание прогресса |
+| Analysis | `src/analysis/` | Чистые функции: извлечение, расчёты, скоринг, NLP, рекомендации |
+| AI Service | `src/core/ai_service.py` | Единая точка доступа к LLM, выбор провайдера при старте, изоляция бизнес-логики от деталей провайдера |
+| DB | `src/db/` | Персистентность, миграции; единственный слой, содержащий SQL |
+
+**Жёсткие архитектурные ограничения:**
+
+| Правило | Пример нарушения |
+|---|---|
+| SQL только в `src/db/crud.py` | `tasks.py` вызывает `session.execute()` напрямую |
+| Доступ к LLM только через `ai_service.py` | `nlp_analysis.py` импортирует `gigachat_agent` напрямую |
+| `analysis/*` не зависит от FastAPI/SQLAlchemy | `ratios.py` импортирует `from fastapi import ...` |
+| Бизнес-логика только в `tasks.py` и ниже | `routers/upload.py` вызывает `calculate_ratios()` напрямую |
+
 ---
 
 ## 3. Pipeline обработки данных
 
-Полный цикл от загрузки PDF до сохранения результата в БД:
+Полный цикл от загрузки PDF до сохранения результата в базе данных:
 
 ```
-PDF-файл (загружен через POST /upload)
+POST /upload  →  BackgroundTask запущена, клиент получает task_id немедленно
    │
    ▼
 ┌──────────────────────────────────────────────────────┐
 │  [1] Extractor  (pdf_extractor.py)                   │
 │                                                      │
 │  Определение типа документа:                         │
-│  • Текстовый PDF → PyPDF2 → raw text                 │
-│  • Скан → pytesseract OCR → raw text                 │
-│  • Таблицы → pdfplumber → structured data            │
+│  • Текстовый PDF  →  PyPDF2       →  raw text        │
+│  • Скан           →  pytesseract  →  OCR text        │
+│  • Таблицы        →  pdfplumber   →  structured data │
 │                                                      │
-│  Парсинг показателей → ExtractionMetadata:           │
-│  { value: float, confidence: 0.3–0.9, source: str }  │
+│  parse_financial_statements_with_metadata()          │
+│  Возвращает dict[str, ExtractionMetadata]:           │
+│    value: float | None                               │
+│    confidence: 0.0–0.9                               │
+│    source: table_exact | table_partial |             │
+│             text_regex | derived                     │
+│  Все 15 ключей присутствуют всегда.                  │
+│  Показатель не найден: value=None, confidence=0.0    │
 └──────────────────────────────────────────────────────┘
    │
    ▼
 ┌──────────────────────────────────────────────────────┐
 │  [2] Confidence Filter  (_apply_confidence_filter)   │
 │                                                      │
-│  confidence >= CONFIDENCE_THRESHOLD → value          │
-│  confidence <  CONFIDENCE_THRESHOLD → None           │
+│  CONFIDENCE_THRESHOLD = env("CONFIDENCE_THRESHOLD",  │
+│                              default=0.5)            │
 │                                                      │
-│  Все ключи сохраняются в extraction_metadata:        │
-│  ненадёжные данные видны в UI, но не влияют на расчёт│
+│  confidence >= threshold  →  value передаётся далее  │
+│  confidence <  threshold  →  None (исключён из расч.)│
+│                                                      │
+│  Все 15 ключей сохраняются в extraction_metadata:    │
+│  ненадёжные показатели видны в UI, но не участвуют   │
+│  в расчёте коэффициентов                             │
 └──────────────────────────────────────────────────────┘
    │
    ▼
@@ -87,12 +110,15 @@ PDF-файл (загружен через POST /upload)
 │  [3] Ratios  (ratios.py)                             │
 │                                                      │
 │  13 коэффициентов по 4 группам:                      │
-│  • Ликвидность (3): current, quick, absolute         │
-│  • Рентабельность (4): ROA, ROE, ROS, EBITDA margin  │
-│  • Устойчивость (3): equity ratio, leverage, coverage│
-│  • Активность (3): asset, inventory, receivables     │
+│  • Ликвидность    (25%): current, quick, absolute    │
+│  • Рентабельность (35%): ROA, ROE, ROS, EBITDA margin│
+│  • Устойчивость   (25%): equity ratio, leverage,     │
+│                           interest coverage          │
+│  • Активность     (15%): asset, inventory,           │
+│                           receivables turnover       │
 │                                                      │
-│  Показатель = None → коэффициент = None (не ломает)  │
+│  Если показатель = None → коэффициент = None.        │
+│  Формула не применяется; деления на ноль нет.        │
 └──────────────────────────────────────────────────────┘
    │
    ▼
@@ -101,207 +127,138 @@ PDF-файл (загружен через POST /upload)
 │                                                      │
 │  • Нормализация каждого коэффициента по бенчмаркам   │
 │    РСБУ → [0.0, 1.0]                                 │
-│  • Взвешенная сумма (веса: ликв. 25%, рент. 35%,     │
-│    устойч. 25%, актив. 15%) → скоринг 0–100          │
-│  • Отсутствующие коэффициенты исключаются,           │
-│    веса перераспределяются автоматически             │
-│  • risk_level: низкий (≥75) / средний (≥50) / высокий│
-│  • factors[]: impact = positive / neutral / negative │
+│  • Взвешенная сумма → итоговый скоринг 0–100         │
+│  • Отсутствующие коэффициенты исключаются;           │
+│    оставшиеся веса перераспределяются автоматически  │
+│  • risk_level: low (≥75) / medium (≥50) / high (<50) │
+│  • factors[]: {name, impact: positive|neutral|       │
+│                              negative}               │
+│  • normalized_scores: {ratio_key: float[0,1]}        │
 └──────────────────────────────────────────────────────┘
    │
    ▼
 ┌──────────────────────────────────────────────────────┐
 │  [5] AI Analysis  (nlp_analysis.py + recommendations)│
----
-
-## 4. Гибридная AI-архитектура
-
-NeoFin AI — не pipeline с LLM на конце. Это **двухуровневая система**, где каждый уровень решает свою задачу и может работать независимо.
-
-### Уровень 1 — Детерминированный (всегда активен)
-
-Обеспечивает базовый результат при любых условиях: без сети, без API-ключей, без GPU.
-
-| Компонент | Задача | Свойство |
-|---|---|---|
-| `pdf_extractor.py` | Извлечение показателей из PDF/сканов | Детерминировано, воспроизводимо |
-| `ratios.py` | Расчёт 13 коэффициентов по формулам | Прозрачная математика |
-| `scoring.py` | Нормализация по бенчмаркам РСБУ, скоринг 0–100 | Объяснимые веса и пороги |
-
-**Ключевые свойства:**
-- Воспроизводимость: одинаковый PDF → одинаковый числовой результат
-- Объяснимость: каждый коэффициент имеет формулу, источник данных и confidence
-- Независимость: не требует внешних сервисов
-
-### Уровень 2 — Вероятностный (AI-слой)
-
-Активируется при наличии хотя бы одного настроенного LLM-провайдера. Добавляет интерпретацию поверх числового результата.
-
-| Компонент | Задача |
-|---|---|
-| `nlp_analysis.py` | Анализ текста отчёта: риски, ключевые факторы |
-| `recommendations.py` | Рекомендации с явными ссылками на числовые метрики |
-
-**Ключевые свойства:**
-- Graceful degradation: при сбое LLM возвращаются пустые списки — числовой анализ не прерывается
-- Timeout guard: `asyncio.wait_for` с лимитом 60–65 секунд на каждый вызов
-- Результат: `nlp.risks[]`, `nlp.key_factors[]`, `nlp.recommendations[]`
----
-
-## 5. Explainability как архитектурный принцип
-
-Explainability в NeoFin AI — это не дополнительная функция. Это **сквозной принцип**, реализованный на каждом уровне системы.
-
-### Проблема, которую решает Explainability
-
-Классические финансовые инструменты дают число без объяснения. Пользователь видит «ROA = 4.2%», но не знает: это из таблицы или из текста? Насколько можно доверять этому числу? Почему скоринг именно 68, а не 75?
-
-NeoFin AI отвечает на эти вопросы явно.
-
-### Confidence Score
-
-Каждый извлечённый показатель получает оценку надёжности на основе метода извлечения:
-
-| Confidence | Метод извлечения | Тип источника | Интерпретация |
-|:---:|---|---|---|
-| `0.9` | Точное совпадение ключевого слова в таблице | `table_exact` | Высокая надёжность |
-| `0.7` | Частичное совпадение в таблице | `table_partial` | Хорошая надёжность |
-| `0.5` | Извлечение через regex из текста | `text_regex` | Приемлемая надёжность |
-| `0.3` | Производный расчёт (обязательства = активы − капитал) | `derived` | Низкая надёжность |
-
-### Фильтрация по порогу
-
-```python
-# _apply_confidence_filter в tasks.py
-# Правило: confidence >= CONFIDENCE_THRESHOLD → включить в расчёт
-#           confidence <  CONFIDENCE_THRESHOLD → заменить на None
-#
-# Важно: все ключи сохраняются в extraction_metadata —
-# ненадёжные данные видны в UI, но не влияют на коэффициенты
-if meta.confidence < CONFIDENCE_THRESHOLD:
-    filtered_metrics[key] = None
-else:
-    filtered_metrics[key] = meta.value
-```
-
-### Explainability в API-ответе
-
-Каждый ответ API содержит полный контекст для объяснения результата:
-
-- `extraction_metadata` — `{confidence, source}` для каждого показателя
-- `score.factors[]` — список факторов с `impact: positive | neutral | negative`
-- `score.normalized_scores` — нормализованные значения [0, 1] для каждого коэффициента (видно, что «тянет» вниз)
-
-### Explainability в UI
-
-- `ConfidenceBadge` — цветовая маркировка каждого показателя: 🟢 ≥ 0.8 / 🟡 0.5–0.8 / 🔴 < 0.5
-- Tooltip с методом извлечения (`source`) при наведении
-- Сводка: «Извлечено надёжно: N из 15 показателей»
-
-**Отличие от black-box моделей:** система не просто выдаёт скоринг — она показывает, какие данные использовались, насколько им можно доверять, и какой вклад внёс каждый коэффициент в итоговую оценку.
-│  [6] Persistence  (crud.py → PostgreSQL JSONB)       │
-│                                  │
-│  status: completed / failed                          │
-│  data: { metrics, ratios, score, nlp,                │
-│          extraction_metadata }                       │
+│                                                      │
+│  Выполняется параллельно через asyncio.gather():     │
+│  • nlp_analysis:    риски и ключевые факторы из      │
+│                     текста отчёта                    │
+│  • recommendations: 3–5 рекомендаций со ссылками     │
+│                     на конкретные метрики            │
+│                                                      │
+│  asyncio.wait_for(nlp,  timeout=60s)                 │
+│  asyncio.wait_for(rec,  timeout=65s)                 │
+│                                                      │
+│  При timeout или ошибке: risks=[], recommendations=[]│
+│  Шаги 1–4 не затрагиваются.                          │
 └──────────────────────────────────────────────────────┘
    │
    ▼
-React / Mantine UI  ←  GET /result/{task_id}  (polling)
+┌──────────────────────────────────────────────────────┐
+│  [6] Persistence  (crud.py → PostgreSQL JSONB)       │
+│                                                      │
+│  update_analysis(task_id, status="completed", data={ │
+│    metrics, ratios, score, nlp,                      │
+│    extraction_metadata                               │
+│  })                                                  │
+└──────────────────────────────────────────────────────┘
+   │
+   ▼
+React / Mantine UI  ←  GET /result/{task_id}  (polling каждые 2000 мс)
 ```
 
 ---
 
 ## 4. Гибридная AI-архитектура
 
-NeoFin AI — не pipeline с LLM на конце. Это **двухуровневая система**, где каждый уровень решает свою задачу и может работать независимо.
+NeoFin AI — не pipeline с LLM на конце. Это **двухуровневая система**, где каждый уровень решает отдельную задачу и может работать независимо.
 
 ### Уровень 1 — Детерминированный (всегда активен)
 
-Обеспечивает базовый результат при любых условиях: без сети, без API-ключей, без GPU.
+Обеспечивает воспроизводимый числовой результат при любых условиях: без сети, без API-ключей, без GPU. Составляет шаги 1–4 pipeline.
 
-| Компонент | Задача | Свойство |
+| Компонент | Задача | Ключевое свойство |
 |---|---|---|
-| `pdf_extractor.py` | Извлечение показателей из PDF/сканов | Детерминировано, воспроизводимо |
-| `ratios.py` | Расчёт 13 коэффициентов по формулам | Прозрачная математика |
+| `pdf_extractor.py` | Извлечение 15 показателей из PDF/сканов с Confidence Score | Детерминировано, воспроизводимо |
+| `ratios.py` | Расчёт 13 коэффициентов по математическим формулам | Прозрачная математика |
 | `scoring.py` | Нормализация по бенчмаркам РСБУ, скоринг 0–100 | Объяснимые веса и пороги |
 
-**Ключевые свойства:**
-- Воспроизводимость: одинаковый PDF → одинвой результат
-- Объяснимость: каждый коэффициент имеет формулу, источник данных и confidence
-- Независимость: не требует внешних сервисов
+- **Воспроизводимость**: одинаковый PDF → одинаковый числовой результат
+- **Объяснимость**: каждый коэффициент имеет формулу, источник данных и Confidence Score
+- **Независимость**: не требует внешних сервисов и сетевого доступа
 
-### Уровень 2 — Вероятностный (AI-слой)
+### Уровень 2 — Вероятностный (AI-слой, опциональный)
 
-Активируется при наличии хотя бы одного настроенного LLM-провайдера. Добавляет интерпретацию поверх числового результата.
+Активируется при наличии хотя бы одного настроенного LLM-провайдера. Добавляет качественную интерпретацию поверх числового результата — шаг 5 pipeline.
 
 | Компонент | Задача |
 |---|---|
-| `nlp_analysis.py` | Анализ текста отчёта: риски, ключевые факторы |
-| `recommendations.py` | Рекомендации с явными ссылками на числовые метрики |
+| `nlp_analysis.py` | Анализ текста отчёта: риски и ключевые факторы |
+| `recommendations.py` | 3–5 рекомендаций с явными ссылками на числовые метрики |
 
-**Ключевые свойства:**
-- Gceful degradation: при сбое LLM возвращаются пустые списки — числовой анализ не прерывается
-- Timeout guard: `asyncio.wait_for` с лимитом 60–65 секунд на каждый вызов
-- Результат: `nlp.risks[]`, `nlp.key_factors[]`, `nlp.recommendations[]`
+- **Плавная деградация**: при сбое или недоступности LLM возвращаются пустые списки — числовой результат не прерывается
+- **Timeout guard**: `asyncio.wait_for` с лимитом 60–65 секунд предотвращает зависание
+- **Результат**: `nlp.risks[]`, `nlp.key_factors[]`, `nlp.recommendations[]`
 
-**Принципиальное разделение:**
-
-Детупность внешнего API делает систему неработоспособной.
+**Принципиальное разделение**: недоступность LLM-провайдера не влияет на Уровень 1. Пользователь всегда получает числовой результат — в том числе в полностью offline-среде.
 
 ---
 
 ## 5. Explainability как архитектурный принцип
 
-Explainability в NeoFin AI — это не дополнительная функция. Это **сквозной принцип**, реализованный на каждом уровне системы.
+Explainability — не дополнительная функция, а **сквозной принцип**, реализованный на каждом уровне системы: от извлечения данных до UI.
 
-### Проблема, которую решает Explainability
+### Проблема
 
 Классические финансовые инструменты дают число без объяснения. Пользователь видит «ROA = 4.2%», но не знает: это из таблицы или из текста? Насколько можно доверять этому числу? Почему скоринг именно 68, а не 75?
 
-NeoFin AI отвечает на эти вопросы явно.
+NeoFin AI отвечает на эти вопросы явно на каждом шаге.
 
 ### Confidence Score
 
 Каждый извлечённый показатель получает оценку надёжности на основе метода извлечения:
 
-| Confidence | Метод извлечения | Тип источника | Интерпретация |
+| Confidence | Метод извлечения | ExtractionSource | Уровень надёжности |
 |:---:|---|---|---|
-| `0.9` | Точное совпадение ключевого слова в таблице | `table_exact` | Высокая надёжность |
-| `0.7` | Частичное совпадение в таблице | `table_partial` | Хорошая надёжность |
-| `0.5` | Извлечение через regex из текста | `text_regex` | Приемлемая надёжность |
-| `0.3` | Производный расчёт (обязательства = активы − капитал) | `derived` | Низкая надёжность |
+| `0.9` | Точное совпадение ключевого слова в таблице | `table_exact` | Высокая |
+| `0.7` | Частичное совпадение в таблице | `table_partial` | Хорошая |
+| `0.5` | Извлечение через regex из текста | `text_regex` | Приемлемая |
+| `0.3` | Производный расчёт (обязательства = активы − капитал) | `derived` | Низкая |
+| `0.0` | Показатель не найден в документе | `derived` | Отсутствует |
 
 ### Фильтрация по порогу
 
 ```python
-# _apply_confidence_filter в tasks.py
-# Правило: confidence >= CONFIDENCE_THRESHOLD → включить в расчёт
-#           confidence <  CONFIDENCE_THRESHOLD → заменить на None
+# tasks._apply_confidence_filter()
+# Правило:
+#   confidence >= CONFIDENCE_THRESHOLD → передаётся в calculate_ratios()
+#   confidence <  CONFIDENCE_THRESHOLD → заменяется на None
 #
-# Важно: все ключи сохраняются в extraction_metadata —
-# ненадёжные данные видны в UI, но не влияют на коэффициенты
-if meta.confidence < CONFIDENCE_THRESHOLD:
-    filtered_metrics[key] = None
+# Важно: все 15 ключей сохраняются в extraction_metadata.
+# Ненадёжные показатели отображаются в UI, но не влияют на коэффициенты.
+if meta.confidence < threshold:
+    filtered_metrics[key] = None        # исключён из расчёта
 else:
-    filtered_metrics[key] = meta.value
+    filtered_metrics[key] = meta.value  # участвует в расчёте
 ```
 
-nability в API-ответе
+### Explainability в ответе API
 
-Каждый ответ API содержит полный контекст для объяснения результата:
+Каждый ответ содержит полный контекст для объяснения результата:
 
-- `extraction_metadata` — `{confidence, source}` для каждого показателя
+- `extraction_metadata` — `{"confidence": float, "source": str}` для каждого из 15 показателей
 - `score.factors[]` — список факторов с `impact: positive | neutral | negative`
-- `score.normalized_scores` — нормализованные значения [0, 1] для каждого коэффициента (видно, что «тянет» вниз)
+- `score.normalized_scores` — нормализованные значения `[0.0, 1.0]` для каждого коэффициента (видно, какой «тянет» вниз)
 
 ### Explainability в UI
 
-- `ConfidenceBadge` — цветовая маркировка каждого показателя: 🟢 ≥ 0.8 / 🟡 0.5–0.8 / 🔴 < 0.5
-- Torce`) при наведении
-- Сводка: «Извлечено надёжно: N из 15 показателей»
+- **`ConfidenceBadge`** — цветовая маркировка каждого показателя: 🟢 ≥ 0.8 / 🟡 0.5–0.8 / 🔴 < 0.5
+- **Tooltip** при наведении — структурированный блок: «Источник», «Метод», «Уверенность»
+- **Приглушённый стиль** строки при `confidence < CONFIDENCE_THRESHOLD`
+- **Сводная строка**: «Извлечено надёжно: N из 15 показателей»
+- **Hint**: «Показатели с низкой уверенностью (🔴) могут быть исключены из расчёта коэффициентов»
 
-**Отличие от black-box моделей:** система не просто выдаёт скоринг — она показывает, какие данные использовались, насколько им можно доверять, и какой вклад внёс каждый коэффициент в итоговую оценку.
+**Отличие от black-box**: система не просто выдаёт скоринг — она показывает, какие данные использовались, насколько им можно доверять, и какой вклад внёс каждый коэффициент в итоговую оценку.
 
 ---
 
@@ -310,37 +267,43 @@ nability в API-ответе
 ### Архитектура сессии
 
 ```
-POST /multi-analysis  (multipart: N PDF + period_labels)
+POST /multi-analysis  (multipart: до 5 PDF + period_labels)
    │
    ▼
-MultiAnalysisSession → БД (status=processing)
+crud.create_multi_session()
+   →  БД: status="processing", progress={completed:0, total:N}
+   →  клиент получает session_id немедленно
    │
    ▼
-process_multi_analysis()  — фоновая задача (asyncio)
+BackgroundTask: process_multi_analysis(session_id, periods)
    │
-   ├── [period 1] _process_single_period() → PeriodResult
-   │              update_multi_session(progress={completed:1, total:N})
+   ├── [period 1]  _process_single_period()  →  PeriodResult
+   │               update_multi_session(progress={completed:1, total:N})
    │
-   ├── [period 2] _process_single_period() → PeriodResult
-   │              update_multi_session(progress={completed:2, total:N})
+   ├── [period 2]  _process_single_period()  →  PeriodResult
+   │               update_multi_session(progress={completed:2, total:N})
    │   ...
    │
+   ├── Timeout guard: если обработка > 600 сек → status="failed"
+   │
    └── sort_periods_chronologically(results)
-       update_multi_session(status=completed, result={periods:[...]})
+       update_multi_session(status="completed", result={periods:[...]})
 
 GET /multi-analysis/{session_id}
-   └── Polling: processing → {progress} / completed → {periods}
+   ├── status="processing"  →  {status, progress: {completed, total}}
+   ├── status="completed"   →  {status, periods: [PeriodResult, ...]}
+   └── session не найден    →  HTTP 404
 ```
 
-### Кле архитектурные решения
+### Ключевые архитектурные решения
 
 | Решение | Обоснование |
 |---|---|
-| Последовательная обработка периодов | Предсказуемое потребление ресурсов, нет конкуренции за CPU/память |
-| Частичные сбои не прерывают сессию | `{period_label, error: "processing_failed"}` — остальные периоды обрабатываются |
-| NLP пропускается для multi-period | Снижает latency сессии, числовой анализ сохраняется в полном объёме |
-| Timeout сессии: 600 сек | Защита от зависания при большом количестве периодов или медленных PDF |
-| Х сортировка | `parse_period_label` нормализует форматы `YYYY` и `Q{n}/YYYY` в `(year, quarter)` |
+| Последовательная обработка периодов | Предсказуемое потребление ресурсов, нет конкуренции за CPU и память |
+| Частичные сбои не прерывают сессию | Сбойный период помечается `{"error": "processing_failed"}`, остальные обрабатываются |
+| Timeout сессии 600 сек | Защита от зависания при большом количестве периодов или медленных PDF |
+| Хронологическая сортировка результатов | `parse_period_label` нормализует форматы `YYYY` и `Q{n}/YYYY` в ключ `(year, quarter)` |
+| NLP не вызывается для multi-period | Снижает общее время сессии; числовой результат сохраняется в полном объёме |
 
 ### Форматы period_label
 
@@ -348,7 +311,13 @@ GET /multi-analysis/{session_id}
 |---|---|---|
 | Год | `2023` | `(2023, 0)` |
 | Квартал | `Q1/2023` | `(2023, 1)` |
-| Невалидный | `abc` | `(9999, 0)` — в конец списка |
+| Нераспознанный | `abc` | `(9999, 0)` — помещается в конец |
+
+### Ограничения
+
+- Максимум 5 периодов в одной сессии — HTTP 422 при превышении
+- Длина `period_label` не более 20 символов — HTTP 422 при превышении
+- Максимальный размер одного PDF — 50 МБ (тот же лимит, что у одиночного анализа)
 
 ---
 
@@ -356,92 +325,150 @@ GET /multi-analysis/{session_id}
 
 ### Принцип работы
 
-`AIService` — единственная точка входенений бизнес-логики.
+`ai_service.py` — единственная точка доступа к LLM во всей системе. Модули `nlp_analysis.py` и `recommendations.py` не импортируют LLM-провайдеров напрямую: все вызовы проходят через `AIService.invoke()`. Это изолирует бизнес-логику от деталей конкретного провайдера.
 
-### Fallback Chain
+### Выбор провайдера при запуске
 
-Провайдер выбирается **один раз при старте** приложения в порядке приоритета:
+Провайдер выбирается **один раз при старте** приложения — в FastAPI lifespan, до обработки первого запроса. В runtime смены провайдера не происходит.
 
 ```
-AIService._configure()  (вызывается при старте FastAPI)
+AIService._configure()  (вызывается однократно при старте FastAPI)
    │
    ├─ 1. GIGACHAT_CLIENT_ID + GIGACHAT_CLIENT_SECRET заданы?
-   │      └─ ✅ GigaChat  (российский LLM, OAuth2, кеш токена 55 мин)
+   │      └─ ✅  GigaChat  (российский LLM, OAuth2, кеш токена 55 мин)
    │
    ├─ 2. HF_TOKEN задан?
-   │      └─ ✅ DeepSeek через HuggingFace Inference API
-   │             (бесплатный доступ, модель: DeepSeek-R1-Distill-Qwen-7B)
+   │      └─ ✅  DeepSeek через HuggingFace Inference API
+   │             модель: DeepSeek-R1-Distill-Qwen-7B
    │
    ├─ 3. LLM_URL задан?
-   │      └─ ✅ Ollama  (локальная модель, полный offline)
-   │             (deepseek-r1:7b / llama3 / mistral)
+   │      └─ ✅  Ollama (локальная LLM, полный offline)
+   │             поддерживаемые модели: deepseek-r1:7b, llama3, mistral
    │
    └─ 4. Ни один не настроен?
-          └─ ⚠️  Graceful degrade
-                 NLP отключён → risks=[], recommendations=[]
-                 Числовой анализ продолжается без изменений
+          └─ ⚠️  Плавная деградация
+                 NLP полностью отключён
+                 risks=[], key_factors=[], recommendations=[]
+                 Числовой результат не затрагивается
 ```
 
 ### Поведение при сбое провайдера
 
-Автоматического переключения на следующий провайдер при сбое **не происходит** — провайдер выбирается один раз при старте. При сбое во время запроса:
+Провайдер выбран при старте и не меняется. При сбое во время обработки запроса:
 
 | Тип сбоя | Поведение |
 |---|---|
-| `asyncio.TimeoutError` (> 60–65 сек) | NLP-блок перехватывает, возвращает пустые списки |
-| `NetworkError`, `HTTP 5xx` | Аналогично — пустые списки, числовой результат сохраняется |
-| Провайдер не настроен | NLP не вызывается вообще |
+| `asyncio.TimeoutError` (> 60–65 сек) | NLP-блок перехватывает исключение, возвращает пустые списки |
+| `NetworkError`, HTTP `5xx` | Аналогично — пустые списки, числовой результат сохраняется |
+| Провайдер не настроен | NLP-вызов не происходит вообще |
 
-Ошибка логируется с уровнем `WARNING`. Числовой результат (коэффициенты, скоринг) сохраняется в БД в полном объёме.
-
-### Latency vs Reliability
-
-Timeout в 60–65 секунд — осознанный компромисс:
-- Слишком короткий timeout → частые ложные сбои при медленных провайдерах
-- Слишком длинный → пользователь ждёт результата неприемлемо долго
-- 60–65 сек покрывает 99% реальных запросов к GigaChat и HuggingFace при нормальной нагрузке
+Все сбои логируются с уровнем `WARNING`. Числовой результат (коэффициенты, скоринг, extraction_metadata) в любом случае сохраняется в базе данных.
 
 ### Offline-режим
 
 При `LLM_URL=http://ollama:11434/api/generate` система работает полностью без интернета:
-- Числовой анализ: всегда доступен (не зависит от Ollama)
-- NLP-анализ: через локальную модель Ollama
-- Внешние зависимости: отсутствуют
+- Числовой результат — всегда доступен, не зависит от Ollama
+- NLP-анализ — через локальную модель Ollama
+- Внешние зависимости — отсутствуют
 
 ---
 
-## 8. Хранение данных
+## 8. AI Pipeline и Fallback Chain
 
-### PostgreSQL + JSONB
+### Fallback chain при вызове AIService.invoke()
 
-s`, `created_at`). Результаты анализа хранятся в JSONB — это позволяет расширять структуру данных без миграций схемы.
+Это детализация поведения внутри одного вызова `ai_service.invoke(prompt)`. Архитектура выбора провайдера при старте описана в разделе 7.
+
+```
+ai_service.invoke(prompt)
+   │
+   ├── GigaChat  (если выбран при старте)
+   │   ├── Получить/обновить OAuth2-токен (кеш 55 мин)
+   │   ├── POST /chat/completions, timeout=120s
+   │   └── Ошибка → logging.warning(); исключение передаётся выше
+   │
+   ├── HuggingFace / DeepSeek  (если выбран при старте)
+   │   ├── Bearer HF_TOKEN
+   │   ├── POST inference API, timeout=120s
+   │   └── Ошибка → logging.warning(); исключение передаётся выше
+   │
+   ├── Ollama local  (если выбран при старте)
+   │   ├── POST {LLM_URL}, timeout=120s
+   │   └── Ошибка → logging.warning(); исключение передаётся выше
+   │
+   └── Провайдер не настроен
+       └── raise AINotConfiguredError
+           → перехватывается в nlp_analysis.py / recommendations.py
+           → возвращаются пустые списки; pipeline продолжается
+```
+
+**Ключевое свойство**: нет автоматического переключения между провайдерами при сбое в runtime. Это осознанное решение — предсказуемое поведение важнее скрытого восстановления с непрозрачной логикой. При сбое провайдера NLP-блок деградирует явно и управляемо.
+
+### Таймауты
+
+| Параметр | Значение | Где задан |
+|---|---|---|
+| `AI_TIMEOUT` | 120 сек | `agent.py`, `gigachat_agent.py`, `ai_service.py` — менять синхронно во всех трёх |
+| `NLP_TIMEOUT` | 60 сек | `asyncio.wait_for` в `tasks.py` |
+| `REC_TIMEOUT` | 65 сек | `asyncio.wait_for` в `tasks.py` |
+
+60–65 секунд на уровне `tasks.py` — осознанный компромисс: достаточно для покрытия 99% запросов к GigaChat и HuggingFace при нормальной нагрузке, но не настолько долго, чтобы ощутимо задержать ответ пользователю.
+
+---
+
+## 9. Хранение данных
+
+Реляционные поля хранят идентификаторы и статусы (`task_id`, `status`, `created_at`). Результаты анализа хранятся в JSONB — это позволяет расширять структуру ответа без изменения схемы таблиц.
 
 ### Таблица `analyses`
 
 ```sql
 CREATE TABLE analyses (
     id          SERIAL PRIMARY KEY,
-    task_id     VARCHAR(64) UNIQUE NOT NULL,  -- UUID задачи
-    created_at  TIMESTAMPTZ DEFAULT now(),
-    status      VARCHAR(32) NOT NULL,          -- processing / completed / failed
-    result      JSONB                          -- полный результат анализа
+    task_id     VARCHAR(64) UNIQUE NOT NULL,
+    status      VARCHAR(32) NOT NULL DEFAULT 'processing',
+    result      JSONB,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_analyses_task_id    ON analyses(task_id);
+CREATE INDEX idx_analyses_created_at ON analyses(created_at DESC);
 ```
 
 **Структура `result` (JSONB):**
+
 ```json
 {
   "data": {
     "scanned": false,
-    "metrics":  { "revenue": 1000000, "net_profit": 85000, "..." : "..." },
-    "ratios":   { "current_ratio": 2.1, "roa": 0.08, "..." : "..." },
-    "score":    { "score": 72.5, "risk_level": "medium",
-                  "factors": [{ "name": "...", "impact": "positive" }],
-                  "normalized_scores": { "current_ratio": 0.87, "..." : "..." } },
-    "nlp":      { "risks": ["..."], "key_factors": ["..."], "recommendations": ["..."] },
+    "metrics": {
+      "revenue": 1000000,
+      "net_profit": 85000
+    },
+    "ratios": {
+      "current_ratio": 2.1,
+      "roa": 0.08
+    },
+    "score": {
+      "score": 72.5,
+      "risk_level": "medium",
+      "factors": [
+        {"name": "Текущая ликвидность", "impact": "positive"}
+      ],
+      "normalized_scores": {
+        "current_ratio": 0.87,
+        "roa": 0.64
+      }
+    },
+    "nlp": {
+      "risks": ["..."],
+      "key_factors": ["..."],
+      "recommendations": ["..."]
+    },
     "extraction_metadata": {
-      "revenue": { "confidence": 0.9, "source": "table_exact" },
-      "net_profit": { "confidence": 0.5, "source": "text_regex" }
+      "revenue":     {"confidence": 0.9, "source": "table_exact"},
+      "net_profit":  {"confidence": 0.5, "source": "text_regex"},
+      "liabilities": {"confidence": 0.3, "source": "derived"}
     }
   }
 }
@@ -454,102 +481,123 @@ CREATE TABLE multi_analysis_sessions (
     id          SERIAL PRIMARY KEY,
     session_id  VARCHAR(64) UNIQUE NOT NULL,
     user_id     VARCHAR(64),
-    status      VARCHAR(32) DEFAULT 'processing',  -- processing / completed / failed
-    progress    JSONB,    -- {"completed": 2, "total": 3}
-NB,    -- {"periods": [PeriodResult, ...]}
-    created_at  TIMESTAMPTZ DEFAULT now(),
-    updated_at  TIMESTAMPTZ DEFAULT now()
+    status      VARCHAR(32) NOT NULL DEFAULT 'processing',
+    progress    JSONB,
+    result      JSONB,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_multi_sessions_session_id  ON multi_analysis_sessions(session_id);
+CREATE INDEX idx_multi_sessions_created_at  ON multi_analysis_sessions(created_at DESC);
 ```
+
+- **`progress`**: `{"completed": 2, "total": 3}` — обновляется после каждого обработанного периода
+- **`result`**: `{"periods": [PeriodResult, ...]}` — заполняется при `status="completed"`
 
 ### Миграции
 
-Управляются через Alembic. Применяются автоматически при старте контейнера (`entrypoint.sh`).
+Управляются через Alembic и применяются автоматически при запуске production-контейнера через `scripts/start-prod.sh`.
 
 ```
 migrations/versions/
-├── 0001_initial.py                    — базовая схема
-├── 0002_add_analyses.py               — таблица analyses + индексы
-└── 0003_add_multi_analysis_sessions.py — таблица multi_analysis_sessions
+├── 0001_initial.py                      — базовая схема
+├── 0002_add_analyses.py                 — таблица analyses + индексы
+└── 0003_add_multi_analysis_sessions.py  — таблица multi_analysis_sessions
 ```
 
 ---
 
-## 9. Frontend архитектура
+## 10. Frontend архитектура
 
 ### Стек
 
-- **React 18** + **TypeScript** — строгая типизация, нет `any`
+- **React 18** + **TypeScript** — строгая типизация, без `any`
 - **Mantine UI** — компонентная библиотека
-- **@mantine/charts** (Recharts) — LineChart для TrendChart
-- **Vite** — сборка и dev-сервер с proxy на FastAPI
+- **@mantine/charts** (Recharts) — `LineChart` для `TrendChart`
+- **Vite** — сборка и dev-сервер с proxy (`/api` → `http://localhost:8000`)
+
+### Структура модулей
+
+```
+frontend/src/
+├── api/
+│   ├── client.ts       — axios-клиент, baseURL=/api (через Vite proxy)
+│   └── interfaces.ts   — единственный источник типов; types.ts не использовать
+├── context/
+│   ├── AnalysisContext.tsx        — состояние анализа на уровне приложения
+│   └── AnalysisHistoryContext.tsx — история записей
+├── pages/
+│   ├── Dashboard.tsx       — загрузка PDF, запуск анализа
+│   ├── DetailedReport.tsx  — результат анализа (одиночный + multi-period)
+│   ├── AnalysisHistory.tsx — список анализов с пагинацией
+│   └── Auth.tsx            — валидация API-ключа
+└── components/
+    ├── ConfidenceBadge.tsx — индикатор надёжности показателя
+    ├── TrendChart.tsx      — график динамики коэффициентов
+    └── Layout.tsx          — навигация, обёртка страниц
+```
 
 ### Ключевые компоненты
 
-**`DetailedReport.tsx`** — главная страница результата анализа
+**`AnalysisContext.tsx`** — контекст анализа на уровне приложения.
+Хранит `status`, `result`, `filename`, `error`; предоставляет `analyze()` и `reset()`. Переживает навигацию между страницами, так как не привязан к жизненному циклу конкретного компонента.
+
+**`DetailedReport.tsx`** — главная страница результата.
 - Вкладки: «Обзор» (одиночный анализ) / «Динамика» (multi-period)
-- Хук `useMultiAnalysisPolling` — `setTimeout`-based polling, cleanup при unmount
-- Polling останавливается при `status=completed` или ошибке — нет утечек памяти
+- Polling `GET /multi-analysis/{session_id}` через `setTimeout` с очисткой при unmount
+- Discriminated union для типобезопасной обработки состояний:
 
-**`TrendChart.tsx`** — интерактивный график динамики коэффициентов
-- `LineChart` из `@mantine/charts`, `connectNulls={false}` — разрывы при `null` (не интерполирует отсутствующие данные)
-- Checkbox-селектор коэффициентов — пользователь выбирает, что отображать
-- Trend indicators: ↑ рост / ↓ снижение (сравнение последних двух значений)
-# Гибкость AI
+```typescript
+type MultiAnalysisResponse =
+  | MultiAnalysisProcessingResponse  // status: "processing" → progress
+  | MultiAnalysisCompletedResponse;  // status: "completed"  → periods[]
+```
 
-- Единый интерфейс `AIService` скрывает детали провайдера от бизнес-логики
-- Добавление нового LLM-провайдера — реализация одного метода, без изменений pipeline
-- Fallback chain настраивается через переменные окружения без перекомпиляции
-- Система работает с любым сочетанием провайдеров: только GigaChat, только Ollama, или все три
-— система объясняет происхождение данных
-- `score.factors[]` с `impact` — прозрачность скорингового решения
-- `score.normalized_scores` — видно, какой коэффициент «тянет» вниз
-- Принципиальное отличие от black-box: пользователь понимает, почему скоринг именно такой
+**`TrendChart.tsx`** — интерактивный график динамики коэффициентов.
+- `LineChart` из `@mantine/charts`, `connectNulls={false}` — явный разрыв линии при `null`; нет интерполяции отсутствующих данных
+- Checkbox-селектор: пользователь выбирает, какие коэффициенты отображать
+- Trend indicators: стрелки ↑↓ по сравнению двух последних значений
+- Anomaly detection: маркер ⚠ при `abs(delta) > anomalyThreshold`
+- `series` и `trendMap` мемоизированы через `useMemo`
 
-### Масштабируемость
+**`ConfidenceBadge.tsx`** — индикатор надёжности показателя.
+- Цветовая маркировка: 🟢 ≥ 0.8 / 🟡 0.5–0.8 / 🔴 < 0.5
+- Tooltip: «Источник», «Метод», «Уверенность»
+- Приглушённый стиль строки при `confidence < CONFIDENCE_THRESHOLD`
 
-- Stateless FastAPI — горизонтальное масштабирование без изменений кода
-- JSONB в PostgreSQL — расширение схемы результатов без миграций
-- Фоновые задачи через `asyncio` — HTTP-слой не блокируется во время обработки PDF
+### Polling-механизм
 
-##яет .env → docker-compose.prod.yml up → alembic upgrade head
+```
+POST /upload  →  task_id
+   │
+   └── AnalysisContext.analyze()
+         └── setTimeout (2000 мс, рекурсивный)
+               └── GET /result/{task_id}
+                     ├── status="processing"  →  продолжить polling
+                     ├── status="completed"   →  setResult(data), остановить
+                     └── status="failed"      →  setError(), остановить
+
+clearTimeout при unmount — нет утечек памяти
 ```
 
 ---
 
-## 11. Преимущества архитектуры
+## 11. Production архитектура
 
-### Надёжность
-
-- Детерминированный слой работает без AI-провайдеров — система никогда не возвращает пустой результат
-- Graceful degrade при недоступности LLM — числовой анализ не прерывается
-- Timeout guard на все AI-вызовы — система не зависает при медленных провайдерах
-- Offline-ready через Ollama — полная независимость от внешних сервисов
-
-### Explainability
-
-- Каждый показатель имеет `confidence` и `source`  ┌────────┐
-│  PG  │  │ Ollama │  (опционально, только если LLM_URL задан)
-│ :5432│  │ :11434 │
-└──────┘  └────────┘
 ```
-
-### Docker Compose сервисы
-
-| Сервис | Образ | Порт | Описание |
-|---|---|---|---|
-| `nginx` | `nginx:alpine` | 80, 443 | Reverse proxy + раздача статики |
-| `backend` | `./Dockerfile` | 8000 | FastAPI + uvicorn |
-| `db` | `postgres:16` | 5432 | PostgreSQL |
-| `ollama` | `ollama/ollama` | 11434 | Локальная LLM (опционально) |
-
-### Запуск production
-
-```bash
-./scripts/start-prod.sh
-# Проверционально, cert.pem / key.pem)│
-│  • Rate limiting на уровне Nginx                    │
-└──────────────┬──────────────────────────────────────┘
+Internet
+   │
+   ▼
+┌──────────────────────────────────────────────────────┐
+│  Nginx  (порт 80 / 443)                              │
+│  • Reverse proxy: /api/ → FastAPI :8000              │
+│  • Раздача статики React (dist/) напрямую            │
+│  • SSL termination (cert.pem / key.pem через volume) │
+│  • gzip для JS/CSS/JSON                              │
+│  • Cache-Control: immutable для статических ассетов  │
+│  • Rate limiting                                     │
+└──────────────┬───────────────────────────────────────┘
                │
        ┌───────┴────────┐
        ▼                ▼
@@ -561,40 +609,84 @@ migrations/versions/
        │
   ┌────┴────┐
   ▼         ▼
-┌──────┐ ted"  → periods[]
-
-// Polling останавливается при completed — нет гонок состояний
-if (data.status === "completed") {
-  setMultiAnalysisData(data);  // TypeScript знает: data.periods существует
-  return;
-}
+┌──────┐  ┌────────┐
+│  PG  │  │ Ollama │  (опционально, только если LLM_URL задан)
+│ :5432│  │ :11434 │
+└──────┘  └────────┘
 ```
+
+### Docker Compose сервисы (`docker-compose.prod.yml`)
+
+| Сервис | Образ | Порт | Описание |
+|---|---|---|---|
+| `db` | `postgres:16-alpine` | 5432 | PostgreSQL; health check: `pg_isready`, interval 10s |
+| `backend` | `./Dockerfile.backend` (multi-stage) | 8000 | FastAPI + uvicorn; health check: `GET /health`, interval 30s, timeout 10s |
+| `frontend` | `./frontend/Dockerfile.frontend` (multi-stage) | 80, 443 | Nginx + production build React |
+
+`backend` запускается только после `db: condition: service_healthy`.
+
+### Multi-stage Dockerfiles
+
+**`Dockerfile.backend`:**
+- Stage `build`: установка Python-зависимостей
+- Stage `runtime`: минимальный образ без dev-зависимостей
+
+**`frontend/Dockerfile.frontend`:**
+- Stage `build`: Node.js + `npm ci` + `npm run build` (Vite → `dist/`)
+- Stage `serve`: Nginx + только статика из `dist/`
+
+### SSL-конфигурация
+
+Nginx читает сертификаты из volume `/etc/nginx/certs`. При отсутствии переменной `SSL_CERT_PATH` работает по HTTP без ошибки запуска. SSL-блок активируется через `envsubst` при наличии переменной.
+
+### Запуск production
+
+```bash
+./scripts/start-prod.sh
+# Проверяет наличие .env — завершается с ошибкой если файл отсутствует
+# docker-compose -f docker-compose.prod.yml up -d --build
+# Применяет миграции Alembic после старта backend
+```
+
+После запуска система доступна на порту 80 без дополнительной настройки.
 
 ---
 
-## 10. Production архитектура
+## 12. Преимущества архитектуры
 
-```
-Internet
-   │
-   ▼
-┌─────────────────────────────────────────────────────┐
-│  Nginx  (порт 80 / 443)                             │
-│  • Reverse proxy → FastAPI :8000                    │
-│  • Раздача статики React (dist/)                    │
-│  • SSL termination (опeBadge.tsx`** — индикатор надёжности показателя
-- Цветовая маркировка: 🟢 ≥ 0.8 / 🟡 0.5–0.8 / 🔴 < 0.5
-- Tooltip с методом извлечения (`source`) при наведении
+### Надёжность
 
-### Типизация API
+- **Детерминированный базис**: числовой результат доступен всегда — даже без сети и без LLM-провайдеров
+- **Плавная деградация**: при сбое LLM NLP-блок возвращает пустые списки; числовой результат не затрагивается
+- **Timeout guard**: `asyncio.wait_for` на все AI-вызовы исключает зависание pipeline
+- **Частичная устойчивость в multi-period**: сбой одного периода не прерывает обработку остальных
+- **Offline-ready**: при настроенном Ollama система полностью независима от внешних сервисов
 
-Все типы — в `frontend/src/api/interfaces.ts`. Discriminated union для безопасной обработки состояний:
+### Explainability
 
-```typescript
-// Discriminated union — TypeScript сужает тип по полю status
-type MultiAnalysisResponse =
-  | MultiAnalysisProcessingResponse  // status: "processing" → progress
-  | MultiAnalysisCompletedResponse   // status: "comple- Anomaly detection: маркер ⚠ при `abs(delta) > anomalyThreshold`
-- `series` и `trendMap` мемоизированы через `useMemo` — нет лишних ре-рендеров
+- **Confidence Score** на каждом показателе — система объясняет происхождение данных, а не скрывает его
+- **extraction_metadata** в ответе API — полная трассируемость от сырого PDF до числа в UI
+- **score.factors[]** с `impact` — пользователь видит, что именно повлияло на скоринг
+- **score.normalized_scores** — видно, какой коэффициент «тянет» оценку вниз
+- В отличие от black-box моделей, каждое решение системы воспроизводимо и объяснимо без интерпретации внутреннего состояния
 
-**`Confidenc
+### Гибкость AI-слоя
+
+- Единый интерфейс `AIService` скрывает детали провайдера от бизнес-логики
+- Добавление нового LLM-провайдера требует реализации одного метода, без изменений pipeline
+- Выбор провайдера управляется переменными окружения без перекомпиляции
+- Система работает с любым набором провайдеров: только GigaChat, только Ollama, или несколько одновременно (первый по приоритету)
+
+### Масштабируемость
+
+- **Stateless FastAPI**: горизонтальное масштабирование без изменений кода
+- **JSONB в PostgreSQL**: расширение структуры результатов без новых миграций схемы
+- **Фоновые задачи через asyncio**: HTTP-слой не блокируется во время обработки PDF
+- **Code splitting по маршрутам в Vite**: frontend загружается частями, уменьшая initial bundle
+
+### Тестируемость
+
+- Чистые функции в `analysis/` тестируются изолированно — без FastAPI и без базы данных
+- Property-based тесты (Hypothesis) верифицируют инварианты Confidence Score и фильтрации для произвольных входных данных
+- Discriminated union на frontend: TypeScript статически запрещает доступ к `periods` в состоянии `"processing"`
+- Моки AI-провайдеров через стандартный `unittest.mock` — тесты не требуют реальных API-ключей
