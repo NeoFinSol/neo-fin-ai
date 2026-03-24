@@ -9,11 +9,11 @@ import { theme } from './theme/theme';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { AnalysisHistory } from './pages/AnalysisHistory';
-import { DetailedReport } from './pages/DetailedReport';
 import { SettingsPage } from './pages/SettingsPage';
 import { Auth } from './pages/Auth';
 import { NotFound } from './pages/NotFound';
 import { AuthProvider } from './context/AuthContext';
+import { HistoryProvider } from './context/AnalysisHistoryContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
@@ -21,25 +21,26 @@ export default function App() {
     <MantineProvider theme={theme}>
       <Notifications position="top-right" zIndex={2000} />
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Auth />} />
-            
-            <Route path="/" element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }>
-              <Route index element={<Dashboard />} />
-              <Route path="reports" element={<DetailedReport />} />
-              <Route path="history" element={<AnalysisHistory />} />
-              <Route path="settings" element={<SettingsPage />} />
-            </Route>
+        <HistoryProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Auth />} />
+              
+              <Route path="/" element={
+                <ProtectedRoute>
+                  <Layout />
+                </ProtectedRoute>
+              }>
+                <Route index element={<Dashboard />} />
+                <Route path="history" element={<AnalysisHistory />} />
+                <Route path="settings" element={<SettingsPage />} />
+              </Route>
 
-            <Route path="/404" element={<NotFound />} />
-            <Route path="*" element={<Navigate to="/404" replace />} />
-          </Routes>
-        </BrowserRouter>
+              <Route path="/404" element={<NotFound />} />
+              <Route path="*" element={<Navigate to="/404" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </HistoryProvider>
       </AuthProvider>
     </MantineProvider>
   );

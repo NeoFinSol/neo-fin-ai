@@ -1,78 +1,15 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { apiClient } from '../api/client';
-import { AnalysisResponse, UploadResponse, AnalysisStatus, AnalysisData } from '../api/interfaces';
 import { notifications } from '@mantine/notifications';
+import { AnalysisData } from '../api/interfaces';
 
 export const usePdfAnalysis = () => {
-  const [status, setStatus] = useState<AnalysisStatus | 'idle'>('idle');
+  const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'completed' | 'failed'>('idle');
   const [result, setResult] = useState<AnalysisData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const pollingRef = useRef<number | null>(null);
 
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      window.clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
-
-  const pollResult = useCallback(async (taskId: string) => {
-    stopPolling();
-    
-    pollingRef.current = window.setInterval(async () => {
-      try {
-        const response = await apiClient.get<AnalysisResponse>(`/result/${taskId}`);
-        const { status: currentStatus, data, error: apiError } = response.data;
-
-        setStatus(currentStatus);
-
-        if (currentStatus === 'completed' && data) {
-          setResult(data);
-          stopPolling();
-          notifications.update({
-            id: 'pdf-analysis',
-            title: 'Анализ завершен',
-            message: 'Финансовый отчет успешно обработан',
-            color: 'green',
-            loading: false,
-            autoClose: 5000,
-          });
-        } else if (currentStatus === 'failed') {
-          setError(apiError || 'Ошибка обработки');
-          stopPolling();
-          notifications.update({
-            id: 'pdf-analysis',
-            title: 'Ошибка анализа',
-            message: apiError || 'Не удалось проанализировать файл',
-            color: 'red',
-            loading: false,
-            autoClose: 5000,
-          });
-        }
-      } catch (err: any) {
-        console.error('Polling error:', err);
-        const msg = err.response?.data?.detail || 'Потеряно соединение с сервером';
-        setError(msg);
-        setStatus('failed');
-        stopPolling();
-        notifications.update({
-          id: 'pdf-analysis',
-          title: 'Ошибка соединения',
-          message: msg,
-          color: 'red',
-          loading: false,
-          autoClose: 5000,
-        });
-      }
-    }, 2000);
-  }, [stopPolling]);
-
-  const uploadPdf = async (file: File) => {
+  const analyze = useCallback(async (file: File) => {
+    console.log('Starting file analysis:', file.name, file.size, file.type);
     setStatus('uploading');
     setError(null);
     setResult(null);
@@ -83,52 +20,68 @@ export const usePdfAnalysis = () => {
       message: `Загружаем ${file.name}...`,
       loading: true,
       autoClose: false,
-      withCloseButton: false,
     });
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const response = await apiClient.post<UploadResponse>('/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      const { task_id } = response.data;
+      console.log('Sending request to backend...');
       setStatus('processing');
-      
       notifications.update({
         id: 'pdf-analysis',
         title: 'Обработка данных',
         message: 'ИИ анализирует финансовые показатели...',
         loading: true,
-        autoClose: false,
       });
 
-      pollResult(task_id);
+      const response = await apiClient.post<AnalysisData>('/analyze/pdf/file', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 300000, // 5 минут для больших файлов
+      });
+
+      console.log('Received response from backend:', response.data);
+      setStatus('completed');
+      setResult(response.data);
+
+      notifications.update({
+        id: 'pdf-analysis',
+        title: 'Анализ завершен',
+        message: 'Финансовый отчет успешно обработан',
+        color: 'green',
+        loading: false,
+        autoClose: 5000,
+      });
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Ошибка при загрузке файла';
+      console.error('Error during analysis:', err);
+      const msg = err.response?.data?.detail || err.message || 'Ошибка при анализе файла';
       setError(msg);
       setStatus('failed');
       notifications.update({
         id: 'pdf-analysis',
-        title: 'Ошибка загрузки',
+        title: 'Ошибка анализа',
         message: msg,
         color: 'red',
         loading: false,
         autoClose: 5000,
       });
     }
-  };
+  }, []);
+
+  const reset = useCallback(() => {
+    setStatus('idle');
+    setResult(null);
+    setError(null);
+  }, []);
 
   return {
-    uploadPdf,
-    status,
-    result,
+    mutate: analyze,
+    isPending: status === 'uploading' || status === 'processing',
+    statusText: status === 'uploading' ? 'Загрузка...' : status === 'processing' ? 'Анализ...' : '',
+    isError: status === 'failed',
     error,
-    isIdle: status === 'idle',
-    isProcessing: status === 'processing' || status === 'pending' || status === 'uploading',
+    data: result,
+    reset,
+    progressStep: status,
   };
 };

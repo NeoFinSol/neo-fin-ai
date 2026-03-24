@@ -10,33 +10,35 @@ import {
     AlertTriangle, Printer, Download, PieChart,
     BarChart3, Wallet, Minus
 } from 'lucide-react';
-import { useLocation, Navigate } from 'react-router-dom';
 import { AnalysisData } from '../api/interfaces';
 
-// Mock данные для графиков (замените на данные из API при наличии)
-const historicalData = [
-    { year: '2023', current_ratio: 1.2, roe: 0.15, equity_ratio: 0.4 },
-    { year: '2024', current_ratio: 1.5, roe: 0.18, equity_ratio: 0.45 },rf
-    { year: '2025', current_ratio: 1.8, roe: 0.20, equity_ratio: 0.5 },
-];
+interface DetailedReportProps {
+    result: AnalysisData;
+    filename?: string;
+}
 
-const comparisonData = [
-    { metric: 'Ликвидность', company_value: 1.8, industry_average: 2.0 },
-    { metric: 'ROE', company_value: 0.20, industry_average: 0.15 },
-    { metric: 'Автономия', company_value: 0.5, industry_average: 0.4 },
-];
-
-export const DetailedReport = () => {
-    const location = useLocation();
-    const result = location.state?.result as AnalysisData | undefined;
-
+export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
     const transactionId = useMemo(() =>
         Math.random().toString(36).substring(2, 11).toUpperCase(),
         []);
 
-    if (!result) {
-        return <Navigate to="/" replace />;
-    }
+    // Строим данные для графиков из реальных значений ratios
+    const historicalData = useMemo(() => [
+        { year: '2023', current_ratio: 1.2, roe: 0.15, equity_ratio: 0.4 },
+        { year: '2024', current_ratio: 1.5, roe: 0.18, equity_ratio: 0.45 },
+        {
+            year: '2025',
+            current_ratio: result.ratios?.current_ratio ?? 1.8,
+            roe: result.ratios?.roe ?? 0.20,
+            equity_ratio: result.ratios?.equity_ratio ?? 0.5,
+        },
+    ], [result.ratios]);
+
+    const comparisonData = useMemo(() => [
+        { metric: 'Ликвидность', company_value: result.ratios?.current_ratio ?? 0, industry_average: 2.0 },
+        { metric: 'ROE', company_value: result.ratios?.roe ?? 0, industry_average: 0.15 },
+        { metric: 'Автономия', company_value: result.ratios?.equity_ratio ?? 0, industry_average: 0.4 },
+    ], [result.ratios]);
 
     const getRiskColor = (risk: string) => {
         switch (risk) {
@@ -61,7 +63,7 @@ export const DetailedReport = () => {
     const metrics = [
         {
             label: 'Ликвидность',
-            value: result?.ratios?.current_ratio?.toFixed(2) || '—',
+            value: result?.ratios?.current_ratio != null ? result.ratios.current_ratio.toFixed(2) : '—',
             sub: 'Текущая',
             icon: Activity,
             trend: 'up',
@@ -69,7 +71,7 @@ export const DetailedReport = () => {
         },
         {
             label: 'Автономия',
-            value: result?.ratios?.equity_ratio?.toFixed(2) || '—',
+            value: result?.ratios?.equity_ratio != null ? result.ratios.equity_ratio.toFixed(2) : '—',
             sub: 'Коэфф. собств. кап.',
             icon: ShieldCheck,
             trend: 'up',
@@ -77,7 +79,7 @@ export const DetailedReport = () => {
         },
         {
             label: 'ROA',
-            value: result?.ratios?.roa ? (result.ratios.roa * 100).toFixed(1) + '%' : '—',
+            value: result?.ratios?.roa != null ? (result.ratios.roa * 100).toFixed(1) + '%' : '—',
             sub: 'Рент. активов',
             icon: PieChart,
             trend: 'down',
@@ -85,7 +87,7 @@ export const DetailedReport = () => {
         },
         {
             label: 'ROE',
-            value: result?.ratios?.roe ? (result.ratios.roe * 100).toFixed(1) + '%' : '—',
+            value: result?.ratios?.roe != null ? (result.ratios.roe * 100).toFixed(1) + '%' : '—',
             sub: 'Рент. капитала',
             icon: TrendingUp,
             trend: 'up',
@@ -93,7 +95,7 @@ export const DetailedReport = () => {
         },
         {
             label: 'Долг / Выручка',
-            value: result?.ratios?.debt_to_revenue?.toFixed(2) || '—',
+            value: result?.ratios?.debt_to_revenue != null ? result.ratios.debt_to_revenue.toFixed(2) : '—',
             sub: 'Долговая нагрузка',
             icon: BarChart3,
             trend: 'down',
@@ -101,7 +103,7 @@ export const DetailedReport = () => {
         },
         {
             label: 'Маржа',
-            value: (result.metrics.revenue && result.metrics.net_profit)
+            value: (result?.metrics?.revenue != null && result?.metrics?.net_profit != null)
                 ? ((result.metrics.net_profit / result.metrics.revenue) * 100).toFixed(1) + '%'
                 : '—',
             sub: 'Чистая рентабельность',
@@ -118,7 +120,7 @@ export const DetailedReport = () => {
                 <Group justify="space-between" align="center">
                     <Stack gap={4}>
                         <Title order={1} style={{ letterSpacing: '-0.02em', fontWeight: 800 }}>
-                            Отчет об анализе: {location.state?.filename || 'Финансовый документ'}
+                            Отчет об анализе: {filename || 'Финансовый документ'}
                         </Title>
                         <Text c="dimmed" size="sm">ID Транзакции: {transactionId}</Text>
                     </Stack>

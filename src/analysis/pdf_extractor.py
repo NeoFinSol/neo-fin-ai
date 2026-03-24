@@ -1,4 +1,5 @@
-﻿import logging
+import logging
+import os
 import re
 from typing import Any
 
@@ -7,49 +8,70 @@ from pdf2image import convert_from_path
 import PyPDF2
 import pytesseract
 
+# Configure Tesseract path for Windows
+_tesseract_path = os.path.expandvars(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+if os.path.exists(_tesseract_path):
+    pytesseract.pytesseract.tesseract_cmd = _tesseract_path
+    os.environ["TESSDATA_PREFIX"] = os.path.expandvars(
+        r"C:\Program Files\Tesseract-OCR\tessdata"
+    )
+
 logger = logging.getLogger(__name__)
 
 _NUMBER_PATTERN = re.compile(r"[-(]?\d[\d\s.,]*\d|\d")
 
 _METRIC_KEYWORDS = {
     "revenue": [
-        "выручка",
         "выручка от реализации",
+        "выручка",
         "revenue",
         "sales revenue",
         "net sales",
+        "доходы от реализации",
+        "совокупный доход",
     ],
     "net_profit": [
         "чистая прибыль",
         "net profit",
         "profit for the year",
         "profit (loss)",
+        "нераспределенная прибыль",
+        "прибыль после налогообложения",
     ],
     "total_assets": [
+        "итого активов",
         "итого активы",
         "активы всего",
         "total assets",
+        "активов всего",
+        "баланс",
     ],
     "equity": [
-        "капитал",
-        "собственный капитал",
+        "итого капитала",
+        "капитал и резервы",
         "total equity",
-        "equity",
+        "собственный капитал",
     ],
     "liabilities": [
+        "итого обязательств",
         "обязательства",
-        "итого обязательства",
         "total liabilities",
         "liabilities",
+        "итого долгосрочных обязательств",
+        "итого краткосрочных обязательств",
     ],
     "current_assets": [
-        "оборотные активы",
+        "итого оборотных активов",
+        "оборотные активы всего",
         "current assets",
+        "итого по разделу ii",
     ],
     "short_term_liabilities": [
-        "краткосрочные обязательства",
+        "итого краткосрочных обязательств",
+        "краткосрочные обязательства всего",
         "short-term liabilities",
         "current liabilities",
+        "итого по разделу v",
     ],
     "accounts_receivable": [
         "дебиторская задолженность",
@@ -155,10 +177,12 @@ def extract_tables(pdf_path: str) -> list[dict[str, Any]]:
                 df = table.df
                 if df is None or df.empty:
                     continue
-                tables_data.append({
-                    "flavor": flavor,
-                    "rows": df.values.tolist(),
-                })
+                tables_data.append(
+                    {
+                        "flavor": flavor,
+                        "rows": df.values.tolist(),
+                    }
+                )
 
         if tables_data:
             break
@@ -169,6 +193,7 @@ def extract_tables(pdf_path: str) -> list[dict[str, Any]]:
 def parse_financial_statements(tables: list, text: str) -> dict[str, float | None]:
     metrics: dict[str, float | None] = {key: None for key in _METRIC_KEYWORDS}
 
+    # First pass: parse tables (most reliable source)
     for table in tables or []:
         rows = _table_to_rows(table)
         for row in rows:
@@ -178,10 +203,21 @@ def parse_financial_statements(tables: list, text: str) -> dict[str, float | Non
                 if metrics[metric_key] is not None:
                     continue
                 if any(keyword in row_text_lower for keyword in keywords):
-                    value = _extract_number_from_text(row_text)
+                    # Try to get number from last cell first (typical for financial tables)
+                    value = None
+                    for cell in reversed(row):
+                        if cell is not None:
+                            cell_str = str(cell).strip()
+                            if cell_str and any(c.isdigit() for c in cell_str):
+                                value = _normalize_number(cell_str)
+                                if value is not None:
+                                    break
+                    if value is None:
+                        value = _extract_number_from_text(row_text)
                     if value is not None:
                         metrics[metric_key] = value
 
+    # Second pass: parse free text (for cases where tables weren't extracted)
     text_lower = (text or "").lower()
     for metric_key, keywords in _METRIC_KEYWORDS.items():
         if metrics[metric_key] is not None:
@@ -190,6 +226,56 @@ def parse_financial_statements(tables: list, text: str) -> dict[str, float | Non
         if value is not None:
             metrics[metric_key] = value
 
+    # Third pass: broader regex for common Russian financial report formats
+    # This handles cases where the table extraction failed
+    # Handles pipe separator format: "Выручка | 312 567 000"
+    num_group = r"([-]?\(?\d[\d\s.,]*\d\)?)"
+    broad_patterns = {
+        "revenue": [
+            r"выручка от реализации\s*\|\s*" + num_group,
+            r"выручка[^\d]{0,80}" + num_group,
+        ],
+        "net_profit": [
+            r"чистая прибыль\s*\|\s*" + num_group,
+            r"чистая прибыль[^\d]{0,60}" + num_group,
+            r"прибыль после налогообложения[^\d]{0,80}" + num_group,
+        ],
+        "total_assets": [
+            r"итого активов\s*\|\s*" + num_group,
+            r"итого активов[^\d]{0,60}" + num_group,
+            r"баланс\s*\|\s*" + num_group,
+        ],
+        "equity": [
+            r"итого капитала\s*\|\s*" + num_group,
+            r"итого капитала[^\d]{0,60}" + num_group,
+            r"собственный капитал\s*\|\s*" + num_group,
+            r"капитал и резервы\s*\|\s*" + num_group,
+        ],
+        "current_assets": [
+            r"итого оборотных активов\s*\|\s*" + num_group,
+            r"итого оборотных активов[^\d]{0,60}" + num_group,
+        ],
+        "short_term_liabilities": [
+            r"итого краткосрочных обязательств\s*\|\s*" + num_group,
+            r"итого краткосрочных обязательств[^\d]{0,80}" + num_group,
+        ],
+        "cost_of_goods_sold": [
+            r"себестоимость продаж\s*\|\s*" + num_group,
+            r"себестоимость продаж[^\d]{0,80}" + num_group,
+        ],
+    }
+
+    for metric_key, pattern_list in broad_patterns.items():
+        if metrics[metric_key] is not None:
+            continue
+        for pattern in pattern_list:
+            match = re.search(pattern, text_lower)
+            if match:
+                value = _normalize_number(match.group(1))
+                if value is not None:
+                    metrics[metric_key] = value
+                    break
+
     return metrics
 
 
@@ -197,17 +283,18 @@ def _table_to_rows(table: Any) -> list[list[Any]]:
     # Check if it's a pandas DataFrame (camelot table)
     try:
         import pandas as pd
+
         if isinstance(table, pd.DataFrame):
             return table.values.tolist()
     except (ImportError, AttributeError):
         pass
-    
+
     # Handle dict with "rows" key
     if isinstance(table, dict) and "rows" in table:
         rows = table.get("rows")
         if isinstance(rows, list):
             return rows
-    
+
     # Handle plain list structures
     if isinstance(table, list):
         if not table:
@@ -216,7 +303,7 @@ def _table_to_rows(table: Any) -> list[list[Any]]:
             return [list(row.values()) for row in table]
         if isinstance(table[0], list):
             return table
-    
+
     return []
 
 
@@ -229,7 +316,9 @@ def _extract_number_from_text(text: str) -> float | None:
 
 def _extract_number_near_keywords(text: str, keywords: list[str]) -> float | None:
     for keyword in keywords:
-        pattern = re.compile(rf"{re.escape(keyword)}[^0-9\-]{{0,40}}([-]?\(?\d[\d\s.,]*\d\)?)")
+        pattern = re.compile(
+            rf"{re.escape(keyword)}[^0-9\-]{{0,40}}([-]?\(?\d[\d\s.,]*\d\)?)"
+        )
         match = pattern.search(text)
         if match:
             return _normalize_number(match.group(1))

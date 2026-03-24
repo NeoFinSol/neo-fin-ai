@@ -1,16 +1,21 @@
 import {
   Box, Card, Group, Text, Title, Stack, Progress, Alert, ThemeIcon, Timeline,
+  Button,
 } from '@mantine/core';
 import { Dropzone, FileRejection } from '@mantine/dropzone';
 import {
   IconUpload, IconFileAnalytics, IconAlertCircle, IconX, IconLoader,
-  IconBrain, IconChartBar, IconFileText, IconPhoto,
+  IconBrain, IconChartBar, IconFileText,
 } from '@tabler/icons-react';
-import { useCallback } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { DetailedReport } from './DetailedReport';
 import { usePdfAnalysis } from '../hooks/usePdfAnalysis';
+import { useHistory } from '../context/AnalysisHistoryContext';
 
 export function Dashboard() {
+  const [filename, setFilename] = useState<string>('');
+  const { addEntry } = useHistory();
+  const savedRef = useRef(false);
   const {
     mutate: analyze,
     isPending,
@@ -19,24 +24,49 @@ export function Dashboard() {
     error,
     data,
     reset,
-    progressStep, // Берем надежный шаг из хука
+    progressStep,
   } = usePdfAnalysis();
 
   const handleUpload = useCallback((files: File[]) => {
     if (files.length > 0) {
+      setFilename(files[0].name);
+      savedRef.current = false;
       analyze(files[0]);
     }
   }, [analyze]);
 
-  // Обработка ошибок валидации Dropzone (размер, формат)
+  // Сохраняем в историю один раз при получении данных
+  useEffect(() => {
+    if (data && filename && !savedRef.current) {
+      addEntry(filename, data);
+      savedRef.current = true;
+    }
+  }, [data, filename, addEntry]);
+
   const handleReject = useCallback((rejections: FileRejection[]) => {
     const message = rejections[0]?.errors[0]?.message || 'Файл отклонен';
-    // Можно показать уведомление, но для MVP просто alert или игнор
     console.warn('File rejected:', message);
   }, []);
 
+  // Преобразуем строковый статус в числовой шаг для Timeline
+  const progressStepNum = progressStep === 'uploading' ? 0
+    : progressStep === 'processing' ? 2
+    : progressStep === 'completed' ? 4
+    : 0;
+
   if (data) {
-    return <DetailedReport score={data.score} ratios={data.ratios} metrics={data.metrics} />;
+    return (
+      <Stack gap="md">
+        <DetailedReport result={data} filename={filename} />
+        <Button
+          variant="light"
+          onClick={() => { reset(); savedRef.current = false; }}
+          style={{ alignSelf: 'center' }}
+        >
+          Новый анализ
+        </Button>
+      </Stack>
+    );
   }
 
   return (
@@ -67,20 +97,18 @@ export function Dashboard() {
         {isPending ? (
           <Stack align="center" gap="lg" py="xl">
             <ThemeIcon size={60} radius="xl" color="blue" variant="light">
-              {progressStep === 0 ? <IconUpload size={30} stroke={1.5} /> : <IconBrain size={30} stroke={1.5} />}
+              {progressStepNum === 0 ? <IconUpload size={30} stroke={1.5} /> : <IconBrain size={30} stroke={1.5} />}
             </ThemeIcon>
             
             <Box w="100%">
               <Group justify="space-between" mb={5}>
                 <Text size="sm" fw={500}>{statusText}</Text>
-                {/* Спиннер показываем только пока грузимся, не на финальном экране */}
-                {progressStep < 4 && <IconLoader size={16} className="animate-spin" />}
+                {progressStepNum < 4 && <IconLoader size={16} className="animate-spin" />}
               </Group>
               <Progress value={100} animated size="sm" radius="xl" color="blue" />
             </Box>
 
-            {/* Timeline полностью управляется progressStep из хука */}
-            <Timeline active={progressStep} bulletSize={24} lineWidth={2} mt="md">
+            <Timeline active={progressStepNum} bulletSize={24} lineWidth={2} mt="md">
               <Timeline.Item bullet={<IconUpload size={12} />} title="Загрузка">
                 <Text c="dimmed" size="xs">Отправка файла</Text>
               </Timeline.Item>

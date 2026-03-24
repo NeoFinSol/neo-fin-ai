@@ -1,14 +1,15 @@
 import axios from 'axios';
 
 export const apiClient = axios.create({
-  baseURL: '/api',
+  baseURL: 'http://127.0.0.1:8001',
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 120000, // 120 секунд для AI анализа
+  timeout: 120000,
 });
 
 apiClient.interceptors.request.use((config) => {
+  console.log('API Request:', config.method, config.url);
   const apiKey = localStorage.getItem('neofin_api_key');
   if (apiKey) {
     config.headers['X-API-Key'] = apiKey;
@@ -17,12 +18,14 @@ apiClient.interceptors.request.use((config) => {
 });
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('API Response:', response.status, response.config.url);
+    return response;
+  },
   (error) => {
+    console.error('API Error:', error.message, error.response?.status, error.response?.data);
     if (error.response?.status === 401) {
       localStorage.removeItem('neofin_api_key');
-      // Для MVP - просто логгируем ошибку, не редиректим
-      console.error('API Key invalid or missing');
     }
     return Promise.reject(error);
   }

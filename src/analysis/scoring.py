@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -10,7 +10,7 @@ def calculate_integral_score(ratios: dict[str, Any]) -> dict[str, Any]:
         "Коэффициент автономии": 0.2,
         "Рентабельность активов (ROA)": 0.2,
         "Рентабельность собственного капитала (ROE)": 0.2,
-        "Долговая нагрузка": 0.1,
+        "Финансовый рычаг": 0.1,
     }
 
     normalized: dict[str, float] = {}
@@ -52,7 +52,7 @@ def _normalize_ratio(ratio_name: str, value: float | None) -> float | None:
         return _normalize_positive(value, target=0.1)
     if ratio_name == "Рентабельность собственного капитала (ROE)":
         return _normalize_positive(value, target=0.2)
-    if ratio_name == "Долговая нагрузка":
+    if ratio_name == "Финансовый рычаг":
         return _normalize_inverse(value, max_acceptable=2.0)
 
     return None
