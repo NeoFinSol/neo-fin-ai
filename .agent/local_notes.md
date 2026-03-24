@@ -2,24 +2,43 @@
 
 ## Активные проблемы
 
-### PDF extraction не парсит реальные отчёты (Магнит)
+### Docker не запускается
 **Статус**: 🔴 Активно
 **Дата**: 2026-03-24
-**Проблема**: При загрузке реального PDF-отчёта Магнит extraction возвращает только revenue, остальные метрики (net_profit, total_assets, equity, current_assets, short_term_liabilities) = null. Frontend показывает Score: 0.
-
-**Детали**:
-- `parse_financial_statements()` в `pdf_extractor.py` находит метрики из симулированного текста
-- Но при обработке реального PDF через `analyze_pdf()` данные не извлекаются
-- AI service (HuggingFace Llama 3.1 8B) возвращает текст с markdown вместо чистого JSON
-- Fallback regex в `analyze.py` не срабатывает или не находит данные в тексте PDF
+**Проблема**: Docker Desktop остановлен, не перезапускается. Ошибка: `fork/exec /usr/local/bin/dockerd: input/output error`, `daemon.json is invalid`.
 
 **Где смотреть**:
-- `src/controllers/analyze.py` — `analyze_pdf()`, fallback regex extraction
-- `src/analysis/pdf_extractor.py` — `parse_financial_statements()`
-- `src/core/ai_service.py` — AI invocation
+- Docker Desktop → Troubleshoot → Reset to factory defaults
+- `wsl --shutdown` + перезапуск Docker Desktop
+- `$env:USERPROFILE\.docker\daemon.json` — возможно повреждён
 
 **Временное решение**:
-Нет. Нужна диагностика: какой текст реально извлекается из PDF пользователя, и почему AI не возвращает JSON.
+Запускать проект локально без Docker (backend через `.\env\Scripts\python.exe -m uvicorn`, frontend через `npm run dev`).
+
+---
+
+### Score: 0 и пустые факторы во frontend (несовместимость scoring → analyze.py)
+**Статус**: Решено ✅
+**Дата решения**: 2026-03-24
+**Корневая причина**: Два независимых бага:
+1. `scoring.py` использовал ключ `"Финансовый рычаг"` в `weights`, а `RATIO_KEY_MAP` в `tasks.py` содержит `"Долговая нагрузка"` — `_build_score_payload()` никогда не находил этот коэффициент в `details`, 10% веса терялось.
+2. Fallback-ветка в `analyze.py` (когда AI недоступен) вызывала `score_data.get("factors", [])` и `score_data.get("normalized_scores", {...})` — но `calculate_integral_score()` возвращает `details`, а не `factors`/`normalized_scores`. Frontend получал `score.factors = []` и `score = 0`.
+
+**Решение**:
+```python
+# src/analysis/scoring.py — исправлен ключ
+weights = {
+    ...
+    "Долговая нагрузка": 0.1,  # было: "Финансовый рычаг"
+}
+
+# src/controllers/analyze.py — fallback теперь использует _build_score_payload из tasks.py
+from src.tasks import _translate_ratios, _build_score_payload
+ratios_en = _translate_ratios(ratios)
+score_payload = _build_score_payload(raw_score, ratios_en)
+```
+Где применено: `src/analysis/scoring.py`, `src/controllers/analyze.py`
+Проверка: `POST /analyze/pdf/file` возвращает `score.factors` (непустой список) и `score.score > 0` при наличии метрик в PDF.
 
 ---
 

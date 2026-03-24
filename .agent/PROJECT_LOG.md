@@ -1,5 +1,38 @@
 # Project Log
 
+## 2026-03-24 | Fix: PDF extraction колонка + scoring key alignment + frontend ✅
+- `pdf_extractor.py`: extraction теперь берёт первую числовую ячейку после названия показателя (текущий период), а не последнюю (2023 год); убран keyword `"нераспределенная прибыль"` из `net_profit`; добавлен `"итого по разделу iii"` для equity; `liabilities` теперь вычисляется как IV+V или assets-equity если прямая строка не найдена
+- `scoring.py` + `tasks.py`: ключ `"Финансовый рычаг"` синхронизирован между `ratios.py`, `RATIO_KEY_MAP`, `_build_score_payload()` и `scoring.py` — `debt_to_revenue` теперь получает реальное значение
+- `client.ts`: захардкоженный порт `8001` → `8000` с поддержкой `VITE_API_BASE`
+- `DetailedReport.tsx`: тренды карточек (было `+2.4%`/`-1.1%` везде) → реальные направления из `normalized_scores`
+- **Файлы**: `src/analysis/pdf_extractor.py`, `src/analysis/scoring.py`, `src/tasks.py`, `frontend/src/api/client.ts`, `frontend/src/pages/DetailedReport.tsx`
+- **Тесты**: getDiagnostics чисто; ручная проверка на PDF Магнит — extraction возвращает корректные данные за июнь 2025
+- **Проблемы**: скоринг ~55 для ПАО Магнит (холдинг) — математически верно, но требует проверки в следующей сессии
+- **Дальше**: проверить скоринг после перезапуска бэкенда; реализовать GET /analyses для AnalysisHistory
+
+---
+
+
+- `scoring.py`: ключ `"Финансовый рычаг"` → `"Долговая нагрузка"` в `weights` — теперь совпадает с `RATIO_KEY_MAP` в `tasks.py`; 10% веса больше не теряется
+- `analyze.py` fallback: убран дублирующий код построения score; теперь использует `_translate_ratios()` и `_build_score_payload()` из `tasks.py` — единственный источник правды для формата `ScoreData`
+- **Файлы**: `src/analysis/scoring.py`, `src/controllers/analyze.py`
+- **Тесты**: getDiagnostics — чисто; ручная проверка через `POST /analyze/pdf/file`
+- **Проблемы**: нет
+- **Дальше**: проверить реальный PDF Магнит — убедиться что extraction возвращает >1 метрики
+
+---
+
+
+- Создана папка `.agent/` со всеми мета-файлами агента: `AGENTS.md`, `architecture.md`, `overview.md`, `local_notes.md`, `PROJECT_LOG.md`
+- Добавлены шаблоны `.agent/templates/`: `commit-message.txt`, `pr-description.md`, `bug-report.md`
+- `AGENTS.md` содержит: триггеры действий, чеклист перед коммитом, иерархию правил, режимы работы, формат ответов, автоматические напоминания — всё привязано к реальному стеку
+- **Файлы**: `.agent/AGENTS.md`, `.agent/overview.md`, `.agent/local_notes.md`, `.agent/PROJECT_LOG.md`, `.agent/architecture.md`, `.agent/templates/*`
+- **Тесты**: не писались (документация)
+- **Проблемы**: нет
+- **Дальше**: следующая сессия — создать `Layout.tsx` и `ProtectedRoute.tsx` (CRITICAL, разблокирует компиляцию frontend)
+
+---
+
 ## 2026-03-24 | Frontend + Backend интеграция: неполная, баги с extraction 🟡
 - **Сессия**: Запуск frontend/backend, исправление scoring, попытка исправить PDF extraction
 - **Что сделано**:

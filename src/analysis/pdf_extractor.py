@@ -31,11 +31,11 @@ _METRIC_KEYWORDS = {
         "совокупный доход",
     ],
     "net_profit": [
+        "чистая прибыль (убыток)",
         "чистая прибыль",
         "net profit",
         "profit for the year",
         "profit (loss)",
-        "нераспределенная прибыль",
         "прибыль после налогообложения",
     ],
     "total_assets": [
@@ -47,6 +47,7 @@ _METRIC_KEYWORDS = {
         "баланс",
     ],
     "equity": [
+        "итого по разделу iii",
         "итого капитала",
         "капитал и резервы",
         "total equity",
@@ -54,11 +55,8 @@ _METRIC_KEYWORDS = {
     ],
     "liabilities": [
         "итого обязательств",
-        "обязательства",
         "total liabilities",
         "liabilities",
-        "итого долгосрочных обязательств",
-        "итого краткосрочных обязательств",
     ],
     "current_assets": [
         "итого оборотных активов",
@@ -203,15 +201,31 @@ def parse_financial_statements(tables: list, text: str) -> dict[str, float | Non
                 if metrics[metric_key] is not None:
                     continue
                 if any(keyword in row_text_lower for keyword in keywords):
-                    # Try to get number from last cell first (typical for financial tables)
+                    # Find index of the label cell (first cell containing the keyword)
+                    label_idx = 0
+                    for i, cell in enumerate(row):
+                        if cell is not None and any(kw in str(cell).lower() for kw in keywords):
+                            label_idx = i
+                            break
+
+                    # Take the FIRST numeric cell after the label (current period column)
+                    # Skip code cells (pure 4-digit numbers like "1200", "2110")
                     value = None
-                    for cell in reversed(row):
-                        if cell is not None:
-                            cell_str = str(cell).strip()
-                            if cell_str and any(c.isdigit() for c in cell_str):
-                                value = _normalize_number(cell_str)
-                                if value is not None:
-                                    break
+                    for cell in row[label_idx + 1:]:
+                        if cell is None:
+                            continue
+                        cell_str = str(cell).strip()
+                        if not cell_str or not any(c.isdigit() for c in cell_str):
+                            continue
+                        # Skip row code cells (4-digit codes like 1200, 2110)
+                        digits_only = cell_str.replace(" ", "").replace("\xa0", "")
+                        if digits_only.isdigit() and len(digits_only) == 4:
+                            continue
+                        candidate = _normalize_number(cell_str)
+                        if candidate is not None:
+                            value = candidate
+                            break
+
                     if value is None:
                         value = _extract_number_from_text(row_text)
                     if value is not None:
@@ -276,7 +290,49 @@ def parse_financial_statements(tables: list, text: str) -> dict[str, float | Non
                     metrics[metric_key] = value
                     break
 
+    # Fourth pass: derive missing metrics from available ones
+    # liabilities = total_assets - equity (balance sheet identity) if not found directly
+    if metrics["liabilities"] is None:
+        long_term = _extract_section_total(tables, text_lower, [
+            "итого по разделу iv", "итого долгосрочных обязательств"
+        ])
+        short_term = metrics.get("short_term_liabilities")
+        if long_term is not None and short_term is not None:
+            metrics["liabilities"] = long_term + short_term
+            logger.debug("Derived liabilities = IV(%s) + V(%s) = %s", long_term, short_term, metrics["liabilities"])
+        elif metrics.get("total_assets") is not None and metrics.get("equity") is not None:
+            metrics["liabilities"] = metrics["total_assets"] - metrics["equity"]
+            logger.debug("Derived liabilities = assets - equity = %s", metrics["liabilities"])
+
     return metrics
+
+
+def _extract_section_total(tables: list, text_lower: str, keywords: list[str]) -> float | None:
+    """Extract a section total value by keywords from tables or text."""
+    for table in tables or []:
+        rows = _table_to_rows(table)
+        for row in rows:
+            row_text_lower = " ".join(str(c) for c in row if c is not None).lower()
+            if any(kw in row_text_lower for kw in keywords):
+                for cell in row[1:]:
+                    if cell is None:
+                        continue
+                    cell_str = str(cell).strip()
+                    digits_only = cell_str.replace(" ", "").replace("\xa0", "")
+                    if digits_only.isdigit() and len(digits_only) == 4:
+                        continue
+                    val = _normalize_number(cell_str)
+                    if val is not None:
+                        return val
+    # fallback: text
+    for kw in keywords:
+        pattern = re.compile(rf"{re.escape(kw)}[^0-9\-]{{0,40}}([-]?\(?\d[\d\s.,]*\d\)?)")
+        m = pattern.search(text_lower)
+        if m:
+            val = _normalize_number(m.group(1))
+            if val is not None:
+                return val
+    return None
 
 
 def _table_to_rows(table: Any) -> list[list[Any]]:

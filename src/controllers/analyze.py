@@ -315,20 +315,9 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
 
         if metrics:
             ratios = calculate_ratios(metrics)
-            score_data = calculate_integral_score(ratios)
+            raw_score = calculate_integral_score(ratios)
 
-            # Convert risk level from Russian to English if needed
-            risk_level_map = {
-                "низкий": "low",
-                "средний": "medium",
-                "высокий": "high",
-                "low": "low",
-                "medium": "medium",
-                "high": "high",
-            }
-            risk_level_en = risk_level_map.get(
-                score_data.get("risk_level", "").lower(), "medium"
-            )
+            from src.tasks import _translate_ratios, _build_score_payload
 
             # Ensure metrics has all required fields
             default_metrics = {
@@ -341,64 +330,19 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
                 "short_term_liabilities": None,
                 "accounts_receivable": None,
             }
-            # Merge with extracted metrics, keeping only known fields
-            final_metrics = default_metrics.copy()
-            for key in default_metrics:
-                if key in metrics:
-                    final_metrics[key] = metrics[key]
+            final_metrics = {**default_metrics, **{k: v for k, v in metrics.items() if k in default_metrics}}
 
-            # Convert ratios to expected format (English keys)
-            # Map Russian ratio keys to English ones expected by frontend
-            ratio_key_map = {
-                "Коэффициент текущей ликвидности": "current_ratio",
-                "Коэффициент быстрой ликвидности": None,  # Not in frontend interface
-                "Коэффициент абсолютной ликвидности": None,  # Not in frontend interface
-                "Рентабельность активов (ROA)": "roa",
-                "Рентабельность собственного капитала (ROE)": "roe",
-                "Рентабельность продаж (ROS)": None,  # Not in frontend interface
-                "EBITDA маржа": None,  # Not in frontend interface
-                "Коэффициент автономии": "equity_ratio",
-                "Финансовый рычаг": None,  # Not in frontend interface
-                "Покрытие процентов": None,  # Not in frontend interface
-                "Оборачиваемость активов": None,  # Not in frontend interface
-                "Оборачиваемость запасов": None,  # Not in frontend interface
-                "Оборачиваемость дебиторской задолженности": None,  # Not in frontend interface
-            }
-
-            final_ratios = {
-                "current_ratio": None,
-                "equity_ratio": None,
-                "roa": None,
-                "roe": None,
-                "debt_to_revenue": None,
-            }
-
-            for ru_key, en_key in ratio_key_map.items():
-                if en_key and ru_key in ratios and ratios[ru_key] is not None:
-                    final_ratios[en_key] = ratios[ru_key]
+            ratios_en = _translate_ratios(ratios)
+            score_payload = _build_score_payload(raw_score, ratios_en)
 
             # Build proper AnalysisData response
             return {
-                "scanned": False,  # Assume not scanned for fallback
+                "scanned": False,
                 "text": file_content[0].get("text", "") if file_content else "",
                 "tables": file_content[0].get("tables", []) if file_content else [],
                 "metrics": final_metrics,
-                "ratios": final_ratios,
-                "score": {
-                    "score": score_data.get("score", 0.0),
-                    "risk_level": risk_level_en,
-                    "factors": score_data.get("factors", []),
-                    "normalized_scores": score_data.get(
-                        "normalized_scores",
-                        {
-                            "current_ratio": None,
-                            "equity_ratio": None,
-                            "roa": None,
-                            "roe": None,
-                            "debt_to_revenue": None,
-                        },
-                    ),
-                },
+                "ratios": ratios_en,
+                "score": score_payload,
             }
 
     except Exception as e:

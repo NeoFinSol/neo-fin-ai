@@ -1,35 +1,67 @@
-# Overview — NeoFin AI
+# NeoFin AI — Обзор проекта
 
-## Текущий статус
+## Статус
+- **Фаза**: Phase 1 (MVP) — числовой анализ готов, NLP-рекомендации реализованы и подключены
+- **Последний коммит**: pending — fix: pdf extraction column, scoring key alignment, frontend trends
+- **Последняя сессия**: 2026-03-24 — исправлены баги extraction (колонка данных, net_profit keyword, liabilities fallback), скоринг (ключ Финансовый рычаг), frontend (baseURL порт, захардкоженные тренды)
+- **Контекст**: Полная архитектура в `.agent/architecture.md`. Читать его перед любой разработкой.
 
-| Компонент | Статус | Комментарий |
-|-----------|--------|-------------|
-| Backend (FastAPI) | 🟡 Работает частично | Запускается, принимает запросы, но extraction не работает для реальных PDF |
-| Frontend (React/Vite) | 🟡 Работает частично | Запускается, но показывает Score: 0 и только Revenue |
-| PDF Extraction | 🔴 Сломан | Не парсит реальные отчёты (Магнит) — только revenue, остальные метрики null |
-| Scoring | 🟡 Готов к работе | Исправлен ключ "Долговая нагрузка" → "Финансовый рычаг", но не получает данные |
-| AI Service (HuggingFace) | 🟢 Настроен | HF_TOKEN работает, Llama 3.1 8B подключена |
-| History (frontend) | 🟢 Реализован | localStorage + контекст, сохраняет при анализе |
+---
 
 ## Что работает
-- Backend запускается на порту 8001
-- Frontend запускается на порту 3000
-- API endpoint `/analyze/pdf/file` принимает PDF
-- Scoring функция корректно считает score при наличии данных
-- History сохраняет результаты в localStorage
+✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
+✅ **GET /result/{task_id}** — polling статуса из БД; frontend поллит каждые 2000ms
+✅ **PDF extraction** — PyPDF2 (текст), camelot/pdfplumber (таблицы), pytesseract (OCR для сканов)
+✅ **Financial ratios** — 5 коэффициентов (`ratios.py`); RU-ключи → EN через `RATIO_KEY_MAP` в `tasks.py`
+✅ **Integral scoring** — скоринг 0–100, risk_level, factors (`scoring.py` + `_build_score_payload()`)
+✅ **NLP analysis** — риски и ключевые факторы через `ai_service.py` (GigaChat → Qwen → Ollama → graceful degrade)
+✅ **Recommendations** — `src/analysis/recommendations.py`: 3–5 рекомендаций с явными ссылками на метрики; timeout 65s; fallback при недоступности AI; подключено в `tasks.py`
+✅ **БД** — PostgreSQL 16, SQLAlchemy async, 2 миграции Alembic (`analyses` + индексы)
+✅ **Auth** — X-API-Key header; `DEV_MODE=1` отключает проверку
+✅ **CI/CD** — GitHub Actions: lint → test → security → build
+✅ **Docker** — backend, frontend/nginx, db, db_test, ollama
+✅ **Инфраструктура агента** — `.agent/` с AGENTS.md, мета-файлами и шаблонами
 
-## Что НЕ работает (активные баги)
-- **PDF extraction не парсит реальные отчёты**: Для Магнита возвращает только revenue, остальные метрики null
-- **Frontend показывает Score: 0**: Из-за отсутствия данных extraction
-- **AI service не возвращает структурированные данные**: Возвращает текст, а не JSON
+---
 
-## Приоритеты
-1. 🔴 Исправить PDF extraction для реальных русских отчётов
-2. 🔴 Убедиться что AI service возвращает валидный JSON
-3. 🟡 Проверить что frontend корректно отображает данные при наличии
+## Что разрабатывается
+🔄 **Скоринг для холдинговых компаний** — ROA/ROE занижены из-за структуры баланса (финвложения >> выручка); нужна нормализация под тип компании [MEDIUM]
+🔄 **AnalysisHistory.tsx** — страница есть, но данные только в localStorage (контекст); реальных API-вызовов нет [HIGH]
+🔄 **Auth.tsx** — `handleSubmit` сохраняет API key без валидации на backend [HIGH]
+🔄 **nlp_analysis.py** — модуль реализован, вызов подключён в `tasks.py`, но не проверен на реальных данных [MEDIUM]
 
-## Ключевые файлы для отладки
-- `src/analysis/pdf_extractor.py` — парсинг PDF
-- `src/controllers/analyze.py` — fallback regex extraction
-- `src/core/ai_service.py` — AI extraction
-- `src/analysis/scoring.py` — расчёт score
+---
+
+## Что будет дальше
+❌ Проверить скоринг на реальных данных после фикса (следующая сессия)
+❌ Реализовать реальный API для `AnalysisHistory` (эндпоинт GET /analyses + frontend)
+❌ Валидация API key на backend в `Auth.tsx`
+❌ Устранить дублирование `types.ts` vs `interfaces.ts` (оставить только `interfaces.ts`)
+❌ Celery + Redis вместо BackgroundTasks (для персистентности задач при рестарте)
+❌ WebSocket / SSE вместо polling
+❌ Trend data в `DetailedReport.tsx` из реального API (сейчас "+2.4%" захардкожено)
+
+---
+
+## Известные ограничения
+- BackgroundTasks in-process: задача теряется при рестарте сервера, `status` зависает в `"processing"`
+- SlowAPI rate limiter — in-memory, не работает при нескольких инстансах
+- Polling 2000ms × N пользователей = N/2 req/s к БД (захардкожено в `usePdfAnalysis.ts`)
+- camelot-py + Tesseract + Poppler — ~500MB в Docker-образе, нельзя убрать без замены PDF-стека
+- GigaChat требует кастомный SSL CA bundle и российский аккаунт Sber
+- `frontend/src/api/types.ts` дублирует `interfaces.ts` с расхождениями — использовать только `interfaces.ts`
+- MAX_PDF_PAGES=100, MAX_FILE_SIZE=50MB, AI_TIMEOUT=120s — менять только везде одновременно
+
+---
+
+## Архитектура в двух словах
+
+```
+React/Mantine (polling) → FastAPI routers → tasks.py (оркестратор)
+  → pdf_extractor → ratios → scoring → recommendations → nlp_analysis
+  → ai_service (GigaChat | Qwen | Ollama | None)
+  → crud.py → PostgreSQL
+```
+
+Детали: `.agent/architecture.md` — структура слоёв, data flow, паттерны, критичные файлы, технический долг.
+Ключевой файл оркестрации: `src/tasks.py` — содержит `RATIO_KEY_MAP`, `_build_score_payload()`, порядок вызовов pipeline.

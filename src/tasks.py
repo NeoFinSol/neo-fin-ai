@@ -92,7 +92,7 @@ RATIO_KEY_MAP = {
     "Коэффициент автономии": "equity_ratio",
     "Рентабельность активов (ROA)": "roa",
     "Рентабельность собственного капитала (ROE)": "roe",
-    "Долговая нагрузка": "debt_to_revenue",
+    "Финансовый рычаг": "debt_to_revenue",
 }
 
 # Маппинг Russian metric keys → English for frontend FinancialMetrics
@@ -155,7 +155,7 @@ def _build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
         "Коэффициент автономии": ("Финансовая устойчивость", "equity_ratio"),
         "Рентабельность активов (ROA)": ("Рентабельность активов", "roa"),
         "Рентабельность собственного капитала (ROE)": ("Рентабельность капитала", "roe"),
-        "Долговая нагрузка": ("Долговая нагрузка", "debt_to_revenue"),
+        "Финансовый рычаг": ("Долговая нагрузка", "debt_to_revenue"),
     }
 
     THRESHOLDS = {
@@ -163,7 +163,7 @@ def _build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
         "equity_ratio": (0.4, True),
         "roa": (0.05, True),
         "roe": (0.1, True),
-        "debt_to_revenue": (1.5, False),  # lower is better
+        "debt_to_revenue": (2.0, False),  # lower is better (финансовый рычаг)
     }
 
     factors = []

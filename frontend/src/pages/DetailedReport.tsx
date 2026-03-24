@@ -60,13 +60,20 @@ export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
 
     const handlePrint = () => window.print();
 
+    // Derive trend direction from normalized_scores (>= 0.6 = positive/up, < 0.4 = negative/down)
+    const getTrend = (key: keyof typeof result.score.normalized_scores): 'up' | 'down' | 'neutral' => {
+        const val = result.score?.normalized_scores?.[key];
+        if (val == null) return 'neutral';
+        return val >= 0.6 ? 'up' : 'down';
+    };
+
     const metrics = [
         {
             label: 'Ликвидность',
             value: result?.ratios?.current_ratio != null ? result.ratios.current_ratio.toFixed(2) : '—',
             sub: 'Текущая',
             icon: Activity,
-            trend: 'up',
+            trend: getTrend('current_ratio'),
             color: 'teal'
         },
         {
@@ -74,7 +81,7 @@ export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
             value: result?.ratios?.equity_ratio != null ? result.ratios.equity_ratio.toFixed(2) : '—',
             sub: 'Коэфф. собств. кап.',
             icon: ShieldCheck,
-            trend: 'up',
+            trend: getTrend('equity_ratio'),
             color: 'blue'
         },
         {
@@ -82,7 +89,7 @@ export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
             value: result?.ratios?.roa != null ? (result.ratios.roa * 100).toFixed(1) + '%' : '—',
             sub: 'Рент. активов',
             icon: PieChart,
-            trend: 'down',
+            trend: getTrend('roa'),
             color: 'indigo'
         },
         {
@@ -90,7 +97,7 @@ export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
             value: result?.ratios?.roe != null ? (result.ratios.roe * 100).toFixed(1) + '%' : '—',
             sub: 'Рент. капитала',
             icon: TrendingUp,
-            trend: 'up',
+            trend: getTrend('roe'),
             color: 'violet'
         },
         {
@@ -98,7 +105,7 @@ export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
             value: result?.ratios?.debt_to_revenue != null ? result.ratios.debt_to_revenue.toFixed(2) : '—',
             sub: 'Долговая нагрузка',
             icon: BarChart3,
-            trend: 'down',
+            trend: getTrend('debt_to_revenue'),
             color: 'orange'
         },
         {
@@ -108,7 +115,9 @@ export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
                 : '—',
             sub: 'Чистая рентабельность',
             icon: Wallet,
-            trend: 'up',
+            trend: (result?.metrics?.net_profit != null && result?.metrics?.revenue != null)
+                ? (result.metrics.net_profit / result.metrics.revenue >= 0.05 ? 'up' : 'down')
+                : 'neutral',
             color: 'cyan'
         },
     ];
@@ -274,10 +283,11 @@ export const DetailedReport = ({ result, filename }: DetailedReportProps) => {
                             </Group>
                             <Group align="flex-end" gap="xs">
                                 <Text size="xl" fw={800} style={{ fontFamily: 'JetBrains Mono' }}>{m.value}</Text>
-                                <Group gap={2} c={m.trend === 'up' ? 'teal' : 'red'}>
-                                    {m.trend === 'up' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                                    <Text size="xs" fw={700}>{m.trend === 'up' ? '+2.4%' : '-1.1%'}</Text>
-                                </Group>
+                                {m.trend !== 'neutral' && (
+                                    <Group gap={2} c={m.trend === 'up' ? 'teal' : 'red'}>
+                                        {m.trend === 'up' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                    </Group>
+                                )}
                             </Group>
                             <Text size="xs" c="dimmed" mt={4}>{m.sub}</Text>
                         </Card>
