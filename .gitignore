@@ -67,3 +67,5 @@ backend/obj/
 *.swo
 *~
 .env.local
+
+.claude/
