@@ -9,36 +9,50 @@ export interface FinancialMetrics {
   current_assets: number | null;
   short_term_liabilities: number | null;
   accounts_receivable: number | null;
+  inventory: number | null;
+  cash_and_equivalents: number | null;
+  ebitda: number | null;
+  ebit: number | null;
+  interest_expense: number | null;
+  cost_of_goods_sold: number | null;
+  average_inventory: number | null;
 }
 
+// All 12 ratios across 4 groups (РСБУ/МСФО standard)
 export interface FinancialRatios {
+  // Liquidity
   current_ratio: number | null;
-  equity_ratio: number | null;
+  quick_ratio: number | null;
+  absolute_liquidity_ratio: number | null;
+  // Profitability
   roa: number | null;
   roe: number | null;
-  debt_to_revenue: number | null;
+  ros: number | null;
+  ebitda_margin: number | null;
+  // Financial stability
+  equity_ratio: number | null;
+  financial_leverage: number | null;
+  interest_coverage: number | null;
+  // Business activity
+  asset_turnover: number | null;
+  inventory_turnover: number | null;
+  receivables_turnover: number | null;
+}
+
+export interface ScoreFactor {
+  name: string;
+  description: string;
+  impact: 'positive' | 'negative' | 'neutral';
 }
 
 export interface ScoreData {
   score: number;
   risk_level: 'low' | 'medium' | 'high';
-  factors: {
-    name: string;
-    description: string;
-    impact: 'positive' | 'negative' | 'neutral';
-  }[];
-  normalized_scores: {
-    current_ratio: number | null;
-    equity_ratio: number | null;
-    roa: number | null;
-    roe: number | null;
-    debt_to_revenue: number | null;
-  };
+  factors: ScoreFactor[];
+  normalized_scores: Partial<Record<keyof FinancialRatios, number | null>>;
 }
 
 export interface NLPResult {
-  // Backend schema: src/tasks.py -> nlp_result
-  // Keys use snake_case to match Python backend
   risks: string[];
   key_factors: string[];
   recommendations: string[];
@@ -51,7 +65,7 @@ export interface AnalysisData {
   metrics: FinancialMetrics;
   ratios: FinancialRatios;
   score: ScoreData;
-  nlp?: NLPResult;  // Optional - may be absent if AI not configured or analysis failed
+  nlp?: NLPResult;
 }
 
 export interface AnalysisResponse {

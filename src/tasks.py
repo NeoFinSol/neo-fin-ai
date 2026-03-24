@@ -86,13 +86,26 @@ def _cleanup_temp_file(file_path: str | os.PathLike | io.IOBase | None) -> None:
     except (TypeError, OSError, ValueError) as exc:
         logger.warning("Failed to cleanup path %r: %s", file_path, type(exc).__name__)
 
-# Маппинг русских ключей ratios → camelCase English для frontend
+# Маппинг русских ключей ratios → snake_case English для frontend
+# Порядок соответствует группам: ликвидность, рентабельность, устойчивость, активность
 RATIO_KEY_MAP = {
+    # Liquidity
     "Коэффициент текущей ликвидности": "current_ratio",
-    "Коэффициент автономии": "equity_ratio",
+    "Коэффициент быстрой ликвидности": "quick_ratio",
+    "Коэффициент абсолютной ликвидности": "absolute_liquidity_ratio",
+    # Profitability
     "Рентабельность активов (ROA)": "roa",
     "Рентабельность собственного капитала (ROE)": "roe",
-    "Финансовый рычаг": "debt_to_revenue",
+    "Рентабельность продаж (ROS)": "ros",
+    "EBITDA маржа": "ebitda_margin",
+    # Financial stability
+    "Коэффициент автономии": "equity_ratio",
+    "Финансовый рычаг": "financial_leverage",
+    "Покрытие процентов": "interest_coverage",
+    # Business activity
+    "Оборачиваемость активов": "asset_turnover",
+    "Оборачиваемость запасов": "inventory_turnover",
+    "Оборачиваемость дебиторской задолженности": "receivables_turnover",
 }
 
 # Маппинг Russian metric keys → English for frontend FinancialMetrics
@@ -145,30 +158,30 @@ def _build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
 
     Frontend expects:
       { score, risk_level, factors: [{name, description, impact}],
-        normalized_scores: {current_ratio, equity_ratio, roa, roe, debt_to_revenue} }
+        normalized_scores: {en_key: float | null, ...} }
     """
-    details = raw_score.get("details", {})  # normalized 0-1 values per ratio
+    details = raw_score.get("details", {})  # normalized 0-1 values per ratio (RU keys)
 
-    # Build factors list from details
-    FACTOR_DESCRIPTIONS = {
-        "Коэффициент текущей ликвидности": ("Ликвидность", "current_ratio"),
-        "Коэффициент автономии": ("Финансовая устойчивость", "equity_ratio"),
-        "Рентабельность активов (ROA)": ("Рентабельность активов", "roa"),
-        "Рентабельность собственного капитала (ROE)": ("Рентабельность капитала", "roe"),
-        "Финансовый рычаг": ("Долговая нагрузка", "debt_to_revenue"),
-    }
-
-    THRESHOLDS = {
-        "current_ratio": (1.5, True),
-        "equity_ratio": (0.4, True),
-        "roa": (0.05, True),
-        "roe": (0.1, True),
-        "debt_to_revenue": (2.0, False),  # lower is better (финансовый рычаг)
+    # Human-readable names for frontend display
+    FRIENDLY_NAMES: dict[str, str] = {
+        "Коэффициент текущей ликвидности": "Текущая ликвидность",
+        "Коэффициент быстрой ликвидности": "Быстрая ликвидность",
+        "Коэффициент абсолютной ликвидности": "Абсолютная ликвидность",
+        "Рентабельность активов (ROA)": "Рентабельность активов",
+        "Рентабельность собственного капитала (ROE)": "Рентабельность капитала",
+        "Рентабельность продаж (ROS)": "Рентабельность продаж",
+        "EBITDA маржа": "EBITDA маржа",
+        "Коэффициент автономии": "Финансовая независимость",
+        "Финансовый рычаг": "Финансовый рычаг",
+        "Покрытие процентов": "Покрытие процентов",
+        "Оборачиваемость активов": "Оборачиваемость активов",
+        "Оборачиваемость запасов": "Оборачиваемость запасов",
+        "Оборачиваемость дебиторской задолженности": "Оборачиваемость ДЗ",
     }
 
     factors = []
-    normalized_scores = {
-        k: None for k in ["current_ratio", "equity_ratio", "roa", "roe", "debt_to_revenue"]
+    normalized_scores: dict[str, float | None] = {
+        en_key: None for en_key in RATIO_KEY_MAP.values()
     }
 
     for ru_name, norm_val in details.items():
@@ -177,25 +190,25 @@ def _build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
             continue
 
         normalized_scores[en_key] = norm_val
-        threshold, higher_is_better = THRESHOLDS.get(en_key, (0.5, True))
         actual_val = ratios_en.get(en_key)
 
-        if norm_val is None or actual_val is None:
+        # Determine impact based on normalized score
+        if norm_val is None:
             impact = "neutral"
-        elif higher_is_better:
-            impact = "positive" if norm_val >= 0.6 else ("neutral" if norm_val >= 0.3 else "negative")
+        elif norm_val >= 0.65:
+            impact = "positive"
+        elif norm_val >= 0.35:
+            impact = "neutral"
         else:
-            # debt_to_revenue: high norm means low debt (good)
-            impact = "positive" if norm_val >= 0.6 else ("neutral" if norm_val >= 0.3 else "negative")
+            impact = "negative"
 
-        friendly_name, _ = FACTOR_DESCRIPTIONS.get(ru_name, (ru_name, en_key))
-        # Safe numeric formatting with type check
+        friendly_name = FRIENDLY_NAMES.get(ru_name, ru_name)
+
         if actual_val is None:
             actual_str = "—"
         elif isinstance(actual_val, (int, float)):
             actual_str = f"{actual_val:.2f}"
         else:
-            # Handle non-numeric values (strings, etc.)
             try:
                 actual_str = f"{float(actual_val):.2f}"
             except (TypeError, ValueError):

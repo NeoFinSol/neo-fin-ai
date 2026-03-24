@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+﻿"""Basic smoke tests for calculate_ratios (legacy compatibility)."""
+from __future__ import annotations
+
+import pytest
 
 from src.analysis.ratios import calculate_ratios
 
@@ -16,11 +19,12 @@ def test_calculate_ratios_basic():
 
     ratios = calculate_ratios(data)
 
-    assert ratios["Коэффициент текущей ликвидности"] == 2.0
-    assert ratios["Коэффициент автономии"] == 0.5
-    assert ratios["Рентабельность активов (ROA)"] == 0.1
-    assert ratios["Рентабельность собственного капитала (ROE)"] == 0.2
-    assert ratios["Долговая нагрузка"] == 0.2
+    assert ratios["Коэффициент текущей ликвидности"] == pytest.approx(2.0)
+    assert ratios["Коэффициент автономии"] == pytest.approx(0.5)
+    assert ratios["Рентабельность активов (ROA)"] == pytest.approx(0.1)
+    assert ratios["Рентабельность собственного капитала (ROE)"] == pytest.approx(0.2)
+    # Финансовый рычаг = liabilities / equity = 120 / 150
+    assert ratios["Финансовый рычаг"] == pytest.approx(0.8)
 
 
 def test_calculate_ratios_missing_data():
@@ -32,8 +36,8 @@ def test_calculate_ratios_missing_data():
 
     ratios = calculate_ratios(data)
 
-    assert ratios["Коэффициент текущей ликвидности"] is None
+    assert ratios["Коэффициент текущей ликвидности"] is None  # denominator = 0
     assert ratios["Коэффициент автономии"] is None
     assert ratios["Рентабельность активов (ROA)"] is None
     assert ratios["Рентабельность собственного капитала (ROE)"] is None
-    assert ratios["Долговая нагрузка"] is None
+    assert ratios["Финансовый рычаг"] is None

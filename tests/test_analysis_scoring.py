@@ -20,7 +20,7 @@ class TestCalculateIntegralScore:
             "Коэффициент автономии": 0.6,
             "Рентабельность активов (ROA)": 0.15,
             "Рентабельность собственного капитала (ROE)": 0.25,
-            "Долговая нагрузка": 1.0,
+            "Финансовый рычаг": 1.0,
         }
 
         result = calculate_integral_score(ratios)
@@ -60,7 +60,7 @@ class TestCalculateIntegralScore:
             "Коэффициент автономии": None,
             "Рентабельность активов (ROA)": None,
             "Рентабельность собственного капитала (ROE)": None,
-            "Долговая нагрузка": None,
+            "Финансовый рычаг": None,
         }
 
         result = calculate_integral_score(ratios)
@@ -76,7 +76,7 @@ class TestCalculateIntegralScore:
             "Коэффициент автономии": 0.8,
             "Рентабельность активов (ROA)": 0.2,
             "Рентабельность собственного капитала (ROE)": 0.3,
-            "Долговая нагрузка": 0.5,
+            "Финансовый рычаг": 0.5,
         }
         result = calculate_integral_score(high_ratios)
         assert result["risk_level"] == "низкий"
@@ -87,7 +87,7 @@ class TestCalculateIntegralScore:
             "Коэффициент автономии": 0.4,
             "Рентабельность активов (ROA)": 0.05,
             "Рентабельность собственного капитала (ROE)": 0.1,
-            "Долговая нагрузка": 1.2,
+            "Финансовый рычаг": 1.2,
         }
         result = calculate_integral_score(med_ratios)
         assert result["risk_level"] in ("средний", "высокий")
@@ -99,7 +99,7 @@ class TestCalculateIntegralScore:
             "Коэффициент автономии": "0.5",
             "Рентабельность активов (ROA)": "0.1",
             "Рентабельность собственного капитала (ROE)": "0.2",
-            "Долговая нагрузка": "1.0",
+            "Финансовый рычаг": "1.0",
         }
 
         result = calculate_integral_score(ratios)
@@ -177,22 +177,22 @@ class TestRiskLevel:
     """Tests for _risk_level function."""
 
     def test_low_risk(self):
-        """Test low risk threshold."""
-        assert _risk_level(80.0) == "низкий"
+        """Test low risk threshold (>= 75)."""
+        assert _risk_level(75.0) == "низкий"
         assert _risk_level(90.0) == "низкий"
         assert _risk_level(100.0) == "низкий"
 
     def test_medium_risk(self):
-        """Test medium risk threshold."""
+        """Test medium risk threshold (50–74.9)."""
+        assert _risk_level(50.0) == "средний"
         assert _risk_level(60.0) == "средний"
-        assert _risk_level(70.0) == "средний"
-        assert _risk_level(79.9) == "средний"
+        assert _risk_level(74.9) == "средний"
 
     def test_high_risk(self):
-        """Test high risk threshold."""
+        """Test high risk threshold (< 50)."""
         assert _risk_level(0.0) == "высокий"
         assert _risk_level(30.0) == "высокий"
-        assert _risk_level(59.9) == "высокий"
+        assert _risk_level(49.9) == "высокий"
         assert _risk_level(-10.0) == "высокий"
 
 
