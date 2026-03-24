@@ -1,9 +1,9 @@
 # NeoFin AI — Обзор проекта
 
 ## Статус
-- **Фаза**: Phase 1 (MVP) — числовой анализ готов, NLP-рекомендации реализованы и подключены
-- **Последний коммит**: pending — fix: pdf extraction column, scoring key alignment, frontend trends
-- **Последняя сессия**: 2026-03-24 — исправлены баги extraction (колонка данных, net_profit keyword, liabilities fallback), скоринг (ключ Финансовый рычаг), frontend (baseURL порт, захардкоженные тренды)
+- **Фаза**: Phase 1 (MVP) — Этап 1 завершён: 13 коэффициентов, скоринг, тесты 319/319 зелёные
+- **Последний коммит**: `fix(tests): fix mock paths for pdf_extractor, DATABASE_URL, and AppSettings .env bypass`
+- **Последняя сессия**: 2026-03-24 — Этап 1 конкурсной подготовки: расширены коэффициенты до 13, исправлены все 7 падающих тестов, полный прогон 319 passed
 - **Контекст**: Полная архитектура в `.agent/architecture.md`. Читать его перед любой разработкой.
 
 ---
@@ -12,21 +12,22 @@
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
 ✅ **GET /result/{task_id}** — polling статуса из БД; frontend поллит каждые 2000ms
 ✅ **PDF extraction** — PyPDF2 (текст), camelot/pdfplumber (таблицы), pytesseract (OCR для сканов)
-✅ **Financial ratios** — 5 коэффициентов (`ratios.py`); RU-ключи → EN через `RATIO_KEY_MAP` в `tasks.py`
-✅ **Integral scoring** — скоринг 0–100, risk_level, factors (`scoring.py` + `_build_score_payload()`)
+✅ **Financial ratios** — 13 коэффициентов (4 группы: ликвидность, рентабельность, устойчивость, активность); RU-ключи → EN через `RATIO_KEY_MAP` в `tasks.py`
+✅ **Integral scoring** — скоринг 0–100, risk_level (пороги 75/50), factors, normalized_scores (`scoring.py` + `_build_score_payload()`)
 ✅ **NLP analysis** — риски и ключевые факторы через `ai_service.py` (GigaChat → Qwen → Ollama → graceful degrade)
 ✅ **Recommendations** — `src/analysis/recommendations.py`: 3–5 рекомендаций с явными ссылками на метрики; timeout 65s; fallback при недоступности AI; подключено в `tasks.py`
 ✅ **БД** — PostgreSQL 16, SQLAlchemy async, 2 миграции Alembic (`analyses` + индексы)
 ✅ **Auth** — X-API-Key header; `DEV_MODE=1` отключает проверку
 ✅ **CI/CD** — GitHub Actions: lint → test → security → build
 ✅ **Docker** — backend, frontend/nginx, db, db_test, ollama
-✅ **Инфраструктура агента** — `.agent/` с AGENTS.md, мета-файлами и шаблонами
+✅ **Тесты** — 319 passed, 1 skipped (test_auth.py — pre-existing DEV_MODE import bug)
 
 ---
 
 ## Что разрабатывается
-🔄 **Скоринг для холдинговых компаний** — ROA/ROE занижены из-за структуры баланса (финвложения >> выручка); нужна нормализация под тип компании [MEDIUM]
-🔄 **AnalysisHistory.tsx** — страница есть, но данные только в localStorage (контекст); реальных API-вызовов нет [HIGH]
+🔄 **Этап 2** — покрытие тестами 90%+ (текущее покрытие неизвестно, нужно замерить)
+🔄 **Этап 3** — доработка под конкурс: AnalysisHistory API, визуализация, маскировка данных
+🔄 **AnalysisHistory.tsx** — страница есть, но данные только в localStorage; реальных API-вызовов нет [HIGH]
 🔄 **Auth.tsx** — `handleSubmit` сохраняет API key без валидации на backend [HIGH]
 🔄 **nlp_analysis.py** — модуль реализован, вызов подключён в `tasks.py`, но не проверен на реальных данных [MEDIUM]
 

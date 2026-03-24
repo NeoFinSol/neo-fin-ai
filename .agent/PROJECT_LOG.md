@@ -1,5 +1,18 @@
 # Project Log
 
+## 2026-03-24 | Этап 1 завершён: 13 коэффициентов + все тесты зелёные ✅
+- `scoring.py`: расширен до 13 коэффициентов (4 группы: ликвидность 25%, рентабельность 35%, устойчивость 25%, активность 15%); бенчмарки РСБУ; пороги риска 75/50; экспортирован `WEIGHTS`
+- `tasks.py`: `RATIO_KEY_MAP` расширен с 5 до 13 ключей; `_build_score_payload()` переписан под все 13 коэффициентов с `FRIENDLY_NAMES`
+- `frontend/src/api/interfaces.ts`: `FinancialRatios` расширен до 13 полей
+- `tests/test_controllers_analyze.py`: исправлены пути мока `pdf_extractor` — `src.controllers.analyze.pdf_extractor` → `src.analysis.pdf_extractor` (импорт внутри функции)
+- `tests/test_db_database.py`: `test_default_database_url` — патчим `src.db.database.DATABASE_URL` напрямую (переменная модуля, не `os.getenv`)
+- `tests/test_models_settings.py`: `test_default_settings_no_env` — передаём `_env_file=None` чтобы обойти чтение `.env` файла Pydantic BaseSettings
+- **Результат**: 319 passed, 1 skipped (test_auth.py — pre-existing DEV_MODE import bug)
+- **Коммиты**: `feat(ratios): expand to 12 coefficients...`, `fix(tests): update test_tasks.py...`, `fix(tests): fix mock paths for pdf_extractor, DATABASE_URL, and AppSettings .env bypass`
+- **Дальше**: Этап 2 — замерить покрытие тестами, довести до 90%+
+
+---
+
 ## 2026-03-24 | Fix: PDF extraction колонка + scoring key alignment + frontend ✅
 - `pdf_extractor.py`: extraction теперь берёт первую числовую ячейку после названия показателя (текущий период), а не последнюю (2023 год); убран keyword `"нераспределенная прибыль"` из `net_profit`; добавлен `"итого по разделу iii"` для equity; `liabilities` теперь вычисляется как IV+V или assets-equity если прямая строка не найдена
 - `scoring.py` + `tasks.py`: ключ `"Финансовый рычаг"` синхронизирован между `ratios.py`, `RATIO_KEY_MAP`, `_build_score_payload()` и `scoring.py` — `debt_to_revenue` теперь получает реальное значение
