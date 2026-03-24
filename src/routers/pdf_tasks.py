@@ -11,6 +11,7 @@ from src.core.auth import get_api_key
 from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
 from src.db.crud import create_analysis, get_analysis
 from src.tasks import process_pdf
+from src.utils.masking import mask_analysis_data
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +148,9 @@ async def get_result(
     analysis = await get_analysis(task_id)
     if analysis is None:
         raise HTTPException(status_code=404, detail="Task not found")
+    result = analysis.result if analysis.result and isinstance(analysis.result, dict) else {}
+    demo_mode = os.getenv("DEMO_MODE", "0") == "1"
+    result = mask_analysis_data(result, demo_mode)
     payload = {"status": analysis.status}
-    if analysis.result and isinstance(analysis.result, dict):
-        payload.update(analysis.result)
+    payload.update(result)
     return payload

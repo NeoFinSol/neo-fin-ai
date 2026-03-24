@@ -1,5 +1,6 @@
-﻿from pathlib import Path
+from pathlib import Path
 import logging
+import os
 import re
 
 from pydantic import Field, field_validator, model_validator
@@ -10,74 +11,85 @@ ENV_FILE = BASE_DIR / ".env"
 
 
 class AppSettings(BaseSettings):
+    # Security
+    api_key: str | None = Field(
+        None, alias="API_KEY", description="API key for authentication"
+    )
+    dev_mode: bool = Field(
+        False, alias="DEV_MODE", description="Development mode (disables auth)"
+    )
     # Qwen AI settings (deprecated, use GigaChat instead)
     qwen_api_key: str | None = Field(
-        None,
-        alias="QWEN_API_KEY",
-        description="API key for Qwen service"
+        None, alias="QWEN_API_KEY", description="API key for Qwen service"
     )
     qwen_api_url: str | None = Field(
-        None,
-        alias="QWEN_API_URL",
-        description="URL for Qwen API service"
+        None, alias="QWEN_API_URL", description="URL for Qwen API service"
     )
 
     # GigaChat AI settings
     gigachat_client_id: str | None = Field(
-        None,
-        alias="GIGACHAT_CLIENT_ID",
-        description="GigaChat Client ID"
+        None, alias="GIGACHAT_CLIENT_ID", description="GigaChat Client ID"
     )
     gigachat_client_secret: str | None = Field(
-        None,
-        alias="GIGACHAT_CLIENT_SECRET",
-        description="GigaChat Client Secret"
+        None, alias="GIGACHAT_CLIENT_SECRET", description="GigaChat Client Secret"
     )
     gigachat_auth_url: str | None = Field(
         "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
         alias="GIGACHAT_AUTH_URL",
-        description="GigaChat OAuth authentication URL"
+        description="GigaChat OAuth authentication URL",
     )
     gigachat_chat_url: str | None = Field(
         "https://gigachat.devices.sberbank.ru/api/v1/chat/completions",
         alias="GIGACHAT_CHAT_URL",
-        description="GigaChat chat completions API URL"
+        description="GigaChat chat completions API URL",
     )
 
     # Local LLM settings (Ollama)
     llm_url: str | None = Field(
         "http://localhost:11434/api/generate",
         alias="LLM_URL",
-        description="Local LLM (Ollama) URL"
+        description="Local LLM (Ollama) URL",
     )
     llm_model: str | None = Field(
-        "llama3",
-        alias="LLM_MODEL",
-        description="Local LLM model name"
+        "llama3", alias="LLM_MODEL", description="Local LLM model name"
+    )
+
+    # Hugging Face settings
+    hf_token: str | None = Field(
+        None, alias="HF_TOKEN", description="Hugging Face API token"
+    )
+    hf_model: str | None = Field(
+        "Qwen/Qwen3.5-9B-Instruct",
+        alias="HF_MODEL",
+        description="Hugging Face model name",
     )
 
     # Rate limiting settings
     rate_limit: str = Field(
         "100/minute",
         alias="RATE_LIMIT",
-        description="Rate limit in format <count>/<period> (e.g., 100/minute)"
+        description="Rate limit in format <count>/<period> (e.g., 100/minute)",
     )
 
     # Logging settings
     log_level: str = Field(
         "INFO",
         alias="LOG_LEVEL",
-        description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+        description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL",
     )
     log_format: str = Field(
-        "text",
-        alias="LOG_FORMAT",
-        description="Logging format: json or text"
+        "text", alias="LOG_FORMAT", description="Logging format: json or text"
     )
 
     model_config = SettingsConfigDict(env_file=str(ENV_FILE), extra="ignore")
 
-    @field_validator("qwen_api_url", "gigachat_auth_url", "gigachat_chat_url", "llm_url", mode="before")
+    @field_validator(
+        "qwen_api_url",
+        "gigachat_auth_url",
+        "gigachat_chat_url",
+        "llm_url",
+        mode="before",
+    )
     @classmethod
     def validate_urls(cls, v: str | None) -> str | None:
         """Validate URLs if provided."""
@@ -98,7 +110,9 @@ class AppSettings(BaseSettings):
         # Validate format: <count>/<period>
         pattern = r"^\d+/(second|minute|hour|day)$"
         if not re.match(pattern, v):
-            logging.warning(f"Invalid rate limit format '{v}'. Using default '100/minute'")
+            logging.warning(
+                f"Invalid rate limit format '{v}'. Using default '100/minute'"
+            )
             return "100/minute"
         return v
 
@@ -137,17 +151,45 @@ class AppSettings(BaseSettings):
     @property
     def use_gigachat(self) -> bool:
         """Check if GigaChat is configured."""
-        return bool(self.gigachat_client_id and self.gigachat_client_secret)
+        if not (self.gigachat_client_id and self.gigachat_client_secret):
+            return False
+        cid = self.gigachat_client_id.lower().strip()
+        csec = self.gigachat_client_secret.lower().strip()
+        if cid in ("your-client-id", "none", "") or csec in (
+            "your-client-secret",
+            "none",
+            "",
+        ):
+            return False
+        return True
 
     @property
     def use_qwen(self) -> bool:
         """Check if Qwen is configured."""
-        return bool(self.qwen_api_key and self.qwen_api_url)
+        if not (self.qwen_api_key and self.qwen_api_url):
+            return False
+        key = self.qwen_api_key.lower().strip()
+        url = self.qwen_api_url.lower().strip()
+        if key in ("your-api-key", "none", "") or url in ("https://api.qwen.ai/v1",):
+            return False
+        return True
 
     @property
     def use_local_llm(self) -> bool:
         """Check if local LLM (Ollama) is configured."""
         return bool(self.llm_url)
+
+    @property
+    def use_huggingface(self) -> bool:
+        """Check if Hugging Face is configured."""
+        if not self.hf_token:
+            return False
+        token = self.hf_token.lower().strip()
+        if token in ("your-huggingface-token-here", "none", "") or token.startswith(
+            "your-"
+        ):
+            return False
+        return True
 
 
 try:

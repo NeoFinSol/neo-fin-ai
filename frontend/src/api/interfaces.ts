@@ -77,3 +77,25 @@ export interface AnalysisResponse {
 export interface UploadResponse {
   task_id: string;
 }
+
+
+// ---------------------------------------------------------------------------
+// Analysis History API interfaces (analysis-history-visualization)
+// Requirement: 6.4
+// ---------------------------------------------------------------------------
+
+export interface AnalysisSummary {
+  task_id: string;
+  status: string;
+  created_at: string; // ISO 8601
+  score: number | null;
+  risk_level: string | null;
+  filename: string | null;
+}
+
+export interface AnalysisListResponse {
+  items: AnalysisSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+}

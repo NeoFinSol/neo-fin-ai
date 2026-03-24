@@ -1,0 +1,84 @@
+"""
+Router for analysis history endpoints.
+Feature: analysis-history-visualization
+Requirements: 1.1–1.7, 2.1–2.5
+"""
+from __future__ import annotations
+
+import logging
+import os
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from src.core.auth import get_api_key
+from src.db.crud import get_analyses_list, get_analysis
+from src.models.schemas import (
+    AnalysisDetailResponse,
+    AnalysisListResponse,
+    AnalysisSummaryResponse,
+)
+from src.utils.masking import mask_analysis_data
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/analyses", tags=["analyses"])
+
+
+def _is_demo_mode() -> bool:
+    return os.getenv("DEMO_MODE") == "1"
+
+
+@router.get("", response_model=AnalysisListResponse)
+async def list_analyses(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    _api_key: str = Depends(get_api_key),
+) -> AnalysisListResponse:
+    """Return paginated list of analyses ordered by created_at DESC."""
+    items, total = await get_analyses_list(page, page_size)
+    demo = _is_demo_mode()
+
+    summary_items: list[AnalysisSummaryResponse] = []
+    for a in items:
+        result = a.result or {}
+        masked = mask_analysis_data(result, demo)
+        data = masked.get("data") or {}
+        score_block = data.get("score") or {}
+
+        summary_items.append(
+            AnalysisSummaryResponse(
+                task_id=a.task_id,
+                status=a.status,
+                created_at=a.created_at,
+                score=score_block.get("score"),
+                risk_level=score_block.get("risk_level"),
+                filename=masked.get("filename"),
+            )
+        )
+
+    return AnalysisListResponse(
+        items=summary_items,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get("/{task_id}", response_model=AnalysisDetailResponse)
+async def get_analysis_detail(
+    task_id: str,
+    _api_key: str = Depends(get_api_key),
+) -> AnalysisDetailResponse:
+    """Return full analysis data for a given task_id."""
+    analysis = await get_analysis(task_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+
+    demo = _is_demo_mode()
+    masked = mask_analysis_data(analysis.result or {}, demo)
+
+    return AnalysisDetailResponse(
+        task_id=analysis.task_id,
+        status=analysis.status,
+        created_at=analysis.created_at,
+        data=masked or None,
+    )

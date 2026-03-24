@@ -34,3 +34,34 @@ class AnalyzeResponse(BaseModel):
     opportunities: list[str] = Field(description="Список выявленных перспектив/возможностей (пока пустой)")
     recommendations: list[str] = Field(description="Список рекомендаций (пока заглушка, будет реализовано позже)")
     news: list[str] = Field(description="Краткий список новостей и их тональности (опциональный модуль)")
+
+
+# ---------------------------------------------------------------------------
+# Analysis History API schemas (analysis-history-visualization)
+# Requirements: 6.1, 6.2, 6.3
+# ---------------------------------------------------------------------------
+
+from datetime import datetime
+
+
+class AnalysisSummaryResponse(BaseModel):
+    task_id: str
+    status: str
+    created_at: datetime
+    score: float | None = None
+    risk_level: str | None = None
+    filename: str | None = None
+
+
+class AnalysisListResponse(BaseModel):
+    items: list[AnalysisSummaryResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class AnalysisDetailResponse(BaseModel):
+    task_id: str
+    status: str
+    created_at: datetime
+    data: dict | None = None

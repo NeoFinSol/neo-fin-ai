@@ -114,7 +114,8 @@ def test_parse_financial_statements():
     tables = [
         {"rows": [["Выручка", "1000"], ["Чистая прибыль", "50"]]},
     ]
-    text = "Краткосрочные обязательства 200"
+    # Use keyword that matches _METRIC_KEYWORDS for short_term_liabilities
+    text = "Итого краткосрочных обязательств 200"
 
     metrics = pdf_extractor.parse_financial_statements(tables, text)
 

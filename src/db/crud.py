@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 import logging
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from src.db.database import get_session_maker
@@ -94,6 +94,41 @@ async def update_analysis(task_id: str, status: str, result: dict | None = None)
         except SQLAlchemyError as e:
             await session.rollback()
             logger.error("Database error updating analysis: %s", e)
+            raise
+
+
+async def get_analyses_list(page: int, page_size: int) -> tuple[list[Analysis], int]:
+    """
+    Get paginated list of analyses ordered by created_at DESC.
+
+    Args:
+        page: Page number (1-based)
+        page_size: Number of records per page
+
+    Returns:
+        tuple[list[Analysis], int]: (items, total) where total is the overall count
+    """
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            offset = (page - 1) * page_size
+            items_stmt = (
+                select(Analysis)
+                .order_by(Analysis.created_at.desc())
+                .limit(page_size)
+                .offset(offset)
+            )
+            count_stmt = select(func.count()).select_from(Analysis)
+
+            items_result = await session.scalars(items_stmt)
+            total_result = await session.scalar(count_stmt)
+
+            items = list(items_result.all())
+            total = total_result or 0
+            logger.debug("get_analyses_list: page=%s, page_size=%s, total=%s", page, page_size, total)
+            return items, total
+        except SQLAlchemyError as e:
+            logger.error("Database error listing analyses: %s", e)
             raise
 
 
