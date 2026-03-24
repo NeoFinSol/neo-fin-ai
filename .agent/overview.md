@@ -2,8 +2,8 @@
 
 ## Статус
 - **Фаза**: Phase 1 (MVP) — Этап 3 полностью завершён и верифицирован: 48 тестов, 0 failed
-- **Последний коммит**: `test(checkpoint): all 48 Этап 3 tests pass — backend 24, frontend 24`
-- **Последняя сессия**: 2026-03-24 — финальный checkpoint Этапа 3: все тесты зелёные
+- **Последний коммит**: `fix(dashboard): persist analysis result across navigation; fix history crash on null data`
+- **Последняя сессия**: 2026-03-24 — Auth валидация, Vite proxy, DATABASE_URL fix, два frontend бага
 - **Контекст**: Полная архитектура в `.agent/architecture.md`. Читать его перед любой разработкой.
 
 ---

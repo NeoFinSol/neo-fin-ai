@@ -65,6 +65,91 @@ score_payload = _build_score_payload(raw_score, ratios_en)
 
 ## Решённые проблемы (архив)
 
+### Dashboard теряет результат анализа при навигации
+**Статус**: Решено ✅
+**Дата решения**: 2026-03-24
+**Корневая причина**: `usePdfAnalysis` хранит состояние локально в хуке. При переходе на другую страницу `Dashboard` размонтируется → хук сбрасывается → `data = null`. Анализ продолжается в фоне, но результат некуда записать при возврате.
+
+**Решение**: поднять `pendingResult` / `pendingFilename` в `HistoryContext` (уже существующий глобальный контекст). `Dashboard` при получении результата вызывает `setPending(filename, data)`, при монтировании читает `pendingResult` из контекста.
+
+```tsx
+// AnalysisHistoryContext.tsx — добавлены поля
+pendingResult: AnalysisData | null;
+pendingFilename: string;
+setPending: (filename: string, result: AnalysisData | null) => void;
+
+// Dashboard.tsx
+const displayData = data ?? pendingResult;
+```
+Где применено: `frontend/src/context/AnalysisHistoryContext.tsx`, `frontend/src/pages/Dashboard.tsx`
+Проверка: загрузить PDF → перейти на Settings → вернуться на Dashboard → результат отображается.
+
+> ⚠️ Паттерн: состояние, которое должно пережить навигацию — поднимать в Context, не держать в локальном хуке.
+
+---
+
+### AnalysisHistory — белый экран при клике на запись без данных
+**Статус**: Решено ✅
+**Дата решения**: 2026-03-24
+**Корневая причина**: `handleRowClick` при `res.data.data === null` не устанавливал `detailData`, но и не показывал ошибку. При некоторых условиях `DetailedReport` рендерился с `null` → краш.
+
+**Решение**: явная обработка `null` — показывать `setError(...)` вместо молчаливого игнорирования.
+
+```tsx
+if (res.data.data) {
+  setDetailData(res.data.data);
+} else {
+  setError('Данные анализа недоступны — обработка ещё не завершена.');
+}
+```
+Где применено: `frontend/src/pages/AnalysisHistory.tsx`
+Проверка: клик на запись без данных → показывает Alert с ошибкой, не белый экран.
+
+---
+
+### load_dotenv не вызывался — DATABASE_URL не читался из .env
+**Статус**: Решено ✅
+**Дата решения**: 2026-03-24
+**Корневая причина**: `database.py` читает `DATABASE_URL` через `os.getenv()` на уровне модуля. `pydantic-settings` загружает `.env` только для `AppSettings`, но не для `os.getenv()`. `load_dotenv()` нигде не вызывался → `DATABASE_URL = None` → `RuntimeError` при старте.
+
+**Решение**:
+```python
+# src/app.py — добавить в самом начале, до всех импортов src.*
+from dotenv import load_dotenv
+load_dotenv()
+```
+Где применено: `src/app.py`
+Проверка: backend стартует без `RuntimeError: DATABASE_URL environment variable is required`.
+
+> ⚠️ Паттерн: `os.getenv()` на уровне модуля не читает `.env` автоматически. Всегда вызывать `load_dotenv()` в точке входа приложения.
+
+---
+
+### Auth.tsx — «Не удалось подключиться» даже с валидным ключом
+**Статус**: Решено ✅
+**Дата решения**: 2026-03-24
+**Корневая причина**: Два бага одновременно:
+1. `vite.config.ts` proxy указывал на `localhost:5000` (неправильный порт, backend на 8000)
+2. `Auth.tsx` и `client.ts` делали запросы напрямую на `http://127.0.0.1:8000` — минуя Vite proxy → браузер блокировал по CORS
+
+**Решение**:
+```typescript
+// vite.config.ts — исправлен порт
+proxy: { '/api': { target: 'http://localhost:8000', ... } }
+
+// Auth.tsx — относительный путь через proxy
+await axios.get('/api/analyses?page=1&page_size=1', ...)
+
+// client.ts — baseURL через proxy
+baseURL: import.meta.env.VITE_API_BASE || '/api'
+```
+Где применено: `frontend/vite.config.ts`, `frontend/src/pages/Auth.tsx`, `frontend/src/api/client.ts`
+Проверка: `npm run dev` (перезапуск обязателен — proxy конфиг не подхватывается hot reload); запрос в Network tab идёт на `/api/analyses`, не на `127.0.0.1:8000`.
+
+> ⚠️ Паттерн: при ошибке «Не удалось подключиться» в dev — сначала проверить Network tab. Если запрос идёт на `127.0.0.1:8000` напрямую (не через `/api`) — это proxy не используется.
+
+---
+
 ### Отсутствуют компоненты Layout и ProtectedRoute
 **Статус**: Решено ✅
 **Дата решения**: 2026-03-22

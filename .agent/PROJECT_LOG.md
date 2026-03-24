@@ -1,5 +1,15 @@
 # Project Log
 
+## 2026-03-24 | Fix: два frontend бага — навигация и белый экран ✅
+- `AnalysisHistoryContext.tsx` — добавлены `pendingResult`, `pendingFilename`, `setPending` для персистентности результата анализа между навигациями
+- `Dashboard.tsx` — `displayData = data ?? pendingResult`; сброс `setPending('', null)` при "Новый анализ"
+- `AnalysisHistory.tsx` — `handleRowClick` теперь показывает `setError(...)` при `data === null` вместо молчаливого игнора → нет белого экрана
+- `src/app.py` — добавлен `load_dotenv()` в точку входа; `DATABASE_URL` теперь читается из `.env` корректно
+- **Корневые причины**: (1) локальный хук не переживает размонтирование компонента; (2) null-data без обработки → краш рендера; (3) `os.getenv()` на уровне модуля не читает `.env` без `load_dotenv()`
+- **Дальше**: проверить полный flow анализа; обновить `.env` DATABASE_URL для локального запуска
+
+---
+
 ## 2026-03-24 | Fix: Auth.tsx валидация API key + Vite proxy ✅
 - `frontend/src/pages/Auth.tsx` — pre-flight `GET /api/analyses?page=1&page_size=1` с введённым ключом; 401/403 → «Невалидный ключ»; сетевая ошибка → «Не удалось подключиться»; одноразовый axios (не apiClient)
 - `frontend/vite.config.ts` — proxy `/api` → `http://localhost:8000` (было `localhost:5000` — неправильный порт)
