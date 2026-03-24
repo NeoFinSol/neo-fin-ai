@@ -16,10 +16,6 @@ interface HistoryContextType {
   removeEntry: (id: string) => void;
   clearHistory: () => void;
   getEntry: (id: string) => HistoryEntry | undefined;
-  // Pending analysis — survives navigation
-  pendingResult: AnalysisData | null;
-  pendingFilename: string;
-  setPending: (filename: string, result: AnalysisData | null) => void;
 }
 
 const STORAGE_KEY = 'neofin_analysis_history';
@@ -37,8 +33,6 @@ function loadFromStorage(): HistoryEntry[] {
 
 export const HistoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [history, setHistory] = useState<HistoryEntry[]>(loadFromStorage);
-  const [pendingResult, setPendingResult] = useState<AnalysisData | null>(null);
-  const [pendingFilename, setPendingFilename] = useState<string>('');
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
@@ -69,13 +63,8 @@ export const HistoryProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [history],
   );
 
-  const setPending = useCallback((filename: string, result: AnalysisData | null) => {
-    setPendingFilename(filename);
-    setPendingResult(result);
-  }, []);
-
   return (
-    <HistoryContext.Provider value={{ history, addEntry, removeEntry, clearHistory, getEntry, pendingResult, pendingFilename, setPending }}>
+    <HistoryContext.Provider value={{ history, addEntry, removeEntry, clearHistory, getEntry }}>
       {children}
     </HistoryContext.Provider>
   );

@@ -7,66 +7,51 @@ import {
   IconUpload, IconFileAnalytics, IconAlertCircle, IconX, IconLoader,
   IconBrain, IconChartBar, IconFileText,
 } from '@tabler/icons-react';
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { DetailedReport } from './DetailedReport';
-import { usePdfAnalysis } from '../hooks/usePdfAnalysis';
+import { useAnalysis } from '../context/AnalysisContext';
 import { useHistory } from '../context/AnalysisHistoryContext';
 
 export function Dashboard() {
-  const [filename, setFilename] = useState<string>('');
-  const { addEntry, pendingResult, pendingFilename, setPending } = useHistory();
+  const { status, result, filename, error, analyze, reset } = useAnalysis();
+  const { addEntry } = useHistory();
   const savedRef = useRef(false);
-  const {
-    mutate: analyze,
-    isPending,
-    statusText,
-    isError,
-    error,
-    data,
-    reset,
-    progressStep,
-  } = usePdfAnalysis();
+
+  const isPending = status === 'uploading' || status === 'processing';
 
   const handleUpload = useCallback((files: File[]) => {
     if (files.length > 0) {
-      setFilename(files[0].name);
       savedRef.current = false;
-      setPending(files[0].name, null); // clear previous pending
       analyze(files[0]);
     }
-  }, [analyze, setPending]);
+  }, [analyze]);
 
-  // Сохраняем в историю и в контекст один раз при получении данных
+  // Save to history once when result arrives
   useEffect(() => {
-    if (data && filename && !savedRef.current) {
-      addEntry(filename, data);
-      setPending(filename, data);
+    if (result && filename && !savedRef.current) {
+      addEntry(filename, result);
       savedRef.current = true;
     }
-  }, [data, filename, addEntry, setPending]);
-
-  // Если вернулись на страницу после навигации — показываем сохранённый результат
-  const displayData = data ?? pendingResult;
-  const displayFilename = data ? filename : pendingFilename;
+  }, [result, filename, addEntry]);
 
   const handleReject = useCallback((rejections: FileRejection[]) => {
-    const message = rejections[0]?.errors[0]?.message || 'Файл отклонен';
-    console.warn('File rejected:', message);
+    console.warn('File rejected:', rejections[0]?.errors[0]?.message);
   }, []);
 
-  // Преобразуем строковый статус в числовой шаг для Timeline
-  const progressStepNum = progressStep === 'uploading' ? 0
-    : progressStep === 'processing' ? 2
-      : progressStep === 'completed' ? 4
+  const progressStepNum = status === 'uploading' ? 0
+    : status === 'processing' ? 2
+      : status === 'completed' ? 4
         : 0;
 
-  if (displayData) {
+  const statusText = status === 'uploading' ? 'Загрузка...' : 'Анализ...';
+
+  if (result) {
     return (
       <Stack gap="md">
-        <DetailedReport result={displayData} filename={displayFilename} />
+        <DetailedReport result={result} filename={filename} />
         <Button
           variant="light"
-          onClick={() => { reset(); setPending('', null); savedRef.current = false; }}
+          onClick={() => { reset(); savedRef.current = false; }}
           style={{ alignSelf: 'center' }}
         >
           Новый анализ
@@ -86,7 +71,7 @@ export function Dashboard() {
         </Text>
       </Box>
 
-      {isError && (
+      {error && (
         <Alert
           icon={<IconAlertCircle size="1rem" />}
           title="Ошибка"
@@ -137,9 +122,9 @@ export function Dashboard() {
           <Dropzone
             onDrop={handleUpload}
             onReject={handleReject}
-            maxSize={50 * 1024 * 1024} // 50 MB
+            maxSize={50 * 1024 * 1024}
             accept={{ 'application/pdf': ['.pdf'] }}
-            multiple={false} // Один файл за раз
+            multiple={false}
             styles={{
               root: {
                 borderStyle: 'dashed',
@@ -147,7 +132,6 @@ export function Dashboard() {
                 padding: '3rem',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
-                '&:hover': { backgroundColor: 'rgba(0, 40, 142, 0.02)' },
               },
             }}
           >
@@ -163,15 +147,9 @@ export function Dashboard() {
               </Dropzone.Idle>
 
               <Box>
-                <Text size="xl" inline>
-                  Перетащите PDF-отчет сюда
-                </Text>
-                <Text size="sm" c="dimmed" mt={7}>
-                  или нажмите для выбора файла
-                </Text>
-                <Text size="xs" c="dimmed" mt={12}>
-                  Формат: PDF (до 50 МБ)
-                </Text>
+                <Text size="xl" inline>Перетащите PDF-отчет сюда</Text>
+                <Text size="sm" c="dimmed" mt={7}>или нажмите для выбора файла</Text>
+                <Text size="xs" c="dimmed" mt={12}>Формат: PDF (до 50 МБ)</Text>
               </Box>
             </Group>
           </Dropzone>
