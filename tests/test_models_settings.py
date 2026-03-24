@@ -11,11 +11,20 @@ class TestAppSettings:
     """Tests for AppSettings class."""
 
     def test_default_settings_no_env(self):
-        """Test default settings when no env vars provided."""
-        settings = AppSettings()
-        
-        assert settings.qwen_api_key is None
-        assert settings.qwen_api_url is None
+        """Test default settings when no env vars provided (env vars cleared)."""
+        import os
+        # Clear relevant env vars and bypass .env file reading
+        env_keys = ["QWEN_API_KEY", "QWEN_API_URL"]
+        saved = {k: os.environ.pop(k, None) for k in env_keys}
+        try:
+            # Pass _env_file=None to prevent reading .env file
+            settings = AppSettings(_env_file=None)
+            assert settings.qwen_api_key is None
+            assert settings.qwen_api_url is None
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
 
     def test_settings_with_qwen_api_key(self):
         """Test settings with QWEN_API_KEY."""

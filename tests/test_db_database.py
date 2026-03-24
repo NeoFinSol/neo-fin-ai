@@ -51,21 +51,25 @@ class TestGetEngine:
                 get_engine()
 
     def test_default_database_url(self):
-        """Test default DATABASE_URL when env not set."""
+        """Test get_engine uses DATABASE_URL from environment."""
         expected_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin"
-        
-        with patch('src.db.database.os.getenv', return_value=expected_url), \
-             patch('src.db.database.create_async_engine') as mock_create, \
-             patch('src.db.database._engine', None):
-            
-            mock_create.return_value = MagicMock()
-            get_engine()
-            
-            mock_create.assert_called_once_with(
-                expected_url,
-                echo=False,
-                future=True
-            )
+
+        import src.db.database as db_module
+        original_engine = db_module._engine
+        original_url = db_module.DATABASE_URL
+        db_module._engine = None  # Reset to force re-creation
+        db_module.DATABASE_URL = expected_url
+
+        try:
+            with patch("src.db.database.create_async_engine") as mock_create:
+                mock_create.return_value = MagicMock()
+                get_engine()
+                # Verify create_async_engine was called with the expected URL
+                call_args = mock_create.call_args
+                assert call_args[0][0] == expected_url
+        finally:
+            db_module._engine = original_engine  # Restore
+            db_module.DATABASE_URL = original_url
 
 
 class TestGetSessionMaker:

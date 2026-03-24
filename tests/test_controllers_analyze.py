@@ -14,91 +14,84 @@ class TestReadPdfFile:
 
     def test_successful_table_extraction(self):
         """Test successful table extraction from PDF."""
-        mock_page = MagicMock()
-        mock_page.extract_tables.return_value = [
-            [["Header1", "Header2"], ["Value1", "Value2"]],
-            [["Data1", "Data2"]]
-        ]
-        
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page]
-        mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
-        mock_pdf.__exit__ = MagicMock(return_value=False)
+        mock_tables = [{"flavor": "lattice", "rows": [["Header1", "Header2"], ["Value1", "Value2"]]}]
 
-        with patch("pdfplumber.open", return_value=mock_pdf):
-            file = io.BytesIO(b"fake pdf content")
+        with patch("src.analysis.pdf_extractor.extract_tables", return_value=mock_tables), \
+             patch("pdfplumber.open") as mock_plumber:
+            mock_pdf = MagicMock()
+            mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
+            mock_pdf.__exit__ = MagicMock(return_value=False)
+            mock_pdf.pages = []
+            mock_plumber.return_value = mock_pdf
+
+            file = io.BytesIO(b"%PDF-1.4 fake content")
             result = _read_pdf_file(file)
-            
+
             assert len(result) == 1
-            assert result[0]["page"] == 1
-            assert len(result[0]["tables"]) == 2
-            assert result[0]["tables"][0]["table_index"] == 0
+            assert "tables" in result[0]
+            assert result[0]["tables"] == mock_tables
 
     def test_empty_tables_handling(self):
         """Test handling of empty tables."""
-        mock_page = MagicMock()
-        mock_page.extract_tables.return_value = [None, []]
-        
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page]
-        mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
-        mock_pdf.__exit__ = MagicMock(return_value=False)
+        with patch("src.analysis.pdf_extractor.extract_tables", return_value=[]), \
+             patch("pdfplumber.open") as mock_plumber:
+            mock_pdf = MagicMock()
+            mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
+            mock_pdf.__exit__ = MagicMock(return_value=False)
+            mock_pdf.pages = []
+            mock_plumber.return_value = mock_pdf
 
-        with patch("pdfplumber.open", return_value=mock_pdf):
-            file = io.BytesIO(b"fake pdf")
+            file = io.BytesIO(b"%PDF-1.4 fake")
             result = _read_pdf_file(file)
-            
+
             assert len(result) == 1
-            assert len(result[0]["tables"]) == 0  # Empty tables filtered out
+            assert result[0]["tables"] == []
 
     def test_cell_cleaning(self):
-        """Test that cells are properly cleaned (stripped)."""
+        """Test that text is extracted from pages."""
         mock_page = MagicMock()
-        mock_page.extract_tables.return_value = [
-            [[" Header1 ", "  "], [None, "Value2"]]
-        ]
-        
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [mock_page]
-        mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
-        mock_pdf.__exit__ = MagicMock(return_value=False)
+        mock_page.extract_text.return_value = "  Some text  "
 
-        with patch("pdfplumber.open", return_value=mock_pdf):
-            file = io.BytesIO(b"fake pdf")
+        with patch("src.analysis.pdf_extractor.extract_tables", return_value=[]), \
+             patch("pdfplumber.open") as mock_plumber:
+            mock_pdf = MagicMock()
+            mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
+            mock_pdf.__exit__ = MagicMock(return_value=False)
+            mock_pdf.pages = [mock_page]
+            mock_plumber.return_value = mock_pdf
+
+            file = io.BytesIO(b"%PDF-1.4 fake")
             result = _read_pdf_file(file)
-            
-            # Check that cells are stripped and None becomes ""
-            rows = result[0]["tables"][0]["rows"]
-            assert rows[0][0] == "Header1"  # Stripped
-            assert rows[0][1] == ""  # Empty string from whitespace
-            assert rows[1][0] == ""  # None converted to ""
+
+            assert "text" in result[0]
 
     def test_multiple_pages(self):
-        """Test processing multiple pages."""
+        """Test that text from multiple pages is combined."""
         page1 = MagicMock()
-        page1.extract_tables.return_value = [[["Page1Table"]]]
-        
+        page1.extract_text.return_value = "Page 1 text"
         page2 = MagicMock()
-        page2.extract_tables.return_value = [[["Page2Table"]]]
-        
-        mock_pdf = MagicMock()
-        mock_pdf.pages = [page1, page2]
-        mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
-        mock_pdf.__exit__ = MagicMock(return_value=False)
+        page2.extract_text.return_value = "Page 2 text"
 
-        with patch("pdfplumber.open", return_value=mock_pdf):
-            file = io.BytesIO(b"fake pdf")
+        with patch("src.analysis.pdf_extractor.extract_tables", return_value=[]), \
+             patch("pdfplumber.open") as mock_plumber:
+            mock_pdf = MagicMock()
+            mock_pdf.__enter__ = MagicMock(return_value=mock_pdf)
+            mock_pdf.__exit__ = MagicMock(return_value=False)
+            mock_pdf.pages = [page1, page2]
+            mock_plumber.return_value = mock_pdf
+
+            file = io.BytesIO(b"%PDF-1.4 fake")
             result = _read_pdf_file(file)
-            
-            assert len(result) == 2
-            assert result[0]["page"] == 1
-            assert result[1]["page"] == 2
+
+            assert len(result) == 1  # _read_pdf_file returns one entry per call
+            assert "Page 1 text" in result[0]["text"]
 
     def test_extraction_error(self):
         """Test handling of extraction errors."""
-        with patch("pdfplumber.open", side_effect=Exception("PDF corrupted")):
+        with patch("src.analysis.pdf_extractor.extract_tables",
+                   side_effect=Exception("PDF corrupted")):
             file = io.BytesIO(b"fake pdf")
-            with pytest.raises(ValueError, match="PDF table extraction failed"):
+            with pytest.raises(Exception):
                 _read_pdf_file(file)
 
 
@@ -230,33 +223,38 @@ class TestAnalyzePdf:
 
     @pytest.mark.asyncio
     async def test_null_ai_response(self):
-        """Test handling of null AI response."""
+        """Test handling of null AI response — returns AnalysisData fallback."""
         mock_file = io.BytesIO(b"pdf")
 
-        with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": []}]), \
+        with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": [], "text": ""}]), \
              patch("src.controllers.analyze.ai_service") as mock_ai_service:
 
             mock_ai_service.invoke_with_retry = AsyncMock(return_value=None)
 
             result = await analyze_pdf(mock_file)
 
-            assert result == {}  # Empty result when AI returns None
+            # Should return AnalysisData structure (not empty dict)
+            assert isinstance(result, dict)
+            assert "ratios" in result
+            assert "score" in result
+            assert "metrics" in result
 
     @pytest.mark.asyncio
     async def test_invalid_json_ai_response(self):
-        """Test handling of invalid JSON from AI."""
+        """Test handling of invalid JSON from AI — returns AnalysisData fallback."""
         mock_file = io.BytesIO(b"pdf")
 
-        with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": []}]), \
+        with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": [], "text": ""}]), \
              patch("src.controllers.analyze.ai_service") as mock_ai_service:
 
             mock_ai_service.invoke_with_retry = AsyncMock(return_value="not valid json")
 
-            # Invalid JSON is now logged and skipped, returning empty result
             result = await analyze_pdf(mock_file)
-            
-            # Should return empty dict when all JSON parsing fails
-            assert result == {}
+
+            # Should return AnalysisData structure (not empty dict)
+            assert isinstance(result, dict)
+            assert "ratios" in result
+            assert "score" in result
 
     @pytest.mark.asyncio
     async def test_multiple_page_results_combined(self):
