@@ -82,9 +82,11 @@ export const AnalysisHistory = () => {
       if (res.data.data) {
         setDetailData(res.data.data);
         setDetailFilename(item.filename ?? undefined);
+      } else {
+        setError('Данные анализа недоступны — возможно, обработка ещё не завершена.');
       }
-    } catch {
-      // stay on list view, error is non-critical
+    } catch (e: any) {
+      setError(e?.response?.data?.detail ?? 'Не удалось загрузить детали анализа.');
     } finally {
       setDetailLoading(false);
     }

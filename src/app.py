@@ -3,6 +3,11 @@ import logging
 import os
 from typing import List
 
+from dotenv import load_dotenv
+
+# Load .env before any module-level os.getenv() calls (e.g. database.py)
+load_dotenv()
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -154,16 +159,10 @@ try:
 
     # In development mode, be more permissive with CORS for localhost origins
     if app_settings.dev_mode:
-        # Allow any localhost origin (any port) for development
-        allow_origins = ["http://localhost:*", "http://127.0.0.1:*"]
-        # For simplicity with FastAPI, we'll use regex later, but we can also just allow all origins in dev
-        # However, to keep it simple and secure-ish, we'll still validate but allow any port on localhost
-        # We'll handle this by adding a custom validator later, but for now let's use a wildcard for localhost
-        # Actually, let's just allow all origins in dev mode since it's local development
         allow_origins = ["*"]
         allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
         allow_headers = ["*"]
-        allow_credentials = True  # In dev, we can allow credentials
+        allow_credentials = False  # Cannot use credentials=True with wildcard origins
         logger.info("CORS configured in DEV MODE: allowing all origins")
     else:
         # Parse and validate CORS origins with secure defaults

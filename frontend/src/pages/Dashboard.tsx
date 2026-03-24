@@ -14,7 +14,7 @@ import { useHistory } from '../context/AnalysisHistoryContext';
 
 export function Dashboard() {
   const [filename, setFilename] = useState<string>('');
-  const { addEntry } = useHistory();
+  const { addEntry, pendingResult, pendingFilename, setPending } = useHistory();
   const savedRef = useRef(false);
   const {
     mutate: analyze,
@@ -31,17 +31,23 @@ export function Dashboard() {
     if (files.length > 0) {
       setFilename(files[0].name);
       savedRef.current = false;
+      setPending(files[0].name, null); // clear previous pending
       analyze(files[0]);
     }
-  }, [analyze]);
+  }, [analyze, setPending]);
 
-  // Сохраняем в историю один раз при получении данных
+  // Сохраняем в историю и в контекст один раз при получении данных
   useEffect(() => {
     if (data && filename && !savedRef.current) {
       addEntry(filename, data);
+      setPending(filename, data);
       savedRef.current = true;
     }
-  }, [data, filename, addEntry]);
+  }, [data, filename, addEntry, setPending]);
+
+  // Если вернулись на страницу после навигации — показываем сохранённый результат
+  const displayData = data ?? pendingResult;
+  const displayFilename = data ? filename : pendingFilename;
 
   const handleReject = useCallback((rejections: FileRejection[]) => {
     const message = rejections[0]?.errors[0]?.message || 'Файл отклонен';
@@ -51,16 +57,16 @@ export function Dashboard() {
   // Преобразуем строковый статус в числовой шаг для Timeline
   const progressStepNum = progressStep === 'uploading' ? 0
     : progressStep === 'processing' ? 2
-    : progressStep === 'completed' ? 4
-    : 0;
+      : progressStep === 'completed' ? 4
+        : 0;
 
-  if (data) {
+  if (displayData) {
     return (
       <Stack gap="md">
-        <DetailedReport result={data} filename={filename} />
+        <DetailedReport result={displayData} filename={displayFilename} />
         <Button
           variant="light"
-          onClick={() => { reset(); savedRef.current = false; }}
+          onClick={() => { reset(); setPending('', null); savedRef.current = false; }}
           style={{ alignSelf: 'center' }}
         >
           Новый анализ
@@ -81,10 +87,10 @@ export function Dashboard() {
       </Box>
 
       {isError && (
-        <Alert 
-          icon={<IconAlertCircle size="1rem" />} 
-          title="Ошибка" 
-          color="red" 
+        <Alert
+          icon={<IconAlertCircle size="1rem" />}
+          title="Ошибка"
+          color="red"
           variant="filled"
           withCloseButton
           onClose={reset}
@@ -99,7 +105,7 @@ export function Dashboard() {
             <ThemeIcon size={60} radius="xl" color="blue" variant="light">
               {progressStepNum === 0 ? <IconUpload size={30} stroke={1.5} /> : <IconBrain size={30} stroke={1.5} />}
             </ThemeIcon>
-            
+
             <Box w="100%">
               <Group justify="space-between" mb={5}>
                 <Text size="sm" fw={500}>{statusText}</Text>
