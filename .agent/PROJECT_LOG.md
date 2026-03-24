@@ -1,6 +1,14 @@
 # Project Log
 
-## 2026-03-24 | Этап 1 завершён: 13 коэффициентов + все тесты зелёные ✅
+## 2026-03-24 | Этап 2 завершён: покрытие тестами 71% → 90% ✅
+- Добавлено 12 новых тест-файлов: `test_core_auth.py`, `test_core_security.py`, `test_core_ai_service.py`, `test_core_gigachat_agent.py`, `test_routers_system.py`, `test_core_agent_request.py`, `test_tasks_coverage.py`, `test_nlp_analysis_coverage.py`, `test_app_coverage.py`, `test_controllers_analyze_coverage.py`, `test_security_coverage.py`, `test_settings_coverage.py`
+- Покрытие по модулям: `auth.py` 100%, `security.py` 100%, `system.py` 100%, `settings.py` 97%, `agent.py` 97%, `ai_service.py` 93%, `tasks.py` 92%, `nlp_analysis.py` 95%
+- Итого: 493 passed, 1 skipped, 0 failures
+- **Дальше**: Этап 3 — AnalysisHistory API, визуализация, маскировка данных для конкурса
+
+---
+
+
 - `scoring.py`: расширен до 13 коэффициентов (4 группы: ликвидность 25%, рентабельность 35%, устойчивость 25%, активность 15%); бенчмарки РСБУ; пороги риска 75/50; экспортирован `WEIGHTS`
 - `tasks.py`: `RATIO_KEY_MAP` расширен с 5 до 13 ключей; `_build_score_payload()` переписан под все 13 коэффициентов с `FRIENDLY_NAMES`
 - `frontend/src/api/interfaces.ts`: `FinancialRatios` расширен до 13 полей
