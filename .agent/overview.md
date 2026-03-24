@@ -22,7 +22,8 @@
 ✅ **AnalysisHistory.tsx** — подключена к реальному API (`GET /analyses`), пагинация Mantine, skeleton/error states, клик → `GET /analyses/{task_id}` → DetailedReport
 ✅ **DetailedReport.tsx** — BarChart из реальных `result.ratios` (ненулевые значения), цветовое кодирование по порогам, fallback "Недостаточно данных"
 ✅ **БД** — PostgreSQL 16, SQLAlchemy async, 2 миграции Alembic (`analyses` + индексы)
-✅ **Auth** — X-API-Key header; `DEV_MODE=1` отключает проверку
+✅ **Auth.tsx** — pre-flight `GET /api/analyses?page=1&page_size=1` с введённым ключом; 401/403 → «Невалидный ключ»; сетевая ошибка → «Не удалось подключиться»; 8 unit-тестов зелёные
+✅ **Vite proxy** — `/api` → `http://localhost:8000`; `apiClient` baseURL → `/api`; CORS больше не задействован в dev
 ✅ **CI/CD** — GitHub Actions: lint → test → security → build
 ✅ **Docker** — backend, frontend/nginx, db, db_test, ollama
 ✅ **Тесты** — backend: property-тесты (hypothesis) + unit; frontend: property-тесты (fast-check) + unit (vitest)
@@ -30,14 +31,14 @@
 ---
 
 ## Что разрабатывается
-🔄 **Auth.tsx** — `handleSubmit` сохраняет API key без валидации на backend [HIGH]
 🔄 **nlp_analysis.py** — модуль реализован, вызов подключён в `tasks.py`, но не проверен на реальных данных [MEDIUM]
 
 ---
 
 ## Что будет дальше
-❌ Финальный прогон всех тестов (задача 9 в tasks.md)
-❌ Валидация API key на backend в `Auth.tsx`
+❌ Устранить дублирование `types.ts` vs `interfaces.ts` (оставить только `interfaces.ts`)
+❌ Celery + Redis вместо BackgroundTasks (для персистентности задач при рестарте)
+❌ WebSocket / SSE вместо polling
 ❌ Устранить дублирование `types.ts` vs `interfaces.ts` (оставить только `interfaces.ts`)
 ❌ Celery + Redis вместо BackgroundTasks (для персистентности задач при рестарте)
 ❌ WebSocket / SSE вместо polling

@@ -1,5 +1,15 @@
 # Project Log
 
+## 2026-03-24 | Fix: Auth.tsx валидация API key + Vite proxy ✅
+- `frontend/src/pages/Auth.tsx` — pre-flight `GET /api/analyses?page=1&page_size=1` с введённым ключом; 401/403 → «Невалидный ключ»; сетевая ошибка → «Не удалось подключиться»; одноразовый axios (не apiClient)
+- `frontend/vite.config.ts` — proxy `/api` → `http://localhost:8000` (было `localhost:5000` — неправильный порт)
+- `frontend/src/api/client.ts` — baseURL изменён с `http://127.0.0.1:8000` на `/api` (через Vite proxy, CORS не задействован)
+- **Корневая причина**: запросы шли напрямую на `127.0.0.1:8000` минуя proxy → браузер блокировал по CORS; proxy был настроен на неправильный порт 5000
+- **Тесты**: `Auth.test.tsx` — 8/8 passed
+- **Дальше**: проверить ручное тестирование; nlp_analysis на реальных данных
+
+---
+
 ## 2026-03-24 | Checkpoint Этапа 3: все тесты зелёные ✅
 - Backend: 24 passed — `test_masking.py` (12), `test_crud_analyses.py` (4), `test_analyses_router.py` (8)
 - Frontend: 24 passed — `AnalysisHistory.test.tsx` (11), `DetailedReport.test.tsx` (13)
