@@ -1,4 +1,8 @@
-# Project Log
+# Project Log — NeoFin AI
+
+> История всех значимых изменений проекта. Новые записи добавляются сверху.
+
+---
 
 ## 2026-03-25 | Добавлены все 15 метрик в regex fallback ✅
 - **Проблема**: В regex fallback добавлено только 8 метрик вместо 15 → pipeline терял данные
@@ -86,3 +90,59 @@
 - **Дальше**: frontend coverage improvement
 
 ---
+
+## 2026-03-24 | Инфраструктура AI-агента: создание .agent/ и завершение сессии документации ✅
+- Создана папка `.agent/` со всеми мета-файлами агента: `AGENTS.md`, `architecture.md`, `overview.md`, `local_notes.md`, `PROJECT_LOG.md`
+- Добавлены шаблоны `.agent/templates/`: `commit-message.txt`, `pr-description.md`, `bug-report.md`
+- `AGENTS.md` содержит: триггеры действий, чеклист перед коммитом, иерархию правил, режимы работы, формат ответов, автоматические напоминания — всё привязано к реальному стеку
+- **Файлы**: `.agent/AGENTS.md`, `.agent/overview.md`, `.agent/local_notes.md`, `.agent/PROJECT_LOG.md`, `.agent/architecture.md`, `.agent/templates/*`
+- **Тесты**: не писались (документация)
+- **Проблемы**: нет
+- **Дальше**: следующая сессия — создать `Layout.tsx` и `ProtectedRoute.tsx` (CRITICAL, разблокирует компиляцию frontend)
+
+---
+
+## 2026-03-24 | Frontend + Backend интеграция: неполная, баги с extraction 🟡
+- **Сессия**: Запуск frontend/backend, исправление scoring, попытка исправить PDF extraction
+- **Что сделано**:
+  - Исправлен `scoring.py`: ключ `"Долговая нагрузка"` → `"Финансовый рычаг"` для совместимости с `ratios.py`
+  - Исправлен `DetailedReport.tsx`: приём данных через пропсы вместо `useLocation().state`
+  - Исправлен `Dashboard.tsx`: передаёт `result` и `filename` в `DetailedReport`
+  - Исправлен `Layout.tsx`: навигация через react-router `Link` вместо `<a href>`
+  - Добавлен `HistoryProvider` (context) для хранения истории анализов в localStorage
+  - Переписан `AnalysisHistory.tsx`: чтение из контекста вместо mockHistory
+  - Добавлены гибкие regex-паттерны в `analyze.py` для pipe-разделителя `"Выручка | 312 567 000"`
+  - Обновлены keywords в `pdf_extractor.py` для лучшего matching
+  - Добавлена функция `_extract_json_from_response()` для парсинга JSON из markdown-ответов AI
+- **Активные баги**:
+  - PDF extraction не работает для реальных отчётов Магнит — возвращает только revenue
+  - Frontend показывает Score: 0 и только Revenue
+  - AI service возвращает текст вместо JSON (markdown с JSON внутри)
+- **Файлы**: `src/analysis/scoring.py`, `src/controllers/analyze.py`, `src/analysis/pdf_extractor.py`, `frontend/src/pages/DetailedReport.tsx`, `frontend/src/pages/Dashboard.tsx`, `frontend/src/pages/AnalysisHistory.tsx`, `frontend/src/components/Layout.tsx`, `frontend/src/context/AnalysisHistoryContext.tsx`, `frontend/src/App.tsx`
+- **Тесты**: TypeScript lint проходит, но реальная функциональность не проверена
+- **Дальше**: Диагностировать почему extraction не работает для реальных PDF; проверить AI service response format
+
+---
+
+## 2026-03-24 | Документация проекта: architecture.md, overview.md, local_notes.md, PROJECT_LOG.md ✅
+- Созданы четыре управляющих документа для AI-агента: архитектура, обзор состояния, журнал инцидентов, лог изменений
+- `architecture.md` — полное описание слоёв, data flow, паттернов, критичных файлов и техдолга
+- `overview.md` — живой статус проекта (что работает / в разработке / дальше); `local_notes.md` — архив 13 решённых багов
+- **Файлы**: `architecture.md`, `overview.md`, `local_notes.md`, `PROJECT_LOG.md`
+- **Тесты**: не писались (документация)
+- **Проблемы**: нет
+- **Дальше**: начать закрывать CRITICAL-баги из `local_notes.md` — создать `Layout.tsx` и `ProtectedRoute.tsx`
+
+---
+
+## 2026-03-23 | Sprint 0: Безопасность + Qodo code review fixes ✅
+- Удалены hardcoded credentials из `database.py`; SSL verification включён для GigaChat; добавлена API Key аутентификация (`src/core/auth.py`) с явным `DEV_MODE=1`
+- Qodo review: исправлен риск рекурсии в `invoke_with_retry` (новый `_invoke_once`); lazy validation `DATABASE_URL` перенесена в `get_engine()`; убраны дефолтные пароли из `docker-compose.yml`; добавлен `GIGACHAT_SSL_VERIFY` env
+- **Файлы**: `src/db/database.py`, `src/core/auth.py`, `src/core/gigachat_agent.py`, `docker-compose.yml`, `.env.example`
+- **Тесты**: 8 unit-тестов на auth (test_auth.py) — все зелёные
+- **Проблемы**: нет
+- **Дальше**: запуск production сборки
+
+---
+
+*Документ обновляется после каждой значимой сессии разработки.*
