@@ -323,13 +323,13 @@
     - Если файл существует — перенести импорт на уровень модуля; если нет — удалить вызов
     - _Requirements: 2.22_
 
-- [ ] 13. Fix БАГ 11 — requirements.txt: pdfplumber версия
+- [x] 13. Fix БАГ 11 — requirements.txt: pdfplumber версия
 
-  - [ ] 13.1 Обновить версию `pdfplumber` в `requirements.txt`
+  - [x] 13.1 Обновить версию `pdfplumber` в `requirements.txt`
     - Заменить `pdfplumber~=0.11.9` на `pdfplumber~=0.12.0`
     - _Requirements: 2.23_
 
-- [ ] 13.2 Патчноут и коммит — Группа 3 (нарушения AGENTS.md)
+- [x] 13.2 Патчноут и коммит — Группа 3 (нарушения AGENTS.md)
   - Обновить `.agent/PROJECT_LOG.md`: добавить запись сверху с описанием исправлений БАГ 9–11
   - Обновить `.agent/overview.md`: отметить БАГ 9–11 как исправленные
   - Выполнить коммит:

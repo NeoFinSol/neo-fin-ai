@@ -1,5 +1,19 @@
 # Project Log
 
+## 2026-03-25 — Qwen Regression Fixes: Группа 3 (нарушения AGENTS.md)
+
+### БАГ 9–11: f-строки в логах, inline-импорты, версия pdfplumber
+
+**Изменения:**
+- `src/app.py` — 3 f-строки в `log_requests` middleware заменены на `%`-форматирование
+- `src/tasks.py` — 12 f-строк в `process_pdf` и `process_multi_analysis` заменены на `%`-форматирование; `analyze_narrative`, `generate_recommendations`, `_extract_metrics_with_regex` перенесены с уровня функций на уровень модуля
+- `src/utils/retry_utils.py` — 5 f-строк в `retry_with_backoff` заменены на `%`-форматирование
+- `requirements.txt` — `pdfplumber~=0.11.9` → `~=0.12.0` (fix known Python 3.10+ compatibility issue, зафиксировано в `local_notes.md`)
+
+**Примечание:** `src/core/ai_service.py` и `src/utils/circuit_breaker.py` уже были чистыми — f-строк не содержали.
+
+---
+
 ## 2026-03-25 — Qwen Regression Fixes: Группа 2 (серьёзные баги)
 
 ### БАГ 4–8: двойной timeout, asyncio.Lock, фильтр финансовых значений, CORS NameError, mask None
