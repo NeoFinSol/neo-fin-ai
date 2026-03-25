@@ -38,6 +38,11 @@
 ✅ **БАГ 1** (AnalysisContext.tsx) — исправлен: POST /upload + polling GET /result/{task_id}, MAX_POLLING_ATTEMPTS=15
 ✅ **БАГ 2** (pdf_extractor.py) — исправлен: убран хардкод C:\Program Files\Tesseract-OCR, graceful degradation
 ✅ **БАГ 3** (schemas.py + multi_analysis.py) — исправлен: PeriodInput.file_path добавлен, роутер принимает multipart/form-data
+✅ **БАГ 4** (recommendations.py) — исправлен: удалён внешний asyncio.wait_for, единственный timeout в tasks.py
+✅ **БАГ 5** (circuit_breaker.py) — исправлен: threading.Lock → asyncio.Lock, record_* методы стали async
+✅ **БАГ 6** (pdf_extractor.py) — исправлен: убран порог 1000, добавлен _is_year() с безопасным float-сравнением
+✅ **БАГ 7** (app.py) — исправлен: default_origins определён до try/except, NameError устранён
+✅ **БАГ 8** (masking.py) — исправлен: _mask_number(None) → "—", добавлена константа MASKED_NONE_VALUE
 
 ---
 

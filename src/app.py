@@ -134,6 +134,13 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 # CORS configuration - restricted and validated for security
+default_origins = [
+    "http://localhost",
+    "http://localhost:80",
+    "http://127.0.0.1",
+    "http://127.0.0.1:80",
+]
+
 try:
     allow_credentials = os.getenv("CORS_ALLOW_CREDENTIALS", "false").lower() == "true"
 
@@ -146,12 +153,6 @@ try:
         logger.info("CORS configured in DEV MODE: allowing all origins")
     else:
         # Parse and validate CORS origins with secure defaults
-        default_origins = [
-            "http://localhost",
-            "http://localhost:80",
-            "http://127.0.0.1",
-            "http://127.0.0.1:80",
-        ]
         allow_origins = _parse_cors_origins(
             os.getenv("CORS_ALLOW_ORIGINS", ",".join(default_origins))
         )

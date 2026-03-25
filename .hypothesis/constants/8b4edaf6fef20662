@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\app.py
+# hypothesis_version: 6.151.9
+
+[400, 1000, '*', ',', '0.1.0', 'Authorization', 'CORS_ALLOW_HEADERS', 'CORS_ALLOW_METHODS', 'CORS_ALLOW_ORIGINS', 'Content-Type', 'DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'X-API-Key', 'X-Requested-With', 'X-Task-ID', 'duration_ms', 'error', 'extra_data', 'false', 'http', 'http://', 'http://127.0.0.1', 'http://127.0.0.1:80', 'http://localhost', 'http://localhost:80', 'https://', 'method', 'path', 'query', 'status_code', 'task_id', 'true', 'unknown', 'user-agent', 'user_agent']

@@ -1,5 +1,21 @@
 # Project Log
 
+## 2026-03-25 — Qwen Regression Fixes: Группа 2 (серьёзные баги)
+
+### БАГ 4–8: двойной timeout, asyncio.Lock, фильтр финансовых значений, CORS NameError, mask None
+
+**Изменения:**
+- `src/analysis/recommendations.py` — удалён внешний `asyncio.wait_for(timeout=65.0)` из `generate_recommendations`; единственный timeout теперь в `tasks.py`
+- `src/utils/circuit_breaker.py` — `threading.Lock` → `asyncio.Lock`; методы `record_success`, `record_failure`, `reset` стали `async`; добавлен комментарий `# NB: не выполнять длительные await внутри with lock`
+- `src/core/ai_service.py` — все вызовы `circuit_breaker.record_*` обновлены на `await`
+- `src/analysis/pdf_extractor.py` — убран порог `abs(value) < 1000` из `_is_valid_financial_value`; добавлена `_is_year(v)` с безопасным float-сравнением; теперь отклоняются только `None`, годы 1900–2100 и значения `> 1e15`
+- `src/app.py` — `default_origins` определён до блока `try/except`; `NameError` при `dev_mode=True` + невалидный CORS устранён
+- `src/utils/masking.py` — добавлена константа `MASKED_NONE_VALUE = "—"`; `_mask_number(None)` возвращает `"—"` вместо `None`; сигнатура обновлена: `def _mask_number(value: float | int | None) -> str`
+
+**Тесты:** `test_prop_masking_idempotency` — PASSED; `test_mask_number_numeric_values` — PASSED; все preservation тесты — PASSED.
+
+---
+
 ## 2026-03-25 — Qwen Regression Fixes: Группа 1 (критические баги)
 
 ### БАГ 3: PeriodInput.file_path добавлен, multi_analysis роутер принимает multipart/form-data

@@ -22,19 +22,24 @@ from hypothesis import strategies as st
 # ---------------------------------------------------------------------------
 
 @given(
-    st.floats(min_value=1001.0, max_value=1e15 - 1, allow_nan=False, allow_infinity=False)
+    st.one_of(
+        # Large values (> 1000, not years)
+        st.floats(min_value=1001.0, max_value=1e15 - 1, allow_nan=False, allow_infinity=False),
+        # Small values (0 < v < 1000) — financial ratios, small business metrics
+        st.floats(min_value=0.001, max_value=999.99, allow_nan=False, allow_infinity=False),
+        # Negative values (losses, liabilities)
+        st.floats(min_value=-(1e15 - 1), max_value=-0.001, allow_nan=False, allow_infinity=False),
+    )
 )
-@settings(max_examples=200)
+@settings(max_examples=300, deadline=None)
 def test_prop_financial_value_filter(v: float) -> None:
     """
-    Property: _is_valid_financial_value(v) == True for all v in (1000, 1e15)
+    Property: _is_valid_financial_value(v) == True for all v in (-1e15, 1e15)
     that are not integers in the year range 1900-2100.
 
-    This tests the PRESERVED behavior: large financial values must be accepted.
-    The bug (#6) only affects values < 1000, so this range is safe on unfixed code.
+    After the fix, this covers small values (ratios, small business) too.
 
-    Note: We test v > 1000 here because the buggy code has `abs(value) < 1000`
-    threshold — values above 1000 are accepted even on unfixed code.
+    Validates: Requirement 3.1, 2.16, 2.17
     """
     try:
         from src.analysis.pdf_extractor import _is_valid_financial_value
@@ -43,11 +48,13 @@ def test_prop_financial_value_filter(v: float) -> None:
 
     # Exclude year-range integers (1900-2100) — those are legitimately rejected
     assume(not (v == int(v) and 1900 <= int(v) <= 2100))
+    # Exclude float representations of years (e.g. 2023.0)
+    assume(not (isinstance(v, float) and v.is_integer() and 1900 <= int(v) <= 2100))
 
     result = _is_valid_financial_value(v)
     assert result is True, (
         "REGRESSION: _is_valid_financial_value(%r) returned %r, expected True. "
-        "Large financial values must be accepted." % (v, result)
+        "Financial values must be accepted regardless of magnitude." % (v, result)
     )
 
 
@@ -128,8 +135,6 @@ def test_prop_circuit_breaker_state_machine(actions: list) -> None:
     HALF_OPEN -> OPEN on failure
 
     Uses a low threshold (2) to trigger transitions quickly.
-    Note: threading.Lock is used in unfixed code — this test checks logic only,
-    not the lock type (that is covered by exploratory tests).
 
     Validates: Requirement 3.4
     """
@@ -138,51 +143,54 @@ def test_prop_circuit_breaker_state_machine(actions: list) -> None:
     except ImportError as exc:
         pytest.skip("Could not import CircuitBreaker: %s" % exc)
 
-    threshold = 2
-    breaker = CircuitBreaker(
-        name="test",
-        failure_threshold=threshold,
-        recovery_timeout=9999,  # Prevent OPEN->HALF_OPEN during test
-    )
+    async def _run():
+        threshold = 2
+        breaker = CircuitBreaker(
+            name="test",
+            failure_threshold=threshold,
+            recovery_timeout=9999,  # Prevent OPEN->HALF_OPEN during test
+        )
 
-    failure_count = 0
+        failure_count = 0
 
-    for is_success in actions:
-        state_before = breaker._state
+        for is_success in actions:
+            state_before = breaker._state
 
-        if is_success:
-            breaker.record_success()
-            failure_count = max(0, failure_count - 1)
-        else:
-            breaker.record_failure()
-            failure_count += 1
+            if is_success:
+                await breaker.record_success()
+                failure_count = max(0, failure_count - 1)
+            else:
+                await breaker.record_failure()
+                failure_count += 1
 
-        state_after = breaker._state
+            state_after = breaker._state
 
-        # Validate: CLOSED -> OPEN only when threshold reached
-        if state_before == CircuitState.CLOSED and state_after == CircuitState.OPEN:
-            assert failure_count >= threshold, (
-                "REGRESSION: Circuit opened with only %d failures (threshold=%d)" % (
-                    failure_count, threshold
+            # Validate: CLOSED -> OPEN only when threshold reached
+            if state_before == CircuitState.CLOSED and state_after == CircuitState.OPEN:
+                assert failure_count >= threshold, (
+                    "REGRESSION: Circuit opened with only %d failures (threshold=%d)" % (
+                        failure_count, threshold
+                    )
                 )
-            )
 
-        # Validate: HALF_OPEN -> CLOSED only on success
-        if state_before == CircuitState.HALF_OPEN and state_after == CircuitState.CLOSED:
-            assert is_success, (
-                "REGRESSION: Circuit closed from HALF_OPEN on a failure"
-            )
+            # Validate: HALF_OPEN -> CLOSED only on success
+            if state_before == CircuitState.HALF_OPEN and state_after == CircuitState.CLOSED:
+                assert is_success, (
+                    "REGRESSION: Circuit closed from HALF_OPEN on a failure"
+                )
 
-        # Validate: HALF_OPEN -> OPEN only on failure
-        if state_before == CircuitState.HALF_OPEN and state_after == CircuitState.OPEN:
-            assert not is_success, (
-                "REGRESSION: Circuit opened from HALF_OPEN on a success"
-            )
+            # Validate: HALF_OPEN -> OPEN only on failure
+            if state_before == CircuitState.HALF_OPEN and state_after == CircuitState.OPEN:
+                assert not is_success, (
+                    "REGRESSION: Circuit opened from HALF_OPEN on a success"
+                )
 
-        # Validate: no illegal transitions (CLOSED -> HALF_OPEN directly)
-        assert not (
-            state_before == CircuitState.CLOSED and state_after == CircuitState.HALF_OPEN
-        ), "REGRESSION: Illegal transition CLOSED -> HALF_OPEN"
+            # Validate: no illegal transitions (CLOSED -> HALF_OPEN directly)
+            assert not (
+                state_before == CircuitState.CLOSED and state_after == CircuitState.HALF_OPEN
+            ), "REGRESSION: Illegal transition CLOSED -> HALF_OPEN"
+
+    asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------
@@ -348,3 +356,42 @@ def test_recommendations_fallback() -> None:
         "REGRESSION: generate_recommendations did not return FALLBACK_RECOMMENDATIONS "
         "when AI is unavailable. Got: %r" % result
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 9: test_tesseract_env_cmd_respected (Preservation — БАГ 2)
+# ---------------------------------------------------------------------------
+
+def test_tesseract_env_cmd_respected() -> None:
+    """
+    When TESSERACT_CMD env var is set, pdf_extractor must use it as the
+    tesseract command path (not a hardcoded Windows path).
+
+    Validates: Requirement 3.2
+    """
+    import importlib
+    import sys
+    from unittest.mock import patch
+
+    # Reload the module with TESSERACT_CMD set to a custom path
+    with patch.dict(os.environ, {"TESSERACT_CMD": "/usr/local/bin/tesseract"}):
+        # Remove cached module to force re-import
+        for mod_name in list(sys.modules.keys()):
+            if "pdf_extractor" in mod_name:
+                del sys.modules[mod_name]
+
+        try:
+            import pytesseract
+            import src.analysis.pdf_extractor  # noqa: F401
+            # After import, tesseract_cmd should be set to our env value
+            assert pytesseract.pytesseract.tesseract_cmd == "/usr/local/bin/tesseract", (
+                "REGRESSION: TESSERACT_CMD env var not respected. "
+                "Got: %r" % pytesseract.pytesseract.tesseract_cmd
+            )
+        except ImportError as exc:
+            pytest.skip("Could not import pdf_extractor: %s" % exc)
+        finally:
+            # Restore module state
+            for mod_name in list(sys.modules.keys()):
+                if "pdf_extractor" in mod_name:
+                    del sys.modules[mod_name]

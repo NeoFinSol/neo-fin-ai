@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\utils\circuit_breaker.py
+# hypothesis_version: 6.151.9
+
+['120', '5', 'AI Service', 'closed', 'failure_count', 'half_open', 'open', 'state', 'threshold', 'time_until_retry']

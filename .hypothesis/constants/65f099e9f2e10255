@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\models\schemas.py
+# hypothesis_version: 6.151.9
+
+[0.0, 1.0, 'before', 'completed', 'derived', 'high', 'low', 'medium', 'period_label', 'processing', 'table_exact', 'table_partial', 'text_regex']

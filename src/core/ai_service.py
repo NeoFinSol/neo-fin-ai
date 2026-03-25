@@ -144,15 +144,15 @@ class AIService:
         if not ai_circuit_breaker.is_available:
             retry_after = ai_circuit_breaker.time_until_retry
             logger.warning(
-                f"AI service temporarily disabled (circuit breaker open). "
-                f"Retry after {retry_after}s",
+                "AI service temporarily disabled (circuit breaker open). Retry after %ds",
+                retry_after,
                 extra={"extra_data": {"retry_after": retry_after}},
             )
             metrics.record_ai_failure()
             return None
 
         start_time = time.monotonic()
-        logger.info(f"AI invocation started (provider: {self._provider})")
+        logger.info("AI invocation started (provider: %s)", self._provider)
 
         try:
             # Define the operation
@@ -177,34 +177,36 @@ class AIService:
             
             # Success
             duration_ms = (time.monotonic() - start_time) * 1000
-            logger.info(f"AI invocation completed", extra={"duration_ms": duration_ms})
-            ai_circuit_breaker.record_success()
+            logger.info("AI invocation completed", extra={"duration_ms": duration_ms})
+            await ai_circuit_breaker.record_success()
             return result
-            
+
         except asyncio.TimeoutError:
             duration_ms = (time.monotonic() - start_time) * 1000
             logger.warning(
-                f"AI invocation timed out after {actual_timeout}s",
+                "AI invocation timed out after %ds",
+                actual_timeout,
                 extra={"duration_ms": duration_ms},
             )
-            ai_circuit_breaker.record_failure()
+            await ai_circuit_breaker.record_failure()
             metrics.record_ai_failure()
             return None
-            
+
         except CircuitBreakerOpenError:
             # Should not happen since we check is_available above, but handle anyway
             logger.warning("AI invocation blocked by circuit breaker")
             metrics.record_ai_failure()
             return None
-            
+
         except Exception as exc:
             duration_ms = (time.monotonic() - start_time) * 1000
             logger.error(
-                f"AI invocation failed: {exc}",
+                "AI invocation failed: %s",
+                exc,
                 exc_info=True,
                 extra={"duration_ms": duration_ms},
             )
-            ai_circuit_breaker.record_failure()
+            await ai_circuit_breaker.record_failure()
             metrics.record_ai_failure()
             return None  # Graceful degradation
 
@@ -271,10 +273,10 @@ class AIService:
                         data = await response.json()
                         return data.get("response", "")
                     else:
-                        logger.error(f"Ollama returned status {response.status}")
+                        logger.error("Ollama returned status %s", response.status)
                         return None
         except Exception as exc:
-            logger.error(f"Ollama invocation failed: {exc}")
+            logger.error("Ollama invocation failed: %s", exc)
             return None
 
 

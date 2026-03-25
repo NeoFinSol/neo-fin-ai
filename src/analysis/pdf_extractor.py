@@ -9,15 +9,23 @@ from pdf2image import convert_from_path
 import PyPDF2
 import pytesseract
 
-# Configure Tesseract path for Windows
-_tesseract_path = os.path.expandvars(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
-if os.path.exists(_tesseract_path):
-    pytesseract.pytesseract.tesseract_cmd = _tesseract_path
-    os.environ["TESSDATA_PREFIX"] = os.path.expandvars(
-        r"C:\Program Files\Tesseract-OCR\tessdata"
-    )
-
 logger = logging.getLogger(__name__)
+
+# Configure Tesseract via env variable (optional); falls back to system PATH
+_tesseract_cmd = os.getenv("TESSERACT_CMD")
+if _tesseract_cmd:
+    pytesseract.pytesseract.tesseract_cmd = _tesseract_cmd
+
+
+def _check_tesseract_available() -> bool:
+    try:
+        pytesseract.get_tesseract_version()
+        return True
+    except Exception:
+        return False
+
+
+TESSERACT_AVAILABLE = _check_tesseract_available()
 
 # ---------------------------------------------------------------------------
 # Extraction metadata types
@@ -174,6 +182,13 @@ def is_scanned_pdf(pdf_path: str) -> bool:
 
 
 def extract_text_from_scanned(pdf_path: str) -> str:
+    if not TESSERACT_AVAILABLE:
+        logger.warning(
+            "OCR недоступен: установите tesseract-ocr или задайте TESSERACT_CMD"
+        )
+        # Graceful degradation: return empty string (caller will use text layer only)
+        return ""
+
     try:
         images = convert_from_path(pdf_path)
     except Exception as exc:
@@ -211,19 +226,34 @@ def _is_financial_table(rows: list) -> bool:
     return keyword_hits >= 2
 
 
+def _is_year(v: float) -> bool:
+    """Check if a value looks like a year (1900–2100) using safe float comparison."""
+    if isinstance(v, int):
+        return 1900 <= v <= 2100
+    if isinstance(v, float) and v.is_integer():
+        return 1900 <= int(v) <= 2100
+    return False
+
+
 def _is_valid_financial_value(value: float | None) -> bool:
-    """Sanity check for financial values."""
+    """Sanity check for financial values.
+
+    Accepts any numeric value except:
+    - None
+    - Integers in year range 1900–2100 (likely a reporting year, not a metric)
+    - Absolute value > 1e15 (likely a parsing error)
+    """
     if value is None:
         return False
-    
-    # Too small — likely page number or noise
-    if abs(value) < 1000:
+
+    # Likely a year label, not a financial metric
+    if _is_year(value):
         return False
-    
+
     # Too large — likely parsing error
     if abs(value) > 1e15:
         return False
-    
+
     return True
 
 

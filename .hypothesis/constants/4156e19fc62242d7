@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\exceptions\__init__.py
+# hypothesis_version: 6.151.9
+
+['AI_SERVICE_ERROR', 'CIRCUIT_BREAKER_OPEN', 'DATABASE_ERROR', 'EXTRACTION_FAILED', 'INTERNAL_ERROR', 'VALIDATION_ERROR', 'code', 'details', 'message', 'reason']

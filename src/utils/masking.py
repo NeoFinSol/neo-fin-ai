@@ -7,7 +7,10 @@ import copy
 import math
 
 
-def _mask_number(value: float | int) -> str:
+MASKED_NONE_VALUE = "—"
+
+
+def _mask_number(value: float | int | None) -> str:
     """
     Заменяет значащие цифры числа на 'X', сохраняя знак и порядок величины.
 
@@ -17,9 +20,10 @@ def _mask_number(value: float | int) -> str:
         -42.1       -> "-XX.X"
         0           -> "X"
         1000        -> "X,XXX"
+        None        -> "—"
     """
     if value is None:
-        return None
+        return MASKED_NONE_VALUE
 
     negative = value < 0
     abs_val = abs(float(value))

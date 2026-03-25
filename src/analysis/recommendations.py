@@ -147,20 +147,17 @@ async def generate_recommendations(
 
     # Try to invoke AI service
     try:
-        # Set timeout for AI service (60 seconds)
-        response = await asyncio.wait_for(
-            ai_service.invoke(
-                input={
-                    "tool_input": prompt,
-                    "system": (
-                        "Ты опытный финансовый аналитик и консультант. "
-                        "Давай конкретные, действенные рекомендации с ссылками на цифры. "
-                        "Отвечай только JSON без дополнительного текста."
-                    ),
-                },
-                timeout=60,
-            ),
-            timeout=65.0  # Extra 5 seconds buffer
+        # Timeout is controlled by tasks.py (single wait_for on the call stack)
+        response = await ai_service.invoke(
+            input={
+                "tool_input": prompt,
+                "system": (
+                    "Ты опытный финансовый аналитик и консультант. "
+                    "Давай конкретные, действенные рекомендации с ссылками на цифры. "
+                    "Отвечай только JSON без дополнительного текста."
+                ),
+            },
+            timeout=60,
         )
 
         if not response:
@@ -174,7 +171,7 @@ async def generate_recommendations(
             logger.warning("Failed to parse recommendations from AI response")
             return FALLBACK_RECOMMENDATIONS
 
-        logger.info(f"Generated {len(recommendations)} recommendations with data references")
+        logger.info("Generated %d recommendations with data references", len(recommendations))
         return recommendations
 
     except asyncio.TimeoutError:

@@ -43,7 +43,7 @@
 
 ## Группа 1 — Критические баги (БАГ 1–3)
 
-- [ ] 3. Fix БАГ 1 — AnalysisContext.tsx: polling flow
+- [x] 3. Fix БАГ 1 — AnalysisContext.tsx: polling flow
 
   - [x] 3.0 Verify backend endpoints for polling
     - Проверить, что `POST /upload` в `src/routers/pdf_tasks.py` возвращает `{"task_id": "..."}` и ставит задачу в BackgroundTask
@@ -78,7 +78,7 @@
     - Запустить `prop_polling_termination` из задачи 2
     - **EXPECTED OUTCOME**: Тесты ПРОХОДЯТ (нет регрессий)
 
-- [ ] 4. Fix БАГ 2 — pdf_extractor.py: Tesseract хардкод
+- [x] 4. Fix БАГ 2 — pdf_extractor.py: Tesseract хардкод
 
   - [x] 4.1 Убрать хардкод Windows-пути и добавить graceful degradation в `src/analysis/pdf_extractor.py`
     - Удалить блок `_tesseract_path = os.path.expandvars(r"C:\Program Files\...")`
@@ -102,7 +102,7 @@
     - Запустить preservation тесты из задачи 2
     - **EXPECTED OUTCOME**: Тесты ПРОХОДЯТ (нет регрессий)
 
-- [-] 5. Fix БАГ 3 — schemas.py + multi_analysis.py: file_path (BREAKING CHANGE)
+- [x] 5. Fix БАГ 3 — schemas.py + multi_analysis.py: file_path (BREAKING CHANGE)
 
   - [x] 5.0 Audit: найти все создания PeriodInput в кодовой базе
     - Выполнить: `grep -r "PeriodInput(" src/ --include="*.py"`
@@ -143,7 +143,7 @@
     - Запустить preservation тесты из задачи 2
     - **EXPECTED OUTCOME**: Тесты ПРОХОДЯТ (нет регрессий)
 
-- [-] 5.5 Патчноут и коммит — Группа 1 (критические баги)
+- [x] 5.5 Патчноут и коммит — Группа 1 (критические баги)
   - Обновить `.agent/PROJECT_LOG.md`: добавить запись сверху с описанием исправлений БАГ 1–3
   - Обновить `.agent/overview.md`: отметить БАГ 1–3 как исправленные
   - Выполнить коммит:
@@ -159,9 +159,9 @@
     ```
   - Отправить в GitHub: `git push`
 
-- [ ] 6. Fix БАГ 4 — recommendations.py: двойной timeout
+- [x] 6. Fix БАГ 4 — recommendations.py: двойной timeout
 
-  - [ ] 6.1 Удалить внешний `asyncio.wait_for` из `src/analysis/recommendations.py`
+  - [x] 6.1 Удалить внешний `asyncio.wait_for` из `src/analysis/recommendations.py`
     - Удалить обёртку `asyncio.wait_for(timeout=65.0)` из `generate_recommendations`
     - Оставить только `ai_service.invoke(timeout=60)` внутри функции
     - Внешний `asyncio.wait_for` в `tasks.py` остаётся без изменений
@@ -170,19 +170,19 @@
     - _Preservation: generate_recommendations без AI возвращает FALLBACK_RECOMMENDATIONS_
     - _Requirements: 2.12, 2.13, 3.7, 3.12_
 
-  - [ ] 6.2 Verify bug condition exploration test now passes
+  - [x] 6.2 Verify bug condition exploration test now passes
     - **Property 1: Expected Behavior** - Single Timeout Control
     - Запустить `test_recommendations_no_outer_wait_for` из задачи 1
     - **EXPECTED OUTCOME**: Тест ПРОХОДИТ
 
-  - [ ] 6.3 Verify preservation tests still pass
+  - [x] 6.3 Verify preservation tests still pass
     - **Property 2: Preservation** - Recommendations Fallback
     - Запустить `test_recommendations_fallback` из задачи 2
     - **EXPECTED OUTCOME**: Тест ПРОХОДИТ (нет регрессий)
 
-- [ ] 7. Fix БАГ 5 — circuit_breaker.py: threading.Lock → asyncio.Lock
+- [x] 7. Fix БАГ 5 — circuit_breaker.py: threading.Lock → asyncio.Lock
 
-  - [ ] 7.1 Заменить `threading.Lock` на `asyncio.Lock` в `src/utils/circuit_breaker.py`
+  - [x] 7.1 Заменить `threading.Lock` на `asyncio.Lock` в `src/utils/circuit_breaker.py`
     - Заменить `from threading import Lock` на `import asyncio`
     - Изменить `self._lock = Lock()` на `self._lock = asyncio.Lock()`
     - Сделать `record_success`, `record_failure`, `reset` async-методами с `async with self._lock`
@@ -193,25 +193,25 @@
     - _Preservation: circuit breaker в CLOSED без contention пропускает запросы без задержек_
     - _Requirements: 2.14, 2.15, 3.4_
 
-  - [ ] 7.2 Найти и обновить ВСЕ вызовы circuit_breaker в кодовой базе
+  - [x] 7.2 Найти и обновить ВСЕ вызовы circuit_breaker в кодовой базе
     - Выполнить: `grep -r "circuit_breaker\.record_" src/ --include="*.py"` — найти все места вызова `record_success()` и `record_failure()`
     - Обновить ВСЕ найденные вызовы на `await`: `await ai_circuit_breaker.record_success()`, `await ai_circuit_breaker.record_failure()`
     - Убедиться, что все вызывающие функции являются `async` — если нет, сделать их `async`
     - _Requirements: 2.14_
 
-  - [ ] 7.3 Verify bug condition exploration test now passes
+  - [x] 7.3 Verify bug condition exploration test now passes
     - **Property 1: Expected Behavior** - asyncio.Lock
     - Запустить `test_circuit_breaker_uses_asyncio_lock` из задачи 1
     - **EXPECTED OUTCOME**: Тест ПРОХОДИТ
 
-  - [ ] 7.4 Verify preservation tests still pass
+  - [x] 7.4 Verify preservation tests still pass
     - **Property 2: Preservation** - Circuit Breaker State Machine
     - Запустить `prop_circuit_breaker_state_machine` из задачи 2
     - **EXPECTED OUTCOME**: Тест ПРОХОДИТ (нет регрессий)
 
-- [ ] 8. Fix БАГ 6 — pdf_extractor.py: _is_valid_financial_value
+- [x] 8. Fix БАГ 6 — pdf_extractor.py: _is_valid_financial_value
 
-  - [ ] 8.1 Исправить `_is_valid_financial_value` в `src/analysis/pdf_extractor.py`
+  - [x] 8.1 Исправить `_is_valid_financial_value` в `src/analysis/pdf_extractor.py`
     - Добавить вспомогательную функцию `_is_year(v: float) -> bool` с безопасным float-сравнением
     - Убрать проверку `abs(value) < 1000` из `_is_valid_financial_value`
     - Заменить `if value == int(value) and int(value) in _YEAR_RANGE` на `if _is_year(value)`
@@ -221,19 +221,19 @@
     - _Preservation: крупные финансовые показатели (> 1000) продолжают приниматься_
     - _Requirements: 2.16, 2.17, 3.1_
 
-  - [ ] 8.2 Verify bug condition exploration test now passes
+  - [x] 8.2 Verify bug condition exploration test now passes
     - **Property 1: Expected Behavior** - Financial Value Filter
     - Запустить `test_is_valid_financial_value_rejects_small` из задачи 1
     - **EXPECTED OUTCOME**: Тест ПРОХОДИТ (`_is_valid_financial_value(0.15)` → `True`)
 
-  - [ ] 8.3 Verify preservation tests still pass
+  - [x] 8.3 Verify preservation tests still pass
     - **Property 2: Preservation** - Financial Value Filter (large values)
     - Запустить `prop_financial_value_filter` и `test_large_financial_values_accepted` из задачи 2
     - **EXPECTED OUTCOME**: Тесты ПРОХОДЯТ (нет регрессий)
 
-- [ ] 9. Fix БАГ 7 — app.py: NameError в CORS
+- [x] 9. Fix БАГ 7 — app.py: NameError в CORS
 
-  - [ ] 9.1 Переместить `default_origins` до блока `try/except` в `src/app.py`
+  - [x] 9.1 Переместить `default_origins` до блока `try/except` в `src/app.py`
     - Определить `default_origins = ["http://localhost", "http://localhost:80", ...]` ДО блока `try/except`
     - Убедиться, что `except ValueError` использует уже определённую переменную
     - _Bug_Condition: context.dev_mode == True AND context.corsOrigins IS INVALID_
@@ -241,19 +241,19 @@
     - _Preservation: запуск с валидным CORS_ALLOW_ORIGINS и dev_mode=False работает без ошибок_
     - _Requirements: 2.18, 3.6_
 
-  - [ ] 9.2 Verify bug condition exploration test now passes
+  - [x] 9.2 Verify bug condition exploration test now passes
     - **Property 1: Expected Behavior** - CORS No NameError
     - Запустить `test_cors_no_name_error` из задачи 1
     - **EXPECTED OUTCOME**: Тест ПРОХОДИТ (NameError устранён)
 
-  - [ ] 9.3 Verify preservation tests still pass
+  - [x] 9.3 Verify preservation tests still pass
     - **Property 2: Preservation** - CORS Valid Config
     - Запустить `test_cors_valid_config` из задачи 2
     - **EXPECTED OUTCOME**: Тест ПРОХОДИТ (нет регрессий)
 
-- [ ] 10. Fix БАГ 8 — masking.py: _mask_number None
+- [-] 10. Fix БАГ 8 — masking.py: _mask_number None
 
-  - [ ] 10.1 Исправить `_mask_number` в `src/utils/masking.py`
+  - [x] 10.1 Исправить `_mask_number` в `src/utils/masking.py`
     - Добавить константу `MASKED_NONE_VALUE = "—"` на уровне модуля
     - Обновить сигнатуру: `def _mask_number(value: float | int | None) -> str`
     - Заменить `return None` на `return MASKED_NONE_VALUE`
@@ -262,7 +262,7 @@
     - _Preservation: _mask_number с числовыми значениями продолжает корректно маскировать_
     - _Requirements: 2.19, 2.20, 3.5_
 
-  - [ ] 10.2 Verify bug condition exploration test now passes
+  - [x] 10.2 Verify bug condition exploration test now passes
     - **Property 1: Expected Behavior** - Mask None Returns Dash
     - Запустить `test_mask_number_none_returns_none` из задачи 1
     - **EXPECTED OUTCOME**: Тест ПРОХОДИТ (`_mask_number(None)` → `"—"`)

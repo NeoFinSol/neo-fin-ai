@@ -1,0 +1,4 @@
+# file: E:\neo-fin-ai\src\routers\system.py
+# hypothesis_version: 6.151.9
+
+[503, '/health', '/healthz', '/metrics', '/ready', '/system', 'SELECT 1', 'ai', 'ai_circuit_breaker', 'ai_service', 'components', 'database', 'db', 'degraded', 'down', 'healthy', 'not_configured', 'ocr', 'ok', 'ready', 'services', 'status', 'system', 'timestamp', 'unhealthy', 'unknown']
