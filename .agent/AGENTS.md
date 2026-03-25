@@ -1,5 +1,5 @@
 # AGENTS.md — Правила работы с проектом NeoFin AI
-<!-- Версия: 1.2 | Обновлено: 2026-03-24 -->
+<!-- Версия: 1.3 | Обновлено: 2026-03-25 -->
 
 > Все вспомогательные файлы агента лежат в `.agent/`. При сомнениях — читай их в первую очередь.
 
@@ -38,6 +38,13 @@ frontend/src/
 
 .agent/                 → инфраструктура для AI-агента (этот файл + мета-документы)
 migrations/versions/    → 0001_create_analyses, 0002_add_indexes
+
+Docker (production):
+├── Dockerfile.backend        → multi-stage build (build → runtime)
+├── frontend/Dockerfile.frontend → multi-stage build (node → nginx)
+├── docker-compose.prod.yml   → production-оркестрация (nginx, backend, db, ollama)
+├── nginx.conf                → reverse proxy, rate limiting, gzip, security headers
+└── scripts/deploy-prod.sh    → скрипт деплоя (validate → build → migrate → start)
 ```
 
 ---
@@ -124,6 +131,10 @@ AI_TIMEOUT       = 120s      # agent.py, gigachat_agent.py, ai_service.py — м
 NLP_TIMEOUT      = 60s       # asyncio.wait_for в tasks.py
 REC_TIMEOUT      = 65s       # asyncio.wait_for в tasks.py
 POLLING_INTERVAL = 2000ms    # frontend/src/hooks/usePdfAnalysis.ts
+
+# Docker production
+DOCKER_BUILD_CACHE = local   # Dockerfile.backend: кеш между сборками
+NGINX_RATE_LIMIT   = 10r/s   # nginx.conf: limit_req_zone rate
 ```
 
 ---
@@ -140,6 +151,10 @@ POLLING_INTERVAL = 2000ms    # frontend/src/hooks/usePdfAnalysis.ts
 | Меняешь `AI_TIMEOUT` | Менять в трёх файлах: `agent.py`, `gigachat_agent.py`, `ai_service.py` |
 | Видишь `status` зависший в `"processing"` | BackgroundTask упал; см. `.agent/local_notes.md` — известное ограничение |
 | Ошибка SSL при GigaChat | Проверь `GIGACHAT_SSL_VERIFY` env и CA bundle |
+| **Production деплой** | Используй `scripts/deploy-prod.sh` или `docker-compose -f docker-compose.prod.yml` |
+| **Docker build ошибка** | Проверь `.dockerignore` и `frontend/.dockerignore` — лишние файлы могут сломать сборку |
+| **Nginx 502 Bad Gateway** | Backend не запустился; проверь `docker-compose logs backend` и health check |
+| **Миграции не применяются** | Запусти вручную: `docker-compose -f docker-compose.prod.yml run --rm backend-migrate` |
 
 ---
 
@@ -154,6 +169,8 @@ POLLING_INTERVAL = 2000ms    # frontend/src/hooks/usePdfAnalysis.ts
 [ ] Если добавлен новый ratio → RATIO_KEY_MAP обновлён
 [ ] Тесты для новой логики написаны и проходят (pytest --run)
 [ ] .agent/overview.md и .agent/PROJECT_LOG.md обновлены
+[ ] Если менялись Docker-файлы → проверь сборку: docker-compose -f docker-compose.prod.yml build
+[ ] Если менялись production-файлы → проверь .env.example на наличие новых переменных
 ```
 
 ---
@@ -240,6 +257,9 @@ POLLING_INTERVAL = 2000ms    # frontend/src/hooks/usePdfAnalysis.ts
 - ❌ Не пиши SQL вне `src/db/crud.py`
 - ❌ Не меняй один таймаут AI — меняй все три файла сразу
 - ❌ Не запускай `npm run dev` или `uvicorn` как блокирующие команды в сессии
+- ❌ Не копируй `.env` в Docker-образ (используй `env_file` в docker-compose)
+- ❌ Не меняй production Dockerfile без проверки сборки: `docker-compose -f docker-compose.prod.yml build`
+- ❌ Не запускай backend от root в Docker (используй `appuser` в Dockerfile.backend)
 
 ---
 

@@ -206,17 +206,87 @@ curl http://localhost/api/multi-analysis/xyz-456 \
 
 ## Тестирование
 
-- **Backend:** 493+ тестов (pytest), включая property-based тесты (Hypothesis)
-- **Frontend:** unit-тесты (vitest) + property-based тесты (fast-check)
-- **Покрытие:** `ai_service` 93%, `tasks` 92%, `nlp_analysis` 95%, `auth` 100%, `security` 100%
+### Статистика
+
+| Компонент | Тесты | Покрытие | Статус |
+|-----------|-------|----------|--------|
+| **Backend** | 578 passed | 85% | ✅ |
+| **Frontend** | 78 passed | 55% | ✅ |
+
+### Стратегия тестирования
+
+**Unit и integration тесты (570+ тестов):**
+- Все unit и integration тесты бизнес-логики проходят успешно
+- Покрытие критической бизнес-логики: 85%+
+- Property-based тесты (Hypothesis) для проверки инвариантов
+- Mock внешних зависимостей (БД, AI-сервис)
+- **Regex fallback тесты**: извлечение метрик из текста при отсутствии таблиц
+
+**E2E тесты (9 тестов):**
+- Требуют внешних зависимостей (PostgreSQL, AI-сервис)
+- Вынесены в отдельный слой тестирования
+- Запускаются отдельно с реальной БД через `pytest tests/test_e2e.py -m e2e`
+
+**Frontend тесты:**
+- Pure функции: 100% покрытие (buildChartData, getBarColor, THRESHOLDS)
+- Components: ConfidenceBadge (100%), TrendChart (95%)
+- Hooks: useAnalysisHistory (100%), apiClient (100%)
+- Pages: Auth (100%), AnalysisHistory (72%)
+
+---
+
+## Production Docker
+
+### Оптимизация образа
+
+**Multi-stage build:**
+- **Builder stage:** компиляция зависимостей (gcc, build-essential, libpq-dev)
+- **Runtime stage:** только готовый venv и код приложения
+- **Размер:** ~500-600MB vs ~1.2GB (single-stage)
+
+**Безопасность:**
+- Non-root пользователь `appuser`
+- Read-only code copies с `--chown=appuser:appuser`
+- Удалены build-инструменты после компиляции
+
+**Зависимости:**
+- **Build stage:** build-essential, libpq-dev, tesseract-ocr, poppler-utils, libgl1
+- **Runtime stage:** tesseract-ocr, poppler-utils, libgl1, curl, ca-certificates
+- **Исключено:** build-essential, libpq-dev (400-600MB экономии)
+
+**Примечание:** Основной вклад в размер дают OCR и PDF-зависимости (tesseract-ocr, poppler-utils, libgl1) — необходимы для обработки сканов PDF.
+
+### Сборка и запуск
 
 ```bash
-# Backend
-docker-compose exec backend pytest
+# Сборка образа
+docker build -f Dockerfile.prod -t neofinai:prod .
 
-# Frontend
-cd frontend && npm test
+# Проверка размера
+docker images neofinai:prod
+
+# Запуск
+docker run -p 8000:8000 --env-file .env neofinai:prod
+
+# Или через docker-compose
+docker-compose -f docker-compose.prod.yml up -d --build
 ```
+
+### Детализация покрытия
+
+**Backend:**
+- routers/system.py: 98.65%
+- routers/analyses.py: 100%
+- core/auth.py: 100%
+- analysis/scoring.py: 97.62%
+- analysis/ratios.py: 95.59%
+
+**Frontend:**
+- api/client.ts: 100%
+- hooks/useAnalysisHistory.ts: 100%
+- components/ConfidenceBadge.tsx: 100%
+- components/TrendChart.tsx: 95%
+- pages/Auth.tsx: 100%
 
 ---
 

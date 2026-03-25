@@ -14,6 +14,158 @@ from src.core.constants import MAX_PDF_PAGES, AI_TIMEOUT
 logger = logging.getLogger(__name__)
 
 
+def _extract_metrics_with_regex(text: str) -> dict[str, float | None]:
+    """
+    Extract financial metrics from text using regex patterns.
+    
+    Fallback method when table extraction fails.
+    
+    Args:
+        text: PDF text content
+        
+    Returns:
+        Dictionary with metric keys and extracted values
+    """
+    import re
+    
+    def _parse_russian_number(raw: str) -> float | None:
+        """Parse numbers like '1 234 567,89' or '1234567.89' or '(123)'."""
+        if not raw:
+            return None
+        negative = bool(re.search(r"\(.*\d.*\)", raw))
+        cleaned = raw.replace("\u00a0", " ").strip()
+        cleaned = cleaned.replace(",", ".")
+        cleaned = re.sub(r"[^0-9.\-\s]", "", cleaned)
+        cleaned = cleaned.replace(" ", "")
+        try:
+            val = (
+                float(cleaned)
+                if cleaned and cleaned not in ("", "-", ".")
+                else None
+            )
+            if val is not None and negative:
+                return -abs(val)
+            return val
+        except ValueError:
+            return None
+    
+    num_group = r"(\d[\d\s,\.]*\d|\d)"
+    
+    patterns = {
+        "revenue": [
+            r"Выручка от реализации\s*\|\s*" + num_group,
+            r"Выручка\s*\|\s*" + num_group,
+            r"Выручка от реализации[^\d]{0,80}" + num_group,
+            r"Выручка[^\d]{0,60}" + num_group,
+            r"Доходы от реализации\s*\|\s*" + num_group,
+            r"Совокупный доход\s*\|\s*" + num_group,
+            # Формат Магнита: "Выручка" в одной строке, значение в следующей
+            r"выручка.*?(\d[\d\s,\.]*\d)",
+        ],
+        "net_profit": [
+            r"Чистая прибыль\s*\|\s*" + num_group,
+            r"Чистая прибыль[^\d]{0,60}" + num_group,
+            r"Прибыль после налогообложения\s*\|\s*" + num_group,
+            r"Нераспределенная прибыль\s*\|\s*" + num_group,
+            r"чистая прибыль.*?(\d[\d\s,\.]*\d)",
+        ],
+        "total_assets": [
+            r"Итого активов\s*\|\s*" + num_group,
+            r"Итого активов[^\d]{0,60}" + num_group,
+            r"БАЛАНС\s*\|\s*" + num_group,
+            r"БАЛАНС[^\d]{0,60}" + num_group,
+            r"актив[аыо].*?(\d[\d\s,\.]*\d)",
+        ],
+        "equity": [
+            r"Итого капитала\s*\|\s*" + num_group,
+            r"Итого капитала[^\d]{0,60}" + num_group,
+            r"Собственный капитал\s*\|\s*" + num_group,
+            r"Капитал и резервы\s*\|\s*" + num_group,
+            r"Итого по разделу III\s*\|\s*" + num_group,
+            r"капитал[ауоы].*?(\d[\d\s,\.]*\d)",
+        ],
+        "liabilities": [
+            r"Итого обязательств\s*\|\s*" + num_group,
+            r"Итого обязательств[^\d]{0,60}" + num_group,
+            r"Итого долгосрочных обязательств\s*\|\s*" + num_group,
+            r"Итого краткосрочных обязательств\s*\|\s*" + num_group,
+            r"обязательств[ауы].*?(\d[\d\s,\.]*\d)",
+        ],
+        "current_assets": [
+            r"Итого оборотных активов\s*\|\s*" + num_group,
+            r"Итого оборотных активов[^\d]{0,60}" + num_group,
+            r"Оборотные активы\s*\|\s*" + num_group,
+            r"Итого по разделу II\s*\|\s*" + num_group,
+            r"оборотн[ыыхи].*?(\d[\d\s,\.]*\d)",
+        ],
+        "short_term_liabilities": [
+            r"Итого краткосрочных обязательств\s*\|\s*" + num_group,
+            r"Итого краткосрочных обязательств[^\d]{0,80}" + num_group,
+            r"Краткосрочные обязательства\s*\|\s*" + num_group,
+            r"Итого по разделу V\s*\|\s*" + num_group,
+            r"краткосрочн[ыыхи].*?(\d[\d\s,\.]*\d)",
+        ],
+        "accounts_receivable": [
+            r"Дебиторская задолженность\s*\|\s*" + num_group,
+            r"Дебиторская задолженность[^\d]{0,60}" + num_group,
+            r"задолженност[ьи].*?(\d[\d\s,\.]*\d)",
+        ],
+        "inventory": [
+            r"Запасы\s*\|\s*" + num_group,
+            r"Запасы[^\d]{0,60}" + num_group,
+            r"Товарно-материальные ценности\s*\|\s*" + num_group,
+            r"запас[аыов].*?(\d[\d\s,\.]*\d)",
+        ],
+        "cash_and_equivalents": [
+            r"Денежные средства\s*\|\s*" + num_group,
+            r"Денежные средства[^\d]{0,60}" + num_group,
+            r"Наличные\s*\|\s*" + num_group,
+            r"денежн[ыыхи].*?(\d[\d\s,\.]*\d)",
+        ],
+        "ebitda": [
+            r"EBITDA\s*\|\s*" + num_group,
+            r"EBITDA[^\d]{0,60}" + num_group,
+            r"ebitda.*?(\d[\d\s,\.]*\d)",
+        ],
+        "ebit": [
+            r"EBIT\s*\|\s*" + num_group,
+            r"EBIT[^\d]{0,60}" + num_group,
+            r"Операционная прибыль\s*\|\s*" + num_group,
+            r"операционн[аыя].*?(\d[\d\s,\.]*\d)",
+        ],
+        "interest_expense": [
+            r"Процентные расходы\s*\|\s*" + num_group,
+            r"Процентные расходы[^\d]{0,60}" + num_group,
+            r"процентн[ыыхи].*?(\d[\d\s,\.]*\d)",
+        ],
+        "cost_of_goods_sold": [
+            r"Себестоимость продаж\s*\|\s*" + num_group,
+            r"Себестоимость продаж[^\d]{0,80}" + num_group,
+            r"Себестоимость реализованной продукции\s*\|\s*" + num_group,
+            r"себестоимост[ьи].*?(\d[\d\s,\.]*\d)",
+        ],
+        "average_inventory": [
+            r"Средний запас\s*\|\s*" + num_group,
+            r"Средний запас[^\d]{0,60}" + num_group,
+            r"средн.*?запас[аы].*?(\d[\d\s,\.]*\d)",
+        ],
+    }
+    
+    metrics: dict[str, float | None] = {}
+    text_lower = text.lower()
+    
+    for field, pattern_list in patterns.items():
+        for pattern in pattern_list:
+            match = re.search(pattern, text_lower, re.IGNORECASE)
+            if match:
+                value = _parse_russian_number(match.group(1))
+                if value is not None and value > 0:
+                    metrics[field] = value
+                    break
+    
+    return metrics
+
+
 def _extract_json_from_response(text: str) -> str:
     """Extract JSON from AI response that may contain markdown code blocks."""
     import re
@@ -151,9 +303,10 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
 
         # Call the AI service with the prepared prompt
         try:
-            res = await ai_service.invoke_with_retry(
+            res = await ai_service.invoke(
                 input={"tool_input": prompt, "intermediate_steps": []},
                 timeout=AI_TIMEOUT,
+                use_retry=True,
             )
             if res is not None:
                 logger.info(
@@ -208,110 +361,18 @@ async def analyze_pdf(file: io.BytesIO | BinaryIO):
             extracted = parse_financial_statements(all_tables, all_text)
             metrics = {k: v for k, v in extracted.items() if v is not None}
 
-            # If we're missing critical metrics, try broader regex patterns
-            critical_missing = not metrics.get("revenue") or not metrics.get(
-                "total_assets"
-            )
+            # If we're missing critical metrics, use regex fallback
+            critical_missing = not metrics.get("revenue") or not metrics.get("total_assets")
             if (
                 not metrics
                 or len([v for v in metrics.values() if v is not None]) < 3
                 or critical_missing
             ):
-                import re
-
-                def _parse_russian_number(raw: str) -> float | None:
-                    """Parse numbers like '1 234 567,89' or '1234567.89' or '(123)'."""
-                    if not raw:
-                        return None
-                    negative = bool(re.search(r"\(.*\d.*\)", raw))
-                    cleaned = raw.replace("\u00a0", " ").strip()
-                    cleaned = cleaned.replace(",", ".")
-                    cleaned = re.sub(r"[^0-9.\-\s]", "", cleaned)
-                    cleaned = cleaned.replace(" ", "")
-                    try:
-                        val = (
-                            float(cleaned)
-                            if cleaned and cleaned not in ("", "-", ".")
-                            else None
-                        )
-                        if val is not None and negative:
-                            return -abs(val)
-                        return val
-                    except ValueError:
-                        return None
-
-                # Flexible patterns for Russian financial reports
-                # Handles formats like:
-                #   "Выручка от реализации | 312 567 000"
-                #   "Выручка от реализации.......... 312 567 000"
-                #   "Чистая прибыль      40 444 000"
-                #   "Итого активов  198 456 000 руб."
-                num_group = r"(\d[\d\s,\.]*\d|\d)"
-
-                patterns = {
-                    "revenue": [
-                        r"Выручка от реализации\s*\|\s*" + num_group,
-                        r"Выручка\s*\|\s*" + num_group,
-                        r"Выручка от реализации[^\d]{0,80}" + num_group,
-                        r"Выручка[^\d]{0,60}" + num_group,
-                        r"Доходы от реализации\s*\|\s*" + num_group,
-                        r"Совокупный доход\s*\|\s*" + num_group,
-                    ],
-                    "net_profit": [
-                        r"Чистая прибыль\s*\|\s*" + num_group,
-                        r"Чистая прибыль[^\d]{0,60}" + num_group,
-                        r"Прибыль после налогообложения\s*\|\s*" + num_group,
-                        r"Нераспределенная прибыль\s*\|\s*" + num_group,
-                    ],
-                    "total_assets": [
-                        r"Итого активов\s*\|\s*" + num_group,
-                        r"Итого активов[^\d]{0,60}" + num_group,
-                        r"БАЛАНС\s*\|\s*" + num_group,
-                        r"БАЛАНС[^\d]{0,60}" + num_group,
-                    ],
-                    "equity": [
-                        r"Итого капитала\s*\|\s*" + num_group,
-                        r"Итого капитала[^\d]{0,60}" + num_group,
-                        r"Собственный капитал\s*\|\s*" + num_group,
-                        r"Капитал и резервы\s*\|\s*" + num_group,
-                    ],
-                    "liabilities": [
-                        r"Итого обязательств\s*\|\s*" + num_group,
-                        r"Итого обязательств[^\d]{0,60}" + num_group,
-                        r"Итого долгосрочных обязательств\s*\|\s*" + num_group,
-                        r"Итого краткосрочных обязательств\s*\|\s*" + num_group,
-                    ],
-                    "current_assets": [
-                        r"Итого оборотных активов\s*\|\s*" + num_group,
-                        r"Итого оборотных активов[^\d]{0,60}" + num_group,
-                        r"Оборотные активы\s*\|\s*" + num_group,
-                    ],
-                    "short_term_liabilities": [
-                        r"Итого краткосрочных обязательств\s*\|\s*" + num_group,
-                        r"Итого краткосрочных обязательств[^\d]{0,80}" + num_group,
-                        r"Краткосрочные обязательства\s*\|\s*" + num_group,
-                    ],
-                    "cost_of_goods_sold": [
-                        r"Себестоимость продаж\s*\|\s*" + num_group,
-                        r"Себестоимость продаж[^\d]{0,80}" + num_group,
-                        r"Себестоимость реализованной продукции\s*\|\s*" + num_group,
-                    ],
-                    "inventory": [
-                        r"Запасы\s*\|\s*" + num_group,
-                        r"Запасы[^\d]{0,60}" + num_group,
-                    ],
-                }
-
-                for field, pattern_list in patterns.items():
-                    if metrics.get(field) is not None:
-                        continue
-                    for pattern in pattern_list:
-                        match = re.search(pattern, all_text, re.IGNORECASE)
-                        if match:
-                            value = _parse_russian_number(match.group(1))
-                            if value is not None and value > 0:
-                                metrics[field] = value
-                                break
+                regex_metrics = _extract_metrics_with_regex(all_text)
+                # Merge: regex metrics only for missing keys
+                for key, value in regex_metrics.items():
+                    if value is not None and metrics.get(key) is None:
+                        metrics[key] = value
 
         if metrics:
             ratios = calculate_ratios(metrics)

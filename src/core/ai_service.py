@@ -1,20 +1,35 @@
 """Unified AI service interface with automatic provider selection."""
 
+import asyncio
 import logging
+import os
+import time
 from typing import Optional
 
 from src.core.agent import agent as qwen_agent
 from src.core.gigachat_agent import gigachat_agent
 from src.core.huggingface_agent import huggingface_agent
 from src.models.settings import app_settings
+from src.utils.circuit_breaker import ai_circuit_breaker, CircuitBreakerOpenError
+from src.utils.logging_config import get_logger, metrics
+from src.utils.retry_utils import retry_with_timeout
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+# Configuration from environment
+AI_TIMEOUT = int(os.getenv("AI_TIMEOUT", "120"))
+AI_RETRY_COUNT = int(os.getenv("AI_RETRY_COUNT", "2"))
+AI_RETRY_BACKOFF = float(os.getenv("AI_RETRY_BACKOFF", "2.0"))
 
 
 class AIService:
     """
-    Unified AI service that automatically selects the best available provider.
-
+    Unified AI service with resilience patterns:
+    - Circuit breaker (prevents cascading failures)
+    - Retry with exponential backoff (handles transient failures)
+    - Timeout control (prevents hanging)
+    - Graceful degradation (returns None instead of crashing)
+    
     Priority order:
     1. GigaChat (if configured)
     2. Qwen (if configured)
@@ -32,7 +47,6 @@ class AIService:
             self._provider = "gigachat"
             self._agent = gigachat_agent
 
-            # Configure GigaChat if not already configured
             if not self._agent._configured:
                 self._agent.set_config(
                     client_id=app_settings.gigachat_client_id,
@@ -46,7 +60,6 @@ class AIService:
             self._provider = "huggingface"
             self._agent = huggingface_agent
 
-            # Configure Hugging Face if not already configured
             if not self._agent._configured:
                 self._agent.set_config(
                     token=app_settings.hf_token,
@@ -61,7 +74,6 @@ class AIService:
             self._provider = "qwen"
             self._agent = qwen_agent
 
-            # Configure Qwen if not already configured
             if not self._agent._configured:
                 self._agent.set_config(
                     auth_token=app_settings.qwen_api_key,
@@ -71,7 +83,7 @@ class AIService:
 
         elif app_settings.use_local_llm:
             self._provider = "ollama"
-            self._agent = None  # Will use direct HTTP calls
+            self._agent = None
             logger.info("Local LLM (Ollama) will be used")
 
         else:
@@ -89,146 +101,182 @@ class AIService:
         """Check if any AI service is configured."""
         return self._provider is not None
 
-    async def invoke(self, input: dict, timeout: Optional[int] = None) -> Optional[str]:
-        """
-        Invoke AI service with automatic provider selection.
+    @property
+    def is_available(self) -> bool:
+        """Check if AI service is available (configured and circuit breaker closed)."""
+        return self.is_configured and ai_circuit_breaker.is_available
 
-        Args:
-            input: Input dictionary with tool_input and optional system prompt
-            timeout: Request timeout in seconds
+    def get_circuit_breaker_status(self) -> dict:
+        """Get AI circuit breaker status."""
+        return ai_circuit_breaker.get_status()
 
-        Returns:
-            Optional[str]: AI response or None
-        """
-        if not self.is_configured:
-            logger.warning("AI service not configured - cannot invoke")
-            return None
-
-        if self._provider == "ollama":
-            return await self._invoke_ollama(input, timeout)
-        else:
-            return await self._agent.invoke(input, timeout)
-
-    async def _invoke_once(
-        self, input: dict, timeout: Optional[int] = None
+    async def invoke(
+        self,
+        input: dict,
+        timeout: Optional[int] = None,
+        use_retry: bool = True,
     ) -> Optional[str]:
         """
-        Internal low-level invoke without retry logic.
-        Use this method inside invoke_with_retry to avoid recursive retries.
+        Invoke AI service with resilience patterns.
+        
+        Features:
+        - Circuit breaker (blocks requests if service is failing)
+        - Retry with exponential backoff (handles transient failures)
+        - Timeout control (prevents hanging)
+        - Graceful degradation (returns None on failure)
 
         Args:
             input: Input dictionary with tool_input and optional system prompt
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (default: AI_TIMEOUT env)
+            use_retry: Enable retry logic (default: True)
 
         Returns:
-            Optional[str]: AI response or None
+            Optional[str]: AI response or None (on failure/timeout/circuit open)
         """
+        actual_timeout = timeout or AI_TIMEOUT
+        
+        # Check if AI is configured
         if not self.is_configured:
-            logger.warning("AI service not configured - cannot invoke")
+            logger.warning("AI service not configured - skipping invocation")
+            return None
+        
+        # Check circuit breaker
+        if not ai_circuit_breaker.is_available:
+            retry_after = ai_circuit_breaker.time_until_retry
+            logger.warning(
+                f"AI service temporarily disabled (circuit breaker open). "
+                f"Retry after {retry_after}s",
+                extra={"extra_data": {"retry_after": retry_after}},
+            )
+            metrics.record_ai_failure()
             return None
 
-        if self._provider == "ollama":
-            return await self._invoke_ollama(input, timeout)
-        else:
-            # Call agent.invoke directly - it has its own retry logic
-            return await self._agent.invoke(input, timeout)
+        start_time = time.monotonic()
+        logger.info(f"AI invocation started (provider: {self._provider})")
+
+        try:
+            # Define the operation
+            async def ai_operation():
+                if self._provider == "ollama":
+                    return await self._invoke_ollama(input, timeout=actual_timeout)
+                else:
+                    return await self._agent.invoke(input, timeout=actual_timeout)
+            
+            # Execute with or without retry
+            if use_retry and AI_RETRY_COUNT > 0:
+                result = await retry_with_timeout(
+                    ai_operation,
+                    timeout=actual_timeout,
+                    max_retries=AI_RETRY_COUNT,
+                    backoff_multiplier=AI_RETRY_BACKOFF,
+                    fallback=lambda: None,
+                    operation_name=f"AI invocation ({self._provider})",
+                )
+            else:
+                result = await asyncio.wait_for(ai_operation(), timeout=actual_timeout)
+            
+            # Success
+            duration_ms = (time.monotonic() - start_time) * 1000
+            logger.info(f"AI invocation completed", extra={"duration_ms": duration_ms})
+            ai_circuit_breaker.record_success()
+            return result
+            
+        except asyncio.TimeoutError:
+            duration_ms = (time.monotonic() - start_time) * 1000
+            logger.warning(
+                f"AI invocation timed out after {actual_timeout}s",
+                extra={"duration_ms": duration_ms},
+            )
+            ai_circuit_breaker.record_failure()
+            metrics.record_ai_failure()
+            return None
+            
+        except CircuitBreakerOpenError:
+            # Should not happen since we check is_available above, but handle anyway
+            logger.warning("AI invocation blocked by circuit breaker")
+            metrics.record_ai_failure()
+            return None
+            
+        except Exception as exc:
+            duration_ms = (time.monotonic() - start_time) * 1000
+            logger.error(
+                f"AI invocation failed: {exc}",
+                exc_info=True,
+                extra={"duration_ms": duration_ms},
+            )
+            ai_circuit_breaker.record_failure()
+            metrics.record_ai_failure()
+            return None  # Graceful degradation
 
     async def invoke_with_retry(
         self,
         input: dict,
         timeout: Optional[int] = None,
-        max_retries: int = 3,
-        retry_delay: float = 1.0,
+        max_retries: Optional[int] = None,
+        retry_delay: Optional[float] = None,
     ) -> Optional[str]:
         """
-        Invoke AI service with retry logic.
+        Legacy wrapper for invoke(use_retry=True) for backward compatibility.
 
-        Uses internal _invoke_once method to avoid recursive retry calls.
+        This method exists for compatibility with tests and legacy code.
+        New code should use invoke(use_retry=True) directly.
 
         Args:
             input: Input dictionary with tool_input and optional system prompt
-            timeout: Request timeout in seconds
-            max_retries: Maximum number of retry attempts
-            retry_delay: Base delay between retries in seconds
+            timeout: Request timeout in seconds (default: AI_TIMEOUT env)
+            max_retries: Ignored (uses AI_RETRY_COUNT from env)
+            retry_delay: Ignored (uses AI_RETRY_BACKOFF from env)
 
         Returns:
-            Optional[str]: AI response or None
+            Optional[str]: AI response or None (on failure/timeout/circuit open)
         """
-        import asyncio
-
-        last_exception = None
-        for attempt in range(max_retries):
-            try:
-                # Use _invoke_once to avoid recursive retry logic
-                return await self._invoke_once(input, timeout)
-            except asyncio.TimeoutError:
-                # Don't retry timeout errors immediately
-                if attempt < max_retries - 1:
-                    delay = retry_delay * (2**attempt)  # Exponential backoff
-                    logger.warning(
-                        "AI request timeout (attempt %d/%d), retrying in %.2f seconds...",
-                        attempt + 1,
-                        max_retries,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-                else:
-                    raise
-            except Exception as e:
-                last_exception = e
-                if attempt < max_retries - 1:
-                    delay = retry_delay * (2**attempt)
-                    logger.warning(
-                        "AI request error (attempt %d/%d): %s, retrying in %.2f seconds...",
-                        attempt + 1,
-                        max_retries,
-                        str(e),
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-                else:
-                    logger.error("AI request failed after all retries: %s", e)
-                    raise
-
-        return None
+        # Ignore max_retries and retry_delay for now (use env vars)
+        return await self.invoke(input=input, timeout=timeout, use_retry=True)
 
     async def _invoke_ollama(
-        self, input: dict, timeout: Optional[int] = None
+        self,
+        input: dict,
+        timeout: Optional[int] = None,
     ) -> Optional[str]:
-        """Invoke local Ollama LLM."""
+        """
+        Invoke local LLM via Ollama HTTP API.
+        
+        Args:
+            input: Input dictionary with prompt
+            timeout: Request timeout in seconds
+        
+        Returns:
+            Optional[str]: Generated text or None
+        """
         import aiohttp
-        from aiohttp import ClientTimeout
-
+        
+        url = os.getenv("LLM_URL", "http://localhost:11434/api/generate")
+        model = os.getenv("LLM_MODEL", "llama3")
+        
+        prompt = input.get("prompt", "") or input.get("tool_input", "")
+        # Handle case where tool_input might be a dict with prompt key
+        if isinstance(prompt, dict):
+            prompt = prompt.get("prompt", "")
+        
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+        }
+        
         try:
-            messages = input.get("tool_input", "")
-            system = input.get("system")
-
-            req_json = {
-                "model": app_settings.llm_model or "llama3",
-                "prompt": messages,
-                "stream": False,
-            }
-
-            if system:
-                req_json["system"] = system
-
             async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    app_settings.llm_url,
-                    json=req_json,
-                    timeout=ClientTimeout(total=timeout or 120),
-                ) as response:
-                    if response.status != 200:
-                        logger.error("Ollama API error: %d", response.status)
+                async with session.post(url, json=payload, timeout=timeout) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data.get("response", "")
+                    else:
+                        logger.error(f"Ollama returned status {response.status}")
                         return None
-
-                    result = await response.json()
-                    return result.get("response", "")
-
-        except Exception as e:
-            logger.exception("Error calling Ollama: %s", e)
+        except Exception as exc:
+            logger.error(f"Ollama invocation failed: {exc}")
             return None
 
 
-# Global singleton instance
+# Global AI service instance
 ai_service = AIService()

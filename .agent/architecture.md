@@ -48,7 +48,7 @@ NeoFin AI — ИИ-ассистент финансового директора:
 │              AI Service                                  │
 │  src/core/ai_service.py  ← единственная точка входа     │
 │       → src/core/gigachat_agent.py (GigaChat)           │
-│       → src/core/agent.py (Qwen)                        │
+│       → src/core/agent.py (DeepSeek)                    │
 │       → ollama HTTP (fallback)                          │
 │  Отвечает: выбор провайдера, retry, graceful degrade    │
 │  НЕ должно: вызываться напрямую минуя ai_service.py     │
@@ -89,7 +89,7 @@ src/
 │   ├── __init__.py
 │   ├── ai_service.py             # AIService: _configure(), выбор провайдера, graceful degrade
 │   ├── gigachat_agent.py         # GigaChat: OAuth2 flow, SSL, Bearer token кеш 55 мин, retry 3x
-│   └── agent.py                  # Qwen: Bearer token, retry 3x exponential backoff
+│   └── agent.py                  # DeepSeek: Bearer token, retry 3x exponential backoff
 ├── db/
 │   ├── __init__.py
 │   ├── database.py               # get_engine() lazy init, AsyncSession factory, get_db() dependency
@@ -439,8 +439,8 @@ GET /analyses?page=1&page_size=20
 
 | Сервис     | Файл                          | Протокол    | Auth                          | Timeout | Retry              | Fallback          |
 |------------|-------------------------------|-------------|-------------------------------|---------|--------------------|--------------------|
-| GigaChat   | `src/core/gigachat_agent.py`  | HTTPS+OAuth2| Bearer token (кеш 55 мин)     | 120s    | 3x exponential     | → Qwen             |
-| Qwen       | `src/core/agent.py`           | HTTPS       | Bearer token                  | 120s    | 3x exponential     | → Ollama           |
+| GigaChat   | `src/core/gigachat_agent.py`  | HTTPS+OAuth2| Bearer token (кеш 55 мин)     | 120s    | 3x exponential     | → DeepSeek         |
+| DeepSeek   | `src/core/agent.py`           | HTTPS       | Bearer token                  | 120s    | 3x exponential     | → Ollama           |
 | Ollama     | `src/core/ai_service.py`      | HTTP        | —                             | 120s    | нет                | NLP отключается    |
 | PostgreSQL | `src/db/database.py`          | asyncpg     | env: POSTGRES_USER/PASSWORD   | —       | —                  | —                  |
 
@@ -450,14 +450,14 @@ GET /analyses?page=1&page_size=20
 if settings.use_gigachat:
     provider = GigaChatAgent()          # src/core/gigachat_agent.py
 elif settings.use_qwen:
-    provider = QwenAgent()              # src/core/agent.py
+    provider = DeepSeekAgent()              # src/core/agent.py
 elif settings.use_local_llm:
     provider = OllamaClient()           # inline в ai_service.py
 else:
     provider = None                     # NLP отключён, analyze() возвращает пустые списки
 ```
 
-Никто за пределами `src/core/ai_service.py` не должен инстанциировать `GigaChatAgent` или `QwenAgent` напрямую.
+Никто за пределами `src/core/ai_service.py` не должен инстанциировать `GigaChatAgent` или `DeepSeekAgent` напрямую.
 
 **GigaChat OAuth2 flow (`src/core/gigachat_agent.py`):**
 - Токен запрашивается при первом вызове, кешируется на 55 минут (срок жизни токена — 60 мин)
