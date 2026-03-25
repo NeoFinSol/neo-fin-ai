@@ -31,12 +31,12 @@
 │   Error isolation · Progress tracking               │
 ├─────────────────────────────────────────────────────┤
 │               Analysis (Domain Logic)               │
-│   pdf_extractor · ratios · scoring · nlp_analysis   │
-│   recommendations · ExtractionMetadata              │
+│   pdf_extractor_pro · ratios · scoring · nlp        │
+│   recommendations · confidence · ExtractionMetadata │
 ├─────────────────────────────────────────────────────┤
 │              AI Service (LLM Abstraction)           │
 │   Единый интерфейс · Выбор провайдера при старте    │
-│   GigaChat · HuggingFace · Ollama · деградация      │
+│   GigaChat · DeepSeek · Ollama · деградация         │
 ├─────────────────────────────────────────────────────┤
 │                  DB (Persistence)                   │
 │   PostgreSQL · SQLAlchemy async · JSONB · Alembic   │
