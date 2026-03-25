@@ -392,7 +392,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
                     timeout=60.0
                 )
                 nlp_duration = (time.monotonic() - nlp_start) * 1000
-                task_logger.info(f"NLP analysis completed", extra={"duration_ms": nlp_duration})
+                task_logger.info("NLP analysis completed", extra={"duration_ms": nlp_duration})
             except ImportError:
                 task_logger.debug("NLP analysis module not available")
             except asyncio.TimeoutError:
