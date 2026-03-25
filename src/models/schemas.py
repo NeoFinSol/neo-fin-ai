@@ -92,6 +92,7 @@ RiskLevel = Literal["low", "medium", "high"]
 
 class PeriodInput(BaseModel):
     period_label: str = Field(min_length=1, max_length=20)
+    file_path: str = Field(description="Путь к временному PDF-файлу для этого периода")
 
     @field_validator("period_label", mode="before")
     @classmethod

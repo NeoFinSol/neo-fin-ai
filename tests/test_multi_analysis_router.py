@@ -71,107 +71,92 @@ def no_rate_limit(monkeypatch):
 class TestPostMultiAnalysis:
     """Tests for POST /multi-analysis endpoint."""
 
+    def _make_multipart(self, labels: list[str]) -> tuple[list, list]:
+        """Build files and data tuples for multipart POST."""
+        import io
+        files = [("files", (f"{label}.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")) for label in labels]
+        data = [("periods", label) for label in labels]
+        return files, data
+
     def test_post_multi_analysis_success_single_period(self, client):
         """
         Test 2.1: POST with 1 valid period should return 202.
-        
-        Expected:
-        - status_code: 202
-        - session_id: present (UUID format)
-        - status: "processing"
         """
-        payload = {"periods": [{"period_label": "2023"}]}
-        
+        files, data = self._make_multipart(["2023"])
+
         with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock) as mock_create:
             mock_create.return_value = None
-            
             with patch("src.routers.multi_analysis.uuid4", return_value=MagicMock(hex="abc123")):
-                response = client.post("/multi-analysis", json=payload)
-        
+                response = client.post("/multi-analysis", files=files, data=data)
+
         assert response.status_code == 202
-        data = response.json()
-        assert data["session_id"] is not None
-        assert data["status"] == "processing"
+        resp_data = response.json()
+        assert resp_data["session_id"] is not None
+        assert resp_data["status"] == "processing"
 
     def test_post_multi_analysis_success_multiple_periods(self, client):
         """POST with 3 valid periods should return 202."""
-        payload = {
-            "periods": [
-                {"period_label": "2021"},
-                {"period_label": "2022"},
-                {"period_label": "2023"},
-            ]
-        }
-        
+        files, data = self._make_multipart(["2021", "2022", "2023"])
+
         with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
             with patch("src.routers.multi_analysis.uuid4", return_value=MagicMock(hex="def456")):
-                response = client.post("/multi-analysis", json=payload)
-        
+                response = client.post("/multi-analysis", files=files, data=data)
+
         assert response.status_code == 202
-        data = response.json()
-        assert data["session_id"] is not None
+        assert response.json()["session_id"] is not None
 
     def test_post_multi_analysis_too_many_periods(self, client):
         """
         Test 2.4: POST with 6 periods should return 422.
-        
-        Expected:
-        - status_code: 422 (validation error)
         """
-        payload = {
-            "periods": [
-                {"period_label": "2019"},
-                {"period_label": "2020"},
-                {"period_label": "2021"},
-                {"period_label": "2022"},
-                {"period_label": "2023"},
-                {"period_label": "2024"},  # 6th period - too many
-            ]
-        }
-        
-        response = client.post("/multi-analysis", json=payload)
-        
+        files, data = self._make_multipart(["2019", "2020", "2021", "2022", "2023", "2024"])
+
+        response = client.post("/multi-analysis", files=files, data=data)
+
         assert response.status_code == 422
 
-    def test_post_multi_analysis_zero_periods(self, client):
-        """POST with 0 periods should return 422."""
-        payload = {"periods": []}
-        
-        response = client.post("/multi-analysis", json=payload)
-        
+    def test_post_multi_analysis_mismatched_files_and_periods(self, client):
+        """POST with mismatched files and period labels should return 422."""
+        import io
+        files = [("files", ("a.pdf", io.BytesIO(b"%PDF"), "application/pdf"))]
+        data = [("periods", "2022"), ("periods", "2023")]  # 2 labels, 1 file
+
+        with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
+            response = client.post("/multi-analysis", files=files, data=data)
+
         assert response.status_code == 422
 
     def test_post_multi_analysis_label_too_long(self, client):
         """
         Test 2.5: POST with period_label > 20 chars should return 422.
-        
-        Expected:
-        - status_code: 422 (validation error)
         """
-        payload = {
-            "periods": [
-                {"period_label": "This is a very long period label that exceeds twenty characters"}
-            ]
-        }
-        
-        response = client.post("/multi-analysis", json=payload)
-        
+        import io
+        long_label = "This label is way too long"
+        files = [("files", ("a.pdf", io.BytesIO(b"%PDF"), "application/pdf"))]
+        data = [("periods", long_label)]
+
+        response = client.post("/multi-analysis", files=files, data=data)
+
         assert response.status_code == 422
 
     def test_post_multi_analysis_empty_label(self, client):
         """POST with empty period_label should return 422."""
-        payload = {"periods": [{"period_label": ""}]}
-        
-        response = client.post("/multi-analysis", json=payload)
-        
+        import io
+        files = [("files", ("a.pdf", io.BytesIO(b"%PDF"), "application/pdf"))]
+        data = [("periods", "")]
+
+        response = client.post("/multi-analysis", files=files, data=data)
+
         assert response.status_code == 422
 
     def test_post_multi_analysis_whitespace_only_label(self, client):
         """POST with whitespace-only period_label should return 422."""
-        payload = {"periods": [{"period_label": "   "}]}
-        
-        response = client.post("/multi-analysis", json=payload)
-        
+        import io
+        files = [("files", ("a.pdf", io.BytesIO(b"%PDF"), "application/pdf"))]
+        data = [("periods", "   ")]
+
+        response = client.post("/multi-analysis", files=files, data=data)
+
         assert response.status_code == 422
 
 
@@ -283,11 +268,11 @@ class TestPropertyValidation:
         if len(label_text.strip()) == 0 or len(label_text) > 20:
             # Should fail validation
             with pytest.raises(Exception):  # ValidationError
-                PeriodInput(period_label=label_text)
+                PeriodInput(period_label=label_text, file_path="/tmp/test.pdf")
         else:
             # May pass validation
             try:
-                PeriodInput(period_label=label_text)
+                PeriodInput(period_label=label_text, file_path="/tmp/test.pdf")
             except Exception:
                 pass  # Some may still fail for other reasons
 
@@ -384,19 +369,23 @@ class TestRoundTrip:
         valid_labels = [l for l in period_labels if len(l) <= 20]
         if len(valid_labels) == 0:
             valid_labels = ["2023"]  # Fallback
-        
-        payload = {"periods": [{"period_label": label} for label in valid_labels[:5]]}
-        
+
+        import io
+        files = [
+            ("files", (f"{label}.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf"))
+            for label in valid_labels[:5]
+        ]
+        data = [("periods", label) for label in valid_labels[:5]]
+
         # Step 1: Create session
         with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
             with patch("src.routers.multi_analysis.uuid4", return_value=MagicMock(hex="roundtrip123")):
                 with patch("src.routers.multi_analysis.BackgroundTasks"):
-                    create_response = TestClient(app).post("/multi-analysis", json=payload)
-        
+                    create_response = TestClient(app).post("/multi-analysis", files=files, data=data)
+
         if create_response.status_code != 202:
             # Skip if validation failed
-            pytest.skip("Validation failed for generated data")
-        
+            pytest.skip("Validation failed for generated data")        
         session_id = create_response.json()["session_id"]
         
         # Step 2: Mock session data for retrieval
@@ -452,16 +441,20 @@ class TestMultiAnalysisIntegration:
         2. GET /multi-analysis/{id} (processing) → 200
         3. GET /multi-analysis/{id} (completed) → 200
         """
+        import io
         session_id = "test-flow-123"
-        
+
+        files = [
+            ("files", ("2022.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")),
+            ("files", ("2023.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")),
+        ]
+        data = [("periods", "2022"), ("periods", "2023")]
+
         # Step 1: Create session
         with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
             with patch("src.routers.multi_analysis.uuid4", return_value=MagicMock(hex=session_id)):
-                create_response = client.post(
-                    "/multi-analysis",
-                    json={"periods": [{"period_label": "2022"}, {"period_label": "2023"}]}
-                )
-        
+                create_response = client.post("/multi-analysis", files=files, data=data)
+
         assert create_response.status_code == 202
         assert create_response.json()["session_id"] == session_id
         

@@ -1,14 +1,15 @@
 """
 Router for multi-period analysis endpoints.
 Feature: neofin-competition-release
-Requirements: 2.5
+Requirements: 2.5, 2.9, 2.10, 2.11
 """
 from __future__ import annotations
 
 import logging
+import tempfile
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 
 from src.core.auth import get_api_key
 from src.db.crud import create_multi_session, get_multi_session
@@ -17,7 +18,7 @@ from src.models.schemas import (
     MultiAnalysisCompletedResponse,
     MultiAnalysisProcessingResponse,
     MultiAnalysisProgress,
-    MultiAnalysisRequest,
+    PeriodInput,
 )
 from src.tasks import process_multi_analysis
 
@@ -27,14 +28,31 @@ router = APIRouter(prefix="/multi-analysis", tags=["multi-analysis"])
 
 @router.post("", status_code=202, response_model=MultiAnalysisAcceptedResponse)
 async def start_multi_analysis(
-    body: MultiAnalysisRequest,
     background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...),
+    periods: list[str] = Form(...),
     _api_key: str = Depends(get_api_key),
 ) -> MultiAnalysisAcceptedResponse:
     """Accept multi-period analysis request and start background processing."""
+    if len(files) != len(periods):
+        raise HTTPException(
+            status_code=422,
+            detail="Количество файлов должно совпадать с количеством меток периодов",
+        )
+    if len(files) > 5:
+        raise HTTPException(status_code=422, detail="Максимум 5 периодов")
+
+    period_inputs: list[PeriodInput] = []
+    for file, label in zip(files, periods):
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        content = await file.read()
+        tmp.write(content)
+        tmp.close()
+        period_inputs.append(PeriodInput(period_label=label, file_path=tmp.name))
+
     session_id = str(uuid4())
     await create_multi_session(session_id)
-    background_tasks.add_task(process_multi_analysis, session_id, body.periods)
+    background_tasks.add_task(process_multi_analysis, session_id, period_inputs)
     return MultiAnalysisAcceptedResponse(session_id=session_id, status="processing")
 
 

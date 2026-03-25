@@ -34,6 +34,13 @@
 
 ---
 
+## Qwen Regression Fixes — Статус
+✅ **БАГ 1** (AnalysisContext.tsx) — исправлен: POST /upload + polling GET /result/{task_id}, MAX_POLLING_ATTEMPTS=15
+✅ **БАГ 2** (pdf_extractor.py) — исправлен: убран хардкод C:\Program Files\Tesseract-OCR, graceful degradation
+✅ **БАГ 3** (schemas.py + multi_analysis.py) — исправлен: PeriodInput.file_path добавлен, роутер принимает multipart/form-data
+
+---
+
 ## Что разрабатывается
 🔄 **nlp_analysis.py** — модуль реализован, вызов подключён в `tasks.py`, но не проверен на реальных данных [MEDIUM]
 

@@ -532,6 +532,9 @@ async def _process_single_period(period_label: str, file_path: str) -> dict:
             "risk_level": score_payload.get("risk_level", None),
             "extraction_metadata": extraction_metadata_payload,
         }
+    except FileNotFoundError:
+        logger.warning("Period '%s' file not found: %s", period_label, file_path)
+        return {"period_label": period_label, "error": "file_not_found"}
     except Exception as exc:
         logger.warning(
             "Period '%s' processing failed: %s", period_label, exc, exc_info=True
@@ -589,6 +592,7 @@ async def process_multi_analysis(
         period_logger.info(f"Processing period {idx + 1}/{total}")
 
         result = await _process_single_period(period_label, file_path)
+        _cleanup_temp_file(file_path)
         
         if "error" in result:
             failed_count += 1
