@@ -9,9 +9,12 @@ from pathlib import Path
 import PyPDF2
 
 from src.analysis import pdf_extractor
+from src.analysis.nlp_analysis import analyze_narrative
 from src.analysis.pdf_extractor import ExtractionMetadata
 from src.analysis.ratios import calculate_ratios
+from src.analysis.recommendations import generate_recommendations
 from src.analysis.scoring import calculate_integral_score
+from src.controllers.analyze import _extract_metrics_with_regex
 from src.db.crud import create_analysis, update_analysis, update_multi_session, AnalysisAlreadyExistsError
 from src.utils.logging_config import get_logger, metrics
 from sqlalchemy.exc import SQLAlchemyError
@@ -354,7 +357,6 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         critical_missing = not metrics_filtered.get("revenue") or not metrics_filtered.get("total_assets")
         if critical_missing and text:
             task_logger.warning("Critical metrics missing, using regex fallback")
-            from src.controllers.analyze import _extract_metrics_with_regex
             regex_metrics = _extract_metrics_with_regex(text)
             # Merge: regex metrics only for missing keys
             for key, value in regex_metrics.items():
@@ -385,7 +387,6 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         if text and len(text) > 500:
             nlp_start = time.monotonic()
             try:
-                from src.analysis.nlp_analysis import analyze_narrative
                 nlp_result = await asyncio.wait_for(
                     analyze_narrative(text),
                     timeout=60.0
@@ -403,7 +404,6 @@ async def process_pdf(task_id: str, file_path: str) -> None:
 
         # --- Recommendations Phase ---
         try:
-            from src.analysis.recommendations import generate_recommendations
             rec_start = time.monotonic()
             recommendations = await asyncio.wait_for(
                 generate_recommendations(metrics_filtered, ratios_en, nlp_result),

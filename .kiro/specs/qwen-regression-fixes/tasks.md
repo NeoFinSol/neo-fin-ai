@@ -314,9 +314,9 @@
     - Аналогично 11.1
     - _Requirements: 2.21_
 
-- [ ] 12. Fix БАГ 10 — tasks.py: импорты на уровень модуля
+- [x] 12. Fix БАГ 10 — tasks.py: импорты на уровень модуля
 
-  - [ ] 12.1 Перенести inline-импорты на уровень модуля в `src/tasks.py`
+  - [x] 12.1 Перенести inline-импорты на уровень модуля в `src/tasks.py`
     - Перенести `from src.analysis.nlp_analysis import analyze_narrative` на уровень модуля
     - Перенести `from src.analysis.recommendations import generate_recommendations` на уровень модуля
     - Проверить существование `src/controllers/analyze.py` и `_extract_metrics_with_regex`
