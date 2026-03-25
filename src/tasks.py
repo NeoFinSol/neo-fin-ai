@@ -360,21 +360,21 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             for key, value in regex_metrics.items():
                 if value is not None and metrics_filtered.get(key) is None:
                     metrics_filtered[key] = value
-                    task_logger.info(f"Filled {key} from regex fallback: {value}")
+                    task_logger.info("Filled %s from regex fallback: %s", key, value)
         
         extract_duration = (time.monotonic() - extract_start) * 1000
-        task_logger.info(f"PDF extraction completed", extra={"duration_ms": extract_duration})
+        task_logger.info("PDF extraction completed", extra={"duration_ms": extract_duration})
 
         # --- Ratios & Scoring Phase ---
         ratios_start = time.monotonic()
         ratios_ru = await asyncio.to_thread(calculate_ratios, metrics_filtered)
         ratios_duration = (time.monotonic() - ratios_start) * 1000
-        task_logger.info(f"Ratios calculation completed", extra={"duration_ms": ratios_duration})
+        task_logger.info("Ratios calculation completed", extra={"duration_ms": ratios_duration})
         
         scoring_start = time.monotonic()
         raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
         scoring_duration = (time.monotonic() - scoring_start) * 1000
-        task_logger.info(f"Scoring completed", extra={"duration_ms": scoring_duration})
+        task_logger.info("Scoring completed", extra={"duration_ms": scoring_duration})
 
         # Translate for frontend compatibility
         ratios_en = _translate_ratios(ratios_ru)
@@ -398,7 +398,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
                 task_logger.warning("NLP analysis timed out")
                 metrics.record_ai_failure()
             except Exception as nlp_exc:
-                task_logger.warning(f"NLP analysis failed: {nlp_exc}", exc_info=True)
+                task_logger.warning("NLP analysis failed: %s", nlp_exc, exc_info=True)
                 metrics.record_ai_failure()
 
         # --- Recommendations Phase ---
@@ -411,14 +411,14 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             )
             rec_duration = (time.monotonic() - rec_start) * 1000
             nlp_result["recommendations"] = recommendations
-            task_logger.info(f"Generated {len(recommendations)} recommendations", extra={"duration_ms": rec_duration})
+            task_logger.info("Generated %d recommendations", len(recommendations), extra={"duration_ms": rec_duration})
         except ImportError:
             task_logger.debug("Recommendations module not available")
         except asyncio.TimeoutError:
             task_logger.warning("Recommendations generation timed out")
             metrics.record_ai_failure()
         except Exception as rec_exc:
-            task_logger.warning(f"Recommendations generation failed: {rec_exc}", exc_info=True)
+            task_logger.warning("Recommendations generation failed: %s", rec_exc, exc_info=True)
             metrics.record_ai_failure()
 
         # --- Update Database ---
@@ -440,18 +440,18 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             },
         )
         
-        task_logger.info(f"PDF processing completed successfully", extra={"duration_ms": total_duration})
+        task_logger.info("PDF processing completed successfully", extra={"duration_ms": total_duration})
         metrics.record_task_success(total_duration)
         
     except Exception as exc:
         total_duration = (time.monotonic() - start_time) * 1000
-        task_logger.exception(f"PDF processing failed: {exc}", extra={"duration_ms": total_duration})
+        task_logger.exception("PDF processing failed: %s", exc, extra={"duration_ms": total_duration})
         metrics.record_task_failure()
         
         try:
             await update_analysis(task_id, "failed", {"error": str(exc)})
         except Exception as update_exc:
-            task_logger.critical(f"Failed to update task status to 'failed': {update_exc}")
+            task_logger.critical("Failed to update task status to 'failed': %s", update_exc)
     finally:
         # Clean up temporary file with safer deletion pattern
         _cleanup_temp_file(file_path)
@@ -561,7 +561,7 @@ async def process_multi_analysis(
     
     # Create logger with session context
     session_logger = get_logger(__name__, session_id=session_id)
-    session_logger.info(f"Multi-analysis session started: {total} periods")
+    session_logger.info("Multi-analysis session started: %d periods", total)
 
     await update_multi_session(
         session_id,
@@ -575,7 +575,8 @@ async def process_multi_analysis(
     for idx, period in enumerate(periods):
         if time.monotonic() - start_time > _MULTI_ANALYSIS_TIMEOUT:
             session_logger.error(
-                f"Session exceeded timeout ({_MULTI_ANALYSIS_TIMEOUT}s) after {idx}/{total} periods"
+                "Session exceeded timeout (%ds) after %d/%d periods",
+                _MULTI_ANALYSIS_TIMEOUT, idx, total
             )
             await update_multi_session(
                 session_id,
@@ -589,16 +590,16 @@ async def process_multi_analysis(
         file_path: str = period.file_path
         
         period_logger = get_logger(__name__, session_id=session_id, task_id=period_label)
-        period_logger.info(f"Processing period {idx + 1}/{total}")
+        period_logger.info("Processing period %d/%d", idx + 1, total)
 
         result = await _process_single_period(period_label, file_path)
         _cleanup_temp_file(file_path)
         
         if "error" in result:
             failed_count += 1
-            period_logger.warning(f"Period failed: {result['error']}")
+            period_logger.warning("Period failed: %s", result['error'])
         else:
-            period_logger.info(f"Period completed successfully")
+            period_logger.info("Period completed successfully")
         
         collected.append(result)
 
@@ -614,18 +615,19 @@ async def process_multi_analysis(
     # Determine final status
     if failed_count == total:
         final_status = "failed"
-        session_logger.error(f"Session failed: all {total} periods failed", extra={"duration_ms": total_duration})
+        session_logger.error("Session failed: all %d periods failed", total, extra={"duration_ms": total_duration})
         metrics.record_task_failure()
     elif failed_count > 0:
         final_status = "completed_with_errors"
         session_logger.warning(
-            f"Session completed with errors: {failed_count}/{total} periods failed",
+            "Session completed with errors: %d/%d periods failed",
+            failed_count, total,
             extra={"duration_ms": total_duration}
         )
         metrics.record_task_success(total_duration)
     else:
         final_status = "completed"
-        session_logger.info(f"Session completed successfully", extra={"duration_ms": total_duration})
+        session_logger.info("Session completed successfully", extra={"duration_ms": total_duration})
         metrics.record_task_success(total_duration)
 
     await update_multi_session(

@@ -267,12 +267,12 @@
     - Запустить `test_mask_number_none_returns_none` из задачи 1
     - **EXPECTED OUTCOME**: Тест ПРОХОДИТ (`_mask_number(None)` → `"—"`)
 
-  - [ ] 10.3 Verify preservation tests still pass
+  - [x] 10.3 Verify preservation tests still pass
     - **Property 2: Preservation** - Masking Idempotency
     - Запустить `prop_masking_idempotency` и `test_mask_number_numeric_values` из задачи 2
     - **EXPECTED OUTCOME**: Тесты ПРОХОДЯТ (нет регрессий)
 
-- [ ] 10.4 Патчноут и коммит — Группа 2 (серьёзные баги)
+- [x] 10.4 Патчноут и коммит — Группа 2 (серьёзные баги)
   - Обновить `.agent/PROJECT_LOG.md`: добавить запись сверху с описанием исправлений БАГ 4–8
   - Обновить `.agent/overview.md`: отметить БАГ 4–8 как исправленные
   - Выполнить коммит:
@@ -291,26 +291,26 @@
 
 ## Группа 3 — Нарушения AGENTS.md (БАГ 9–11)
 
-- [ ] 11. Fix БАГ 9 — f-строки в логах (5 файлов)
+- [x] 11. Fix БАГ 9 — f-строки в логах (5 файлов)
 
-  - [ ] 11.1 Заменить f-строки на `%`-форматирование в `src/app.py`
+  - [x] 11.1 Заменить f-строки на `%`-форматирование в `src/app.py`
     - Заменить все `logger.info(f"...")`, `logger.warning(f"...")`, `logger.error(f"...")` на `%`-форматирование
     - Пример: `logger.info(f"msg {var}")` → `logger.info("msg %s", var)`
     - _Requirements: 2.21_
 
-  - [ ] 11.2 Заменить f-строки на `%`-форматирование в `src/tasks.py`
+  - [x] 11.2 Заменить f-строки на `%`-форматирование в `src/tasks.py`
     - Аналогично 11.1
     - _Requirements: 2.21_
 
-  - [ ] 11.3 Заменить f-строки на `%`-форматирование в `src/core/ai_service.py`
+  - [x] 11.3 Заменить f-строки на `%`-форматирование в `src/core/ai_service.py`
     - Аналогично 11.1
     - _Requirements: 2.21_
 
-  - [ ] 11.4 Заменить f-строки на `%`-форматирование в `src/utils/circuit_breaker.py`
+  - [x] 11.4 Заменить f-строки на `%`-форматирование в `src/utils/circuit_breaker.py`
     - Аналогично 11.1 (выполнить вместе с задачей 7.1)
     - _Requirements: 2.21_
 
-  - [ ] 11.5 Заменить f-строки на `%`-форматирование в `src/utils/retry_utils.py`
+  - [x] 11.5 Заменить f-строки на `%`-форматирование в `src/utils/retry_utils.py`
     - Аналогично 11.1
     - _Requirements: 2.21_
 

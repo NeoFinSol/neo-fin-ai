@@ -219,7 +219,9 @@ async def log_requests(request: Request, call_next):
     
     # Log request
     logger.info(
-        f"{request.method} {request.url.path} started",
+        "%s %s started",
+        request.method,
+        request.url.path,
         extra={
             "task_id": task_id,
             "extra_data": {
@@ -241,7 +243,9 @@ async def log_requests(request: Request, call_next):
         log_level = logging.WARNING if response.status_code >= 400 else logging.INFO
         logger.log(
             log_level,
-            f"{request.method} {request.url.path} completed",
+            "%s %s completed",
+            request.method,
+            request.url.path,
             extra={
                 "task_id": task_id,
                 "duration_ms": duration_ms,
@@ -258,7 +262,9 @@ async def log_requests(request: Request, call_next):
     except Exception as exc:
         duration_ms = (time.monotonic() - start_time) * 1000
         logger.error(
-            f"{request.method} {request.url.path} failed",
+            "%s %s failed",
+            request.method,
+            request.url.path,
             exc_info=True,
             extra={
                 "task_id": task_id,

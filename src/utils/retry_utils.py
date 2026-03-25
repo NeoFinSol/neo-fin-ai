@@ -101,7 +101,8 @@ async def retry_with_backoff(
         try:
             if attempt > 0:
                 logger.warning(
-                    f"Retrying {operation_name} (attempt {attempt}/{max_retries})",
+                    "Retrying %s (attempt %d/%d)",
+                    operation_name, attempt, max_retries,
                     extra={"extra_data": {"attempt": attempt, "max_retries": max_retries}},
                 )
             
@@ -112,7 +113,7 @@ async def retry_with_backoff(
                 result = operation(*args, **kwargs)
             
             if attempt > 0:
-                logger.info(f"{operation_name} succeeded after {attempt} retries")
+                logger.info("%s succeeded after %d retries", operation_name, attempt)
             
             return result
             
@@ -121,7 +122,8 @@ async def retry_with_backoff(
             
             # Log the failure
             logger.warning(
-                f"{operation_name} failed (attempt {attempt + 1}/{max_retries + 1}): {exc}",
+                "%s failed (attempt %d/%d): %s",
+                operation_name, attempt + 1, max_retries + 1, exc,
                 exc_info=True if attempt == max_retries else False,
             )
             
@@ -130,14 +132,15 @@ async def retry_with_backoff(
                 break
             
             # Wait before next retry (exponential backoff)
-            logger.info(f"Waiting {delay:.1f}s before next retry")
+            logger.info("Waiting %.1fs before next retry", delay)
             await asyncio.sleep(delay)
             delay *= backoff_multiplier
     
     # All retries exhausted
     if fallback is not None:
         logger.warning(
-            f"{operation_name} failed after {max_retries} retries, using fallback",
+            "%s failed after %d retries, using fallback",
+            operation_name, max_retries,
             extra={"extra_data": {"max_retries": max_retries}},
         )
         
