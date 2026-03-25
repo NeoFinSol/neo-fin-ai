@@ -47,9 +47,9 @@
 ---
 
 ## Что разрабатывается
-✅ **БАГ 9** (app.py, tasks.py, retry_utils.py) — исправлен: f-строки в логах заменены на %-форматирование
-✅ **БАГ 10** (tasks.py) — исправлен: inline-импорты перенесены на уровень модуля
-✅ **БАГ 11** (requirements.txt) — исправлен: pdfplumber 0.11.9 → 0.12.0
+✅ **БАГ 12** (client.ts) — исправлен: console.log/error обёрнуты в if (import.meta.env.DEV)
+✅ **БАГ 13** (AnalysisHistory.tsx) — исправлен: err: any → err: unknown с type guard
+✅ **БАГ 14** (docs/CONFIGURATION.md) — исправлен: DeepSeek → HuggingFace (Qwen/Qwen3.5-9B-Instruct)
 
 ---
 

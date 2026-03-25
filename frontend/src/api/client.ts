@@ -9,7 +9,9 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  console.log('API Request:', config.method, config.url);
+  if (import.meta.env.DEV) {
+    console.log('API Request:', config.method, config.url);
+  }
   const apiKey = localStorage.getItem('neofin_api_key');
   if (apiKey) {
     config.headers['X-API-Key'] = apiKey;
@@ -19,11 +21,15 @@ apiClient.interceptors.request.use((config) => {
 
 apiClient.interceptors.response.use(
   (response) => {
-    console.log('API Response:', response.status, response.config.url);
+    if (import.meta.env.DEV) {
+      console.log('API Response:', response.status, response.config.url);
+    }
     return response;
   },
   (error) => {
-    console.error('API Error:', error.message, error.response?.status, error.response?.data);
+    if (import.meta.env.DEV) {
+      console.error('API Error:', error.message, error.response?.status, error.response?.data);
+    }
     if (error.response?.status === 401) {
       localStorage.removeItem('neofin_api_key');
     }

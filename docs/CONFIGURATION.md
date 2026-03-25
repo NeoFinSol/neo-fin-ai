@@ -36,7 +36,7 @@ cp .env.example .env
 Провайдер выбирается автоматически при старте в порядке приоритета:
 
 ```
-GigaChat → DeepSeek (HuggingFace) → Ollama → graceful degrade
+GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degrade
 ```
 
 Если ни один провайдер не настроен — NLP-анализ отключается. Числовой анализ (коэффициенты, скоринг) продолжается в полном объёме.
@@ -57,16 +57,18 @@ GigaChat → DeepSeek (HuggingFace) → Ollama → graceful degrade
 
 ---
 
-#### DeepSeek через HuggingFace (приоритет 2)
+#### HuggingFace — Qwen/Qwen3.5-9B-Instruct (приоритет 2)
 
-Бесплатный доступ к модели DeepSeek через HuggingFace Inference API.
+Доступ к модели Qwen через HuggingFace Inference API.
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
 |---|---|---|:---:|---|
 | `HF_TOKEN` | `string` | — | — | HuggingFace API token (формат: `hf_...`) |
-| `HF_MODEL` | `string` | `deepseek-ai/DeepSeek-R1-Distill-Qwen-7B` | — | Идентификатор модели на HuggingFace Hub |
+| `HF_MODEL` | `string` | `Qwen/Qwen3.5-9B-Instruct` | — | Идентификатор модели на HuggingFace Hub |
 
 Условие активации: задан `HF_TOKEN`.
+
+> **Deprecated:** `QWEN_API_KEY` / `QWEN_API_URL` — прямой Qwen API. Заменён на HuggingFace-провайдер. Переменные ещё читаются кодом, но провайдер имеет более низкий приоритет, чем HuggingFace.
 
 ---
 
@@ -115,7 +117,7 @@ GigaChat → DeepSeek (HuggingFace) → Ollama → graceful degrade
    → Использовать GigaChat
 
 2. HF_TOKEN задан и не пустой?
-   → Использовать DeepSeek через HuggingFace Inference API
+   → Использовать HuggingFace (Qwen/Qwen3.5-9B-Instruct)
 
 3. LLM_URL задан?
    → Использовать Ollama (offline)
@@ -178,13 +180,13 @@ CONFIDENCE_THRESHOLD=0.5
 GIGACHAT_CLIENT_ID=your-client-id
 GIGACHAT_CLIENT_SECRET=your-client-secret
 
-# ── DeepSeek / HuggingFace (приоритет 2) ─────────────────
+# ── HuggingFace / Qwen (приоритет 2) ─────────────────────
 HF_TOKEN=hf_your_token_here
-HF_MODEL=deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
+HF_MODEL=Qwen/Qwen3.5-9B-Instruct
 
 # ── Ollama — offline (приоритет 3) ────────────────────────
 LLM_URL=http://ollama:11434/api/generate
-LLM_MODEL=deepseek-r1:7b
+LLM_MODEL=llama3
 
 # ── Backend ───────────────────────────────────────────────
 API_HOST=0.0.0.0

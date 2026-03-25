@@ -62,8 +62,9 @@ export const AnalysisHistory = () => {
       );
       setItems(res.data.items);
       setTotal(res.data.total);
-    } catch (e: any) {
-      setError(e?.response?.data?.detail ?? e?.message ?? 'Ошибка загрузки истории');
+    } catch (e: unknown) {
+      const axiosErr = e as { response?: { data?: { detail?: string } }; message?: string };
+      setError(axiosErr?.response?.data?.detail ?? axiosErr?.message ?? 'Ошибка загрузки истории');
     } finally {
       setLoading(false);
     }
@@ -85,8 +86,9 @@ export const AnalysisHistory = () => {
       } else {
         setError('Данные анализа недоступны — возможно, обработка ещё не завершена.');
       }
-    } catch (e: any) {
-      setError(e?.response?.data?.detail ?? 'Не удалось загрузить детали анализа.');
+    } catch (e: unknown) {
+      const axiosErr = e as { response?: { data?: { detail?: string } } };
+      setError(axiosErr?.response?.data?.detail ?? 'Не удалось загрузить детали анализа.');
     } finally {
       setDetailLoading(false);
     }

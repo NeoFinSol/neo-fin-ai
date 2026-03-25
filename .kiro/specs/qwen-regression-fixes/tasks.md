@@ -346,34 +346,32 @@
 
 ## Группа 4 — Мелкие нарушения (БАГ 12–14)
 
-- [ ] 14. Fix БАГ 12 — client.ts: console.log условный
+- [x] 14. Fix БАГ 12 — client.ts: console.log условный
 
-  - [ ] 14.1 Обернуть `console.log` в `if (import.meta.env.DEV)` в `frontend/src/api/client.ts`
+  - [x] 14.1 Обернуть `console.log` в `if (import.meta.env.DEV)` в `frontend/src/api/client.ts`
     - Обернуть `console.log` в request interceptor в `if (import.meta.env.DEV)`
     - Обернуть `console.log` и `console.error` в response interceptor в `if (import.meta.env.DEV)`
     - _Requirements: 2.24_
 
-- [ ] 15. Fix БАГ 13 — TypeScript err: any → unknown
+- [x] 15. Fix БАГ 13 — TypeScript err: any → unknown
 
-  - [ ] 15.1 Заменить `err: any` на `err: unknown` в `frontend/src/context/AnalysisContext.tsx`
-    - Заменить `catch (err: any)` на `catch (err: unknown)`
-    - Использовать inline type guard: `const axiosMsg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail; const finalMsg = axiosMsg || (err instanceof Error ? err.message : 'Ошибка');`
+  - [x] 15.1 Заменить `err: any` на `err: unknown` в `frontend/src/context/AnalysisContext.tsx`
     - (Выполнить вместе с задачей 3.1 если ещё не сделано)
     - _Requirements: 2.25_
 
-  - [ ] 15.2 Заменить `err: any` на `err: unknown` в `frontend/src/pages/AnalysisHistory.tsx`
+  - [x] 15.2 Заменить `err: any` на `err: unknown` в `frontend/src/pages/AnalysisHistory.tsx`
     - Аналогично 15.1
     - _Requirements: 2.25_
 
-- [ ] 16. Fix БАГ 14 — docs/CONFIGURATION.md: документация
+- [x] 16. Fix БАГ 14 — docs/CONFIGURATION.md: документация
 
-  - [ ] 16.1 Обновить `docs/CONFIGURATION.md`
+  - [x] 16.1 Обновить `docs/CONFIGURATION.md`
     - Заменить упоминания "DeepSeek" на "HuggingFace (Qwen/Qwen3.5-9B-Instruct)"
     - Добавить переменные `HF_TOKEN`, `HF_MODEL` с актуальными дефолтами
     - Добавить `QWEN_API_KEY`, `QWEN_API_URL` как deprecated-провайдер
     - _Requirements: 2.26_
 
-- [ ] 16.2 Патчноут и коммит — Группа 4 (мелкие нарушения)
+- [x] 16.2 Патчноут и коммит — Группа 4 (мелкие нарушения)
   - Обновить `.agent/PROJECT_LOG.md`: добавить запись сверху с описанием исправлений БАГ 12–14
   - Обновить `.agent/overview.md`: отметить БАГ 12–14 как исправленные
   - Выполнить коммит:

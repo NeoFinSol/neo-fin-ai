@@ -1,5 +1,17 @@
 # Project Log
 
+## 2026-03-25 — Qwen Regression Fixes: Группа 4 (мелкие нарушения)
+
+### БАГ 12–14: console.log в production, err: any, устаревшая документация
+
+**Изменения:**
+- `frontend/src/api/client.ts` — `console.log` в request interceptor и `console.log`/`console.error` в response interceptor обёрнуты в `if (import.meta.env.DEV)`
+- `frontend/src/pages/AnalysisHistory.tsx` — два `catch (e: any)` заменены на `catch (e: unknown)` с inline type guard
+- `frontend/src/context/AnalysisContext.tsx` — уже был чистым (`err: unknown`), изменений не потребовалось
+- `docs/CONFIGURATION.md` — заменены упоминания DeepSeek на HuggingFace (Qwen/Qwen3.5-9B-Instruct); добавлена пометка deprecated для `QWEN_API_KEY`/`QWEN_API_URL`; обновлены дефолты `HF_MODEL` и пример `.env`
+
+---
+
 ## 2026-03-25 — Qwen Regression Fixes: Группа 3 (нарушения AGENTS.md)
 
 ### БАГ 9–11: f-строки в логах, inline-импорты, версия pdfplumber
