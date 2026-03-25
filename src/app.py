@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import os
+import time
 from typing import List
 
 from dotenv import load_dotenv
@@ -24,9 +25,11 @@ import src.routers.analyses as analyses_router
 import src.routers.multi_analysis as multi_analysis_router
 from src.core.ai_service import ai_service
 from src.models.settings import app_settings
+from src.utils.logging_config import setup_logging, get_logger, metrics
+from src.utils.error_handler import register_exception_handlers
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _parse_cors_origins(origins_str: str) -> List[str]:
@@ -90,35 +93,11 @@ def _parse_cors_list(list_str: str, default_values: List[str]) -> List[str]:
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Configure structured logging with validation
-    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    log_format = os.getenv("LOG_FORMAT", "text").lower()
-
-    # Validate log level
-    valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-    if log_level not in valid_levels:
-        log_level = "INFO"
-
-    # Validate log format
-    if log_format not in ["json", "text"]:
-        log_format = "text"
-
-    # Only configure logging if not already configured by uvicorn
-    root_logger = logging.getLogger()
-    if not root_logger.handlers:
-        if log_format == "json":
-            # JSON format for production
-            logging.basicConfig(
-                level=getattr(logging, log_level, logging.INFO),
-                format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "logger": "%(name)s", "message": "%(message)s"}',
-                datefmt="%Y-%m-%dT%H:%M:%S",
-            )
-        else:
-            # Text format for development
-            logging.basicConfig(
-                level=getattr(logging, log_level, logging.INFO),
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            )
+    # Setup structured logging
+    setup_logging()
+    
+    # Register global exception handlers
+    register_exception_handlers(app)
 
     # AI service auto-configures based on available credentials
     # Priority: GigaChat > Qwen > Local LLM (Ollama)
@@ -211,6 +190,87 @@ app.add_middleware(
     allow_methods=allow_methods,
     allow_headers=allow_headers,
 )
+
+
+# =============================================================================
+# Request Logging Middleware
+# Logs every HTTP request with method, path, status code, and duration
+# =============================================================================
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """
+    Middleware to log all HTTP requests.
+    
+    Logs:
+    - Request method and path
+    - Response status code
+    - Processing duration in milliseconds
+    - User agent (for debugging)
+    """
+    import time
+    
+    start_time = time.monotonic()
+    
+    # Extract task_id from query params or headers if present
+    task_id = request.query_params.get("task_id")
+    if not task_id:
+        task_id = request.headers.get("X-Task-ID")
+    
+    # Log request
+    logger.info(
+        f"{request.method} {request.url.path} started",
+        extra={
+            "task_id": task_id,
+            "extra_data": {
+                "method": request.method,
+                "path": request.url.path,
+                "query": str(request.query_params),
+                "user_agent": request.headers.get("user-agent", "unknown"),
+            }
+        },
+    )
+    
+    try:
+        response = await call_next(request)
+        
+        # Calculate duration
+        duration_ms = (time.monotonic() - start_time) * 1000
+        
+        # Log response
+        log_level = logging.WARNING if response.status_code >= 400 else logging.INFO
+        logger.log(
+            log_level,
+            f"{request.method} {request.url.path} completed",
+            extra={
+                "task_id": task_id,
+                "duration_ms": duration_ms,
+                "extra_data": {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": response.status_code,
+                    "duration_ms": round(duration_ms, 2),
+                }
+            },
+        )
+        
+        return response
+    except Exception as exc:
+        duration_ms = (time.monotonic() - start_time) * 1000
+        logger.error(
+            f"{request.method} {request.url.path} failed",
+            exc_info=True,
+            extra={
+                "task_id": task_id,
+                "duration_ms": duration_ms,
+                "extra_data": {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "error": str(exc),
+                }
+            },
+        )
+        raise
+
 
 # Routers (must be added after middleware)
 app.include_router(system_router.router)

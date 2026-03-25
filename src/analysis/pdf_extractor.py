@@ -194,9 +194,68 @@ def extract_text_from_scanned(pdf_path: str) -> str:
     return "\n".join(texts).strip()
 
 
-def extract_tables(pdf_path: str) -> list[dict[str, Any]]:
-    tables_data: list[dict[str, Any]] = []
+def _is_financial_table(rows: list) -> bool:
+    """Check if table rows contain financial data (not just headers/TOC)."""
+    financial_keywords = [
+        "выручка", "прибыль", "актив", "обязательств", "капитал",
+        "revenue", "profit", "assets", "liabilities", "equity",
+        "баланс", "отчёт", "финансов", "оборотн", "внеоборотн",
+    ]
+    
+    text = " ".join(str(cell).lower() for row in rows for cell in row if cell)
+    
+    # Count keyword hits
+    keyword_hits = sum(1 for kw in financial_keywords if kw in text)
+    
+    # Real financial table has 2+ keyword hits
+    return keyword_hits >= 2
 
+
+def _is_valid_financial_value(value: float | None) -> bool:
+    """Sanity check for financial values."""
+    if value is None:
+        return False
+    
+    # Too small — likely page number or noise
+    if abs(value) < 1000:
+        return False
+    
+    # Too large — likely parsing error
+    if abs(value) > 1e15:
+        return False
+    
+    return True
+
+
+def extract_tables(pdf_path: str, force_ocr: bool = False) -> list[dict[str, Any]]:
+    """
+    Extract tables from PDF using camelot.
+    For image-based pages, use OCR via pdf2image + pytesseract.
+    
+    Args:
+        pdf_path: Path to PDF file
+        force_ocr: If True, skip camelot and use OCR directly (for complex scanned PDFs)
+    """
+    tables_data: list[dict[str, Any]] = []
+    
+    # If force_ocr, skip camelot entirely
+    if force_ocr:
+        logger.info("Force OCR mode, skipping camelot...")
+        try:
+            ocr_text = extract_text_from_scanned(pdf_path)
+            if ocr_text:
+                tables_data.append({
+                    "flavor": "ocr",
+                    "rows": [["OCR_TEXT", ocr_text]],
+                })
+                logger.info(f"OCR extracted {len(ocr_text)} characters")
+        except Exception as ocr_exc:
+            logger.warning(f"OCR extraction failed: {ocr_exc}")
+        return tables_data
+    
+    financial_tables_found = False
+
+    # Try lattice first (works better with Ghostscript)
     for flavor in ("lattice", "stream"):
         try:
             tables = camelot.read_pdf(pdf_path, pages="all", flavor=flavor)
@@ -209,15 +268,39 @@ def extract_tables(pdf_path: str) -> list[dict[str, Any]]:
                 df = table.df
                 if df is None or df.empty:
                     continue
-                tables_data.append(
-                    {
+                
+                rows = df.values.tolist()
+                
+                # Check if this is a real financial table
+                if _is_financial_table(rows):
+                    financial_tables_found = True
+                    tables_data.append({
                         "flavor": flavor,
-                        "rows": df.values.tolist(),
-                    }
-                )
+                        "rows": rows,
+                    })
+                    logger.debug(f"Found financial table with {len(rows)} rows")
 
-        if tables_data:
+        if financial_tables_found:
             break
+    
+    # Force OCR if too many tables (likely noise) or no financial tables found
+    if len(tables_data) > 20:
+        logger.info(f"Too many tables ({len(tables_data)}) → forcing OCR")
+        tables_data = []
+        financial_tables_found = False
+    
+    if not financial_tables_found:
+        logger.info("No financial tables found via camelot, trying OCR extraction...")
+        try:
+            ocr_text = extract_text_from_scanned(pdf_path)
+            if ocr_text:
+                tables_data.append({
+                    "flavor": "ocr",
+                    "rows": [["OCR_TEXT", ocr_text]],
+                })
+                logger.info(f"OCR extracted {len(ocr_text)} characters")
+        except Exception as ocr_exc:
+            logger.warning(f"OCR extraction failed: {ocr_exc}")
 
     return tables_data
 
@@ -237,6 +320,30 @@ def parse_financial_statements_with_metadata(
     # Pass 1: tables
     for table in tables or []:
         rows = _table_to_rows(table)
+        
+        # Check if this is an OCR pseudo-table
+        if table.get("flavor") == "ocr":
+            # Extract metrics directly from OCR text using regex
+            for row in rows:
+                if len(row) >= 2 and row[0] == "OCR_TEXT":
+                    ocr_text = row[1]
+                    ocr_text_lower = ocr_text.lower()
+                    for metric_key, keywords in _METRIC_KEYWORDS.items():
+                        if metric_key in raw:
+                            continue
+                        # Search for keyword + number pattern in OCR text (context window 50 chars)
+                        for keyword in keywords:
+                            pattern = rf"{keyword}[^0-9]{{0,50}}(\d[\d\s,\.]*\d)"
+                            match = re.search(pattern, ocr_text_lower, re.IGNORECASE)
+                            if match:
+                                value = _normalize_number(match.group(1))
+                                if _is_valid_financial_value(value):
+                                    raw[metric_key] = (value, "text_regex", False)
+                                    logger.debug(f"[EXTRACT] {metric_key} = {value:,} (source=ocr, keyword={keyword})")
+                                    break
+            continue
+        
+        # Regular table processing
         for row in rows:
             row_text = " ".join(str(cell) for cell in row if cell is not None)
             row_text_lower = row_text.lower()
@@ -257,20 +364,35 @@ def parse_financial_statements_with_metadata(
                     value = _extract_number_from_text(row_text)
                 if value is None:
                     continue
+                
+                # Sanity check for financial values
+                if not _is_valid_financial_value(value):
+                    logger.debug(f"Skipping invalid value for {metric_key}: {value}")
+                    continue
 
                 # is_exact: the label cell itself matches a keyword fully
                 label_cell = str(row[label_idx]).lower().strip() if row[label_idx] is not None else ""
                 is_exact = any(label_cell == kw for kw in keywords)
                 raw[metric_key] = (value, "table", is_exact)
+                logger.debug(f"[EXTRACT] {metric_key} = {value:,} (source=table, exact={is_exact})")
 
-    # Pass 2: free text keyword proximity
+    # Pass 2: free text keyword proximity (with context window)
     text_lower = (text or "").lower()
     for metric_key, keywords in _METRIC_KEYWORDS.items():
         if metric_key in raw:
             continue
-        value = _extract_number_near_keywords(text_lower, keywords)
-        if value is not None:
-            raw[metric_key] = (value, "text_regex", False)
+        
+        # Try each keyword with context window (50 chars before number)
+        for keyword in keywords:
+            # Pattern: keyword followed by number within 50 chars
+            pattern = rf"{keyword}[^0-9]{{0,50}}(\d[\d\s,\.]*\d)"
+            match = re.search(pattern, text_lower, re.IGNORECASE)
+            if match:
+                value = _normalize_number(match.group(1))
+                if _is_valid_financial_value(value):
+                    raw[metric_key] = (value, "text_regex", False)
+                    logger.debug(f"[EXTRACT] {metric_key} = {value:,} (source=text_regex, keyword={keyword})")
+                    break
 
     # Pass 3: broad regex patterns
     num_group = r"([-]?\(?\d[\d\s.,]*\d\)?)"

@@ -13,7 +13,11 @@ class TestHealthCheck:
         client = TestClient(app)
         response = client.get("/system/health")
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        data = response.json()
+        assert "status" in data
+        assert data["status"] == "ok"
+        assert "services" in data
+        assert "timestamp" in data
 
 
 class TestHealthzCheck:

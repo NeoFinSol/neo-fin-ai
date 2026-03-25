@@ -211,7 +211,7 @@ class TestProcessPdf:
             assert fail_call[0][1] == "failed"
             assert "error" in fail_call[0][2]
             assert "PDF corrupted" in str(fail_call[0][2]["error"])
-            assert "Failed to process PDF task" in caplog.text
+            assert "PDF processing failed" in caplog.text
 
     @pytest.mark.asyncio
     async def test_temp_file_cleanup_on_success(self):

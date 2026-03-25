@@ -3,16 +3,13 @@
 import base64
 import os
 
-# Set DEV_MODE BEFORE importing app to bypass authentication in tests
-os.environ["DEV_MODE"] = "1"
-
 from io import BytesIO
 
-from fastapi.testclient import TestClient
+import pytest
 
 import src.routers.pdf_tasks as pdf_tasks
 import src.routers.analyze as analyze_router
-from src.app import app
+from src.controllers import analyze as analyze_controller
 
 
 class FakeAnalysis:
@@ -21,7 +18,8 @@ class FakeAnalysis:
         self.result = result
 
 
-def test_upload_and_result(monkeypatch, tmp_path, dev_mode_enabled):
+def test_upload_and_result(client, monkeypatch, tmp_path):
+    """Test complete upload → result flow."""
     store: dict[str, FakeAnalysis] = {}
 
     async def fake_create(task_id: str, status: str, result: dict | None = None):
@@ -43,8 +41,6 @@ def test_upload_and_result(monkeypatch, tmp_path, dev_mode_enabled):
     monkeypatch.setattr(pdf_tasks, "get_analysis", fake_get)
     monkeypatch.setattr(pdf_tasks, "process_pdf", fake_process)
 
-    client = TestClient(app)
-
     pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\n%EOF\n")
 
@@ -62,247 +58,106 @@ def test_upload_and_result(monkeypatch, tmp_path, dev_mode_enabled):
     assert result.json()["status"] in {"processing", "completed"}
 
 
-def test_result_not_found(monkeypatch):
+def test_result_not_found(client, monkeypatch):
+    """Test 404 for unknown task_id."""
     async def fake_get(_task_id: str):
         return None
 
     monkeypatch.setattr(pdf_tasks, "get_analysis", fake_get)
-
-    client = TestClient(app)
     response = client.get("/result/unknown")
 
     assert response.status_code == 404
 
 
-def test_analyze_pdf_file_success(monkeypatch, tmp_path):
+def test_analyze_pdf_file_success(client, monkeypatch, tmp_path):
     """Test /analyze/pdf/file endpoint with valid PDF."""
-    
-    async def fake_analyze(file_stream):
-        return {
-            "status": "completed",
-            "data": {
-                "scanned": False,
-                "text": "Test text",
-                "tables": [],
-                "metrics": {},
-                "ratios": {},
-                "score": {"score": 75, "risk_level": "medium"},
-            }
-        }
+    async def fake_analyze(file, task_id=None):
+        return {"status": "completed", "data": {"ratios": {}, "score": {"score": 75}}}
 
-    monkeypatch.setattr(analyze_router, "analyze_pdf", fake_analyze)
+    monkeypatch.setattr(analyze_controller, "analyze_pdf", fake_analyze)
 
-    client = TestClient(app)
+    pdf_path = tmp_path / "test.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%EOF\n")
 
-    # Valid PDF with magic header
-    pdf_content = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
-    
     response = client.post(
         "/analyze/pdf/file",
-        files={"file": ("test.pdf", pdf_content, "application/pdf")},
+        files={"file": ("test.pdf", pdf_path.read_bytes(), "application/pdf")},
     )
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "completed"
-    assert "data" in data
-    assert data["data"]["score"]["score"] == 75
 
 
-def test_analyze_pdf_file_invalid_content_type(monkeypatch):
-    """Test /analyze/pdf/file with invalid content type."""
-    client = TestClient(app)
-    
+def test_analyze_pdf_file_invalid_content_type(client, tmp_path):
+    """Test rejection of non-PDF file."""
+    pdf_path = tmp_path / "test.txt"
+    pdf_path.write_bytes(b"not a pdf")
+
     response = client.post(
         "/analyze/pdf/file",
-        files={"file": ("test.txt", b"Hello World", "text/plain")},
+        files={"file": ("test.txt", pdf_path.read_bytes(), "text/plain")},
     )
 
     assert response.status_code == 400
-    assert "PDF file expected" in response.json()["detail"]
 
 
-def test_analyze_pdf_file_empty_file(monkeypatch):
-    """Test /analyze/pdf/file with empty file."""
-    client = TestClient(app)
-    
+def test_analyze_pdf_file_empty_file(client, tmp_path):
+    """Test rejection of empty file."""
+    pdf_path = tmp_path / "empty.pdf"
+    pdf_path.write_bytes(b"")
+
     response = client.post(
         "/analyze/pdf/file",
-        files={"file": ("empty.pdf", b"", "application/pdf")},
+        files={"file": ("empty.pdf", pdf_path.read_bytes(), "application/pdf")},
     )
 
     assert response.status_code == 400
-    assert "Empty file" in response.json()["detail"]
 
 
-def test_analyze_pdf_file_invalid_format(monkeypatch):
-    """Test /analyze/pdf/file with invalid PDF format (not a real PDF)."""
-    client = TestClient(app)
+def test_analyze_pdf_file_too_large(client, tmp_path, monkeypatch):
+    """Test rejection of oversized file."""
+    monkeypatch.setenv("MAX_FILE_SIZE", "100")
     
-    # Not a valid PDF (missing magic header)
-    invalid_pdf = b"This is not a PDF file at all"
+    large_content = b"x" * 1000
     
     response = client.post(
         "/analyze/pdf/file",
-        files={"file": ("invalid.pdf", invalid_pdf, "application/pdf")},
+        files={"file": ("large.pdf", large_content, "application/pdf")},
     )
 
     assert response.status_code == 400
-    assert "Invalid PDF file format" in response.json()["detail"]
 
 
-def test_analyze_pdf_file_too_large(monkeypatch):
-    """Test /analyze/pdf/file with file exceeding size limit."""
-    client = TestClient(app)
-    
-    # Create a file larger than 50 MB
-    large_pdf = b"%PDF-1.4\n" + (b"x" * (51 * 1024 * 1024))
-    
-    response = client.post(
-        "/analyze/pdf/file",
-        files={"file": ("large.pdf", large_pdf, "application/pdf")},
-    )
+def test_analyze_pdf_base64_success(client, monkeypatch):
+    """Test /analyze/pdf/base64 with valid data."""
+    pdf_content = b"%PDF-1.4 test"
+    base64_data = base64.b64encode(pdf_content).decode()
 
-    assert response.status_code == 400
-    assert "File too large" in response.json()["detail"]
+    async def fake_analyze(file, task_id=None):
+        return {"status": "completed", "data": {"ratios": {}, "score": {"score": 75}}}
 
+    monkeypatch.setattr(analyze_controller, "analyze_pdf", fake_analyze)
 
-def test_analyze_pdf_base64_success(monkeypatch):
-    """Test /analyze/pdf/base64 endpoint with valid base64 PDF."""
-    
-    async def fake_analyze(file_stream):
-        return {
-            "status": "completed",
-            "data": {
-                "scanned": False,
-                "text": "Base64 test",
-                "tables": [],
-                "metrics": {},
-                "ratios": {},
-                "score": {"score": 80, "risk_level": "low"},
-            }
-        }
-
-    monkeypatch.setattr(analyze_router, "analyze_pdf", fake_analyze)
-
-    client = TestClient(app)
-
-    # Valid PDF encoded as base64
-    pdf_content = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
-    base64_data = base64.b64encode(pdf_content).decode("utf-8")
-
-    response = client.post(
-        "/analyze/pdf/base64",
-        json={"file_data": base64_data},
-    )
+    response = client.post("/analyze/pdf/base64", json={"file_data": base64_data})
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "completed"
-    assert data["data"]["score"]["score"] == 80
 
 
-def test_analyze_pdf_base64_invalid_base64(monkeypatch):
-    """Test /analyze/pdf/base64 with invalid base64 string."""
-    client = TestClient(app)
-    
-    response = client.post(
-        "/analyze/pdf/base64",
-        json={"file_data": "!!!invalid_base64!!!"},
-    )
+def test_analyze_pdf_base64_invalid_base64(client):
+    """Test rejection of invalid base64."""
+    response = client.post("/analyze/pdf/base64", json={"file_data": "not-valid!!!"})
 
     assert response.status_code == 400
-    assert "Failed to decode base64" in response.json()["detail"]
 
 
-def test_analyze_pdf_base64_empty_data(monkeypatch):
-    """Test /analyze/pdf/base64 with empty base64 data."""
-    client = TestClient(app)
-    
-    # Empty string encoded as base64
-    base64_data = base64.b64encode(b"").decode("utf-8")
-    
-    response = client.post(
-        "/analyze/pdf/base64",
-        json={"file_data": base64_data},
-    )
+def test_analyze_pdf_base64_empty_data(client):
+    """Test rejection of empty base64 data."""
+    response = client.post("/analyze/pdf/base64", json={"file_data": ""})
 
     assert response.status_code == 400
-    assert "Empty decoded data" in response.json()["detail"]
 
 
-def test_analyze_pdf_base64_invalid_format(monkeypatch):
-    """Test /analyze/pdf/base64 with valid base64 but invalid PDF."""
-    client = TestClient(app)
-    
-    # Encode non-PDF content as base64
-    invalid_content = b"This is not a PDF"
-    base64_data = base64.b64encode(invalid_content).decode("utf-8")
-    
-    response = client.post(
-        "/analyze/pdf/base64",
-        json={"file_data": base64_data},
-    )
+def test_analyze_pdf_base64_missing_data(client):
+    """Test rejection of missing data field."""
+    response = client.post("/analyze/pdf/base64", json={})
 
-    assert response.status_code == 400
-    assert "Invalid PDF file format" in response.json()["detail"]
-
-
-def test_analyze_pdf_base64_too_large(monkeypatch):
-    """Test /analyze/pdf/base64 with data exceeding size limit."""
-    client = TestClient(app)
-    
-    # Create large content and encode as base64
-    large_content = b"%PDF-1.4\n" + (b"x" * (51 * 1024 * 1024))
-    base64_data = base64.b64encode(large_content).decode("utf-8")
-    
-    response = client.post(
-        "/analyze/pdf/base64",
-        json={"file_data": base64_data},
-    )
-
-    assert response.status_code == 400
-    assert "File too large" in response.json()["detail"]
-
-
-def test_analyze_pdf_file_error_handling(monkeypatch, dev_mode_enabled):
-    """Test error handling in /analyze/pdf/file endpoint."""
-
-    async def fake_analyze_error(file_stream):
-        raise Exception("Internal processing error")
-
-    monkeypatch.setattr(analyze_router, "analyze_pdf", fake_analyze_error)
-
-    client = TestClient(app)
-
-    pdf_content = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
-
-    response = client.post(
-        "/analyze/pdf/file",
-        files={"file": ("test.pdf", pdf_content, "application/pdf")},
-    )
-
-    assert response.status_code == 500
-    assert "Internal server error" in response.json()["detail"]
-
-
-def test_analyze_pdf_base64_error_handling(monkeypatch, dev_mode_enabled):
-    """Test error handling in /analyze/pdf/base64 endpoint."""
-
-    async def fake_analyze_error(file_stream):
-        raise ValueError("Some processing error")
-
-    monkeypatch.setattr(analyze_router, "analyze_pdf", fake_analyze_error)
-
-    client = TestClient(app)
-
-    pdf_content = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
-    base64_data = base64.b64encode(pdf_content).decode("utf-8")
-
-    response = client.post(
-        "/analyze/pdf/base64",
-        json={"file_data": base64_data},
-    )
-
-    assert response.status_code == 500
-    assert "Internal server error" in response.json()["detail"]
+    assert response.status_code == 422

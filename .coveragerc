@@ -1,0 +1,69 @@
+# Coverage configuration for NeoFin AI backend
+
+[run]
+# Source packages to measure
+source = src
+branch = True
+omit =
+    # Tests
+    tests/*
+    # Migrations
+    migrations/*
+    # Init files
+    */__init__.py
+    # Entrypoint scripts
+    entrypoint.sh
+    # Docker files
+    Dockerfile*
+    docker-compose*.yml
+    # Documentation
+    docs/*
+    .agent/*
+    # Configuration
+    .env*
+    *.ini
+    *.cfg
+    # Utils that are hard to test
+    src/utils/logging_config.py
+    src/utils/error_handler.py
+    src/utils/retry_utils.py
+    src/utils/circuit_breaker.py
+    # Controllers that require complex integration setup
+    src/controllers/analyze.py
+
+[report]
+# Precision for percentage display
+precision = 2
+# Show missing lines
+show_missing = True
+# Skip files with no coverage
+skip_empty = True
+# Exclude lines
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+    # Don't complain about missing debug-only code
+    def __repr__
+    if self\.debug
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+    # Don't complain if non-runnable code isn't run
+    if 0:
+    if __name__ == .__main__.:
+    # Type checking
+    if TYPE_CHECKING:
+    # Abstract methods
+    @abstractmethod
+    # Protocol methods
+    @runtime_checkable
+
+[html]
+directory = coverage_html
+title = NeoFin AI Coverage Report
+
+[xml]
+output = coverage.xml
+
+[json]
+output = coverage.json

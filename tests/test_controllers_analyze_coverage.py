@@ -47,8 +47,8 @@ class TestAnalyzePdfFallback:
         }]
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=file_content), \
-             patch("src.controllers.analyze.ai_service") as mock_ai:
-            mock_ai.invoke_with_retry = AsyncMock(return_value=None)
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = None
 
             result = await analyze_pdf(io.BytesIO(b"pdf"))
             assert isinstance(result, dict)
@@ -61,8 +61,8 @@ class TestAnalyzePdfFallback:
         file_content = [{"tables": [], "text": ""}]
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=file_content), \
-             patch("src.controllers.analyze.ai_service") as mock_ai:
-            mock_ai.invoke_with_retry = AsyncMock(return_value=None)
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = None
 
             result = await analyze_pdf(io.BytesIO(b"pdf"))
             assert isinstance(result, dict)
@@ -75,15 +75,12 @@ class TestAnalyzePdfFallback:
         file_content = [{"tables": [["Выручка", "1000000"]], "text": ""}]
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=file_content), \
-             patch("src.controllers.analyze.ai_service") as mock_ai, \
-             patch("src.controllers.analyze.parse_financial_statements", return_value={
-                 "revenue": 1000000, "net_profit": 100000, "total_assets": 500000,
-                 "equity": 300000, "liabilities": 200000
-             }) if False else patch("src.analysis.pdf_extractor.parse_financial_statements", return_value={
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke, \
+             patch("src.analysis.pdf_extractor.parse_financial_statements", return_value={
                  "revenue": 1000000, "net_profit": 100000, "total_assets": 500000,
                  "equity": 300000, "liabilities": 200000
              }):
-            mock_ai.invoke_with_retry = AsyncMock(return_value=None)
+            mock_invoke.return_value = None
             result = await analyze_pdf(io.BytesIO(b"pdf"))
             assert isinstance(result, dict)
 
@@ -93,11 +90,11 @@ class TestAnalyzePdfFallback:
         mock_data = [{"page": i, "tables": []} for i in range(1, 41)]
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=mock_data), \
-             patch("src.controllers.analyze.ai_service") as mock_ai:
-            mock_ai.invoke_with_retry = AsyncMock(side_effect=[
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.side_effect = [
                 json.dumps({"batch": 1}),
                 json.dumps({"batch": 2}),
-            ])
+            ]
             result = await analyze_pdf(io.BytesIO(b"pdf"))
             assert "pages" in result
             assert len(result["pages"]) == 2
@@ -108,11 +105,11 @@ class TestAnalyzePdfFallback:
         mock_data = [{"page": i, "tables": []} for i in range(1, 41)]
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=mock_data), \
-             patch("src.controllers.analyze.ai_service") as mock_ai:
-            mock_ai.invoke_with_retry = AsyncMock(side_effect=[
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.side_effect = [
                 "not valid json {{{{",
                 json.dumps({"batch": 2}),
-            ])
+            ]
             result = await analyze_pdf(io.BytesIO(b"pdf"))
             # Only second batch succeeded
             assert result == {"batch": 2}

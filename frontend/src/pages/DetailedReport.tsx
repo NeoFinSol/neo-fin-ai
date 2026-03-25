@@ -256,11 +256,11 @@ export const DetailedReport = ({ result, filename, multiSessionId }: DetailedRep
             color: 'violet'
         },
         {
-            label: 'Долг / Выручка',
-            value: result?.ratios?.debt_to_revenue != null ? result.ratios.debt_to_revenue.toFixed(2) : '—',
-            sub: 'Долговая нагрузка',
+            label: 'Фин. рычаг',
+            value: result?.ratios?.financial_leverage != null ? result.ratios.financial_leverage.toFixed(2) : '—',
+            sub: 'Финансовый рычаг',
             icon: BarChart3,
-            trend: getTrend('debt_to_revenue'),
+            trend: getTrend('financial_leverage'),
             color: 'orange'
         },
         {
@@ -422,7 +422,6 @@ export const DetailedReport = ({ result, filename, multiSessionId }: DetailedRep
                                         }}
                                         gridAxis="y"
                                         barProps={{ radius: [4, 4, 0, 0] }}
-                                        getBarColor={(_, index) => chartData[index]?.color ?? 'blue.6'}
                                     />
                                 )}
                             </Card>

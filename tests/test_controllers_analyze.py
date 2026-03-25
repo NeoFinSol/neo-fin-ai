@@ -104,14 +104,14 @@ class TestAnalyzePdf:
         mock_file = io.BytesIO(b"fake pdf content")
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": []}]), \
-             patch("src.controllers.analyze.ai_service") as mock_ai_service:
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
 
-            mock_ai_service.invoke_with_retry = AsyncMock(return_value=json.dumps({"result": "success"}))
+            mock_invoke.return_value = json.dumps({"result": "success"})
 
             result = await analyze_pdf(mock_file)
 
             assert result == {"result": "success"}
-            mock_ai_service.invoke_with_retry.assert_called_once()
+            mock_invoke.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_binaryio_conversion(self):
@@ -120,9 +120,9 @@ class TestAnalyzePdf:
         mock_binary_file.read.return_value = b"pdf content"
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": []}]), \
-             patch("src.controllers.analyze.ai_service") as mock_ai_service:
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
 
-            mock_ai_service.invoke_with_retry = AsyncMock(return_value=json.dumps({"result": "ok"}))
+            mock_invoke.return_value = json.dumps({"result": "ok"})
 
             result = await analyze_pdf(mock_binary_file)
 
@@ -172,17 +172,17 @@ class TestAnalyzePdf:
         mock_data = [{"page": i, "tables": []} for i in range(1, 51)]
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=mock_data), \
-             patch("src.controllers.analyze.ai_service") as mock_ai_service:
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
 
-            mock_ai_service.invoke_with_retry = AsyncMock(return_value=json.dumps({"page_result": "ok"}))
+            mock_invoke.return_value = json.dumps({"page_result": "ok"})
 
             result = await analyze_pdf(io.BytesIO(b"pdf"))
 
             # Should be called 3 times: pages 0-19, 20-39, 40-49
-            assert mock_ai_service.invoke_with_retry.call_count == 3
+            assert mock_invoke.call_count == 3
 
             # Verify first call includes pages 1-20
-            first_call_args = mock_ai_service.invoke_with_retry.call_args_list[0]
+            first_call_args = mock_invoke.call_args_list[0]
             prompt = first_call_args[1]["input"]["tool_input"]
             assert "PAGE 1" in prompt
             assert "PAGE 20" in prompt
@@ -195,9 +195,9 @@ class TestAnalyzePdf:
         mock_file = io.BytesIO(b"pdf")
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": []}]), \
-             patch("src.controllers.analyze.ai_service") as mock_ai_service:
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
 
-            mock_ai_service.invoke_with_retry = AsyncMock(side_effect=asyncio.TimeoutError())
+            mock_invoke.side_effect = asyncio.TimeoutError()
 
             with pytest.raises(HTTPException) as exc_info:
                 await analyze_pdf(mock_file)
@@ -211,9 +211,9 @@ class TestAnalyzePdf:
         mock_file = io.BytesIO(b"pdf")
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": []}]), \
-             patch("src.controllers.analyze.ai_service") as mock_ai_service:
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
 
-            mock_ai_service.invoke_with_retry = AsyncMock(side_effect=Exception("AI service unavailable"))
+            mock_invoke.side_effect = Exception("AI service unavailable")
 
             with pytest.raises(HTTPException) as exc_info:
                 await analyze_pdf(mock_file)
@@ -227,9 +227,9 @@ class TestAnalyzePdf:
         mock_file = io.BytesIO(b"pdf")
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": [], "text": ""}]), \
-             patch("src.controllers.analyze.ai_service") as mock_ai_service:
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
 
-            mock_ai_service.invoke_with_retry = AsyncMock(return_value=None)
+            mock_invoke.return_value = None
 
             result = await analyze_pdf(mock_file)
 
@@ -245,9 +245,9 @@ class TestAnalyzePdf:
         mock_file = io.BytesIO(b"pdf")
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=[{"page": 1, "tables": [], "text": ""}]), \
-             patch("src.controllers.analyze.ai_service") as mock_ai_service:
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
 
-            mock_ai_service.invoke_with_retry = AsyncMock(return_value="not valid json")
+            mock_invoke.return_value = "not valid json"
 
             result = await analyze_pdf(mock_file)
 
@@ -262,13 +262,13 @@ class TestAnalyzePdf:
         mock_data = [{"page": i, "tables": []} for i in range(1, 41)]  # 40 pages
 
         with patch("src.controllers.analyze._read_pdf_file", return_value=mock_data), \
-             patch("src.controllers.analyze.ai_service") as mock_ai_service:
+             patch("src.controllers.analyze.ai_service.invoke", new_callable=AsyncMock) as mock_invoke:
 
             # Return different results for each batch
-            mock_ai_service.invoke_with_retry = AsyncMock(side_effect=[
+            mock_invoke.side_effect = [
                 json.dumps({"batch": 1}),
                 json.dumps({"batch": 2})
-            ])
+            ]
 
             result = await analyze_pdf(io.BytesIO(b"pdf"))
 

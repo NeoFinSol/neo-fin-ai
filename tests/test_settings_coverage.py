@@ -95,8 +95,8 @@ class TestAppSettingsProperties:
         assert s.use_local_llm is True
 
     def test_use_huggingface_false_when_no_token(self):
-        s = AppSettings(_env_file=None)
-        # Default llm_url is set, but hf_token is None
+        s = AppSettings(HF_TOKEN=None, _env_file=None)
+        # hf_token explicitly set to None
         assert s.use_huggingface is False
 
     def test_use_huggingface_false_with_placeholder_token(self):

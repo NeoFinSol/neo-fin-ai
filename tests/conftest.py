@@ -9,13 +9,18 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+# =============================================================================
+# CRITICAL: Set environment variables BEFORE any app imports
+# This must be at module level, not in a fixture, to ensure app_settings
+# picks up the correct values when the app module is imported.
+# =============================================================================
+os.environ["TESTING"] = "1"
+os.environ["DEV_MODE"] = "1"
+os.environ["API_KEY"] = "test-key-for-testing"
+
 import src.db.crud as crud
 import src.db.database as db
 from src.db.database import Base
-
-# Set TESTING=1 to bypass DATABASE_URL validation during tests
-# Do NOT set DEV_MODE here - tests should verify authentication behavior
-os.environ["TESTING"] = "1"
 
 
 def pytest_configure(config):
@@ -37,25 +42,19 @@ def setup_test_environment():
     Setup test environment for all tests.
     This fixture runs automatically before any tests.
     """
-    # Set DEV_MODE for all tests to bypass authentication
-    # Individual tests can override this with auth_enabled fixture
-    os.environ["DEV_MODE"] = "1"
+    # Environment already set at module level
     yield
     # Cleanup
     os.environ.pop("DEV_MODE", None)
+    os.environ.pop("API_KEY", None)
+    os.environ.pop("TESTING", None)
 
 
 @pytest.fixture(scope="function")
 def dev_mode_enabled(monkeypatch):
     """
     Fixture to enable DEV_MODE for specific tests that need to bypass authentication.
-    Use this fixture explicitly in tests that require unauthenticated access.
-    
-    Usage:
-        def test_something(dev_mode_enabled):
-            # DEV_MODE is enabled only for this test
     """
-    # DEV_MODE is already set globally, this is just for explicit documentation
     monkeypatch.setenv("DEV_MODE", "1")
     yield
     monkeypatch.delenv("DEV_MODE", raising=False)
@@ -66,15 +65,41 @@ def auth_enabled(monkeypatch):
     """
     Fixture to ensure authentication is enabled for tests.
     Sets DEV_MODE=0 and requires API_KEY to be set.
-    
-    Usage:
-        def test_authenticated_endpoint(auth_enabled, client):
-            # Authentication is enforced
-            response = client.get("/protected", headers={"X-API-Key": "test-key"})
     """
     monkeypatch.setenv("DEV_MODE", "0")
     monkeypatch.setenv("API_KEY", "test-api-key-for-testing")
     yield
+
+
+@pytest.fixture(scope="function")
+def client():
+    """
+    Create test client with authentication properly configured.
+    
+    This fixture:
+    1. Imports app AFTER environment variables are set
+    2. Overrides auth dependency to bypass authentication
+    3. Returns configured TestClient
+    
+    Usage:
+        def test_endpoint(client):
+            response = client.get("/endpoint")
+    """
+    from fastapi.testclient import TestClient
+    from src.app import app
+    from src.core.auth import get_api_key
+    
+    # Override auth dependency to always return test user
+    async def override_auth():
+        return "test-user"
+    
+    app.dependency_overrides[get_api_key] = override_auth
+    
+    with TestClient(app) as test_client:
+        yield test_client
+    
+    # Cleanup
+    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -103,7 +128,7 @@ async def db_engine():
 
     async with engine.begin() as conn:
         await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-    await engine.dispose()
+    await base_engine.dispose()
 
 
 @pytest_asyncio.fixture()

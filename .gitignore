@@ -69,3 +69,10 @@ backend/obj/
 .env.local
 
 .claude/
+"test_*.py"  
+"test_*.bat"  
+"check_*.py"  
+"*.bat"  
+".qwen/"  
+".hypothesis/"  
+"coverage.*" 

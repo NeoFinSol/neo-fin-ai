@@ -1,4 +1,8 @@
 ﻿#!/usr/bin/env sh
+# Entrypoint for running Alembic migrations
+# Usage: docker-compose run --rm backend-migrate
+# Or: kubectl run migration-job --image=neofin-backend -- entrypoint.sh
+
 set -e
 
 MAX_RETRIES=${DB_WAIT_RETRIES:-30}
@@ -20,5 +24,3 @@ if [ "$MIGRATED" != true ]; then
   echo "Failed to apply database migrations after $MAX_RETRIES attempts"
   exit 1
 fi
-
-exec uvicorn src.app:app --host 0.0.0.0 --port 8000

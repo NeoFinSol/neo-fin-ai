@@ -1,0 +1,52 @@
+# NeoFin AI Frontend - Production Multi-Stage Dockerfile
+# Optimized for security, size, and layer caching
+
+# ==============================================================================
+# Stage 1: Build - Compile React + Vite
+# ==============================================================================
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+# Copy package files first (leverage Docker layer caching)
+# This layer is cached until package*.json changes
+COPY package.json package-lock.json ./
+
+# Install all dependencies (including devDependencies for build)
+# npm ci ensures reproducible builds from lockfile
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build the application
+# Vite outputs to dist/ with minified JS/CSS, code splitting
+RUN npm run build
+
+# ==============================================================================
+# Stage 2: Serve - Nginx static file server
+# ==============================================================================
+FROM nginx:alpine AS serve
+
+WORKDIR /usr/share/nginx/html
+
+# Remove default nginx config
+RUN rm -f /etc/nginx/conf.d/default.conf
+
+# Copy custom production nginx config
+COPY nginx.prod.conf /etc/nginx/conf.d/default.conf
+
+# Copy built static assets from build stage
+# node_modules and source code are NOT copied (reduces image size)
+COPY --from=build /app/dist .
+
+# Expose port 80
+EXPOSE 80
+
+# Health check: verify nginx serves index.html
+# Runs every 30s, times out after 10s, allows 40s startup, 3 retries
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+
+# Start nginx in foreground mode (required for Docker)
+CMD ["nginx", "-g", "daemon off;"]

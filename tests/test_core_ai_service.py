@@ -141,6 +141,7 @@ class TestAIServiceInvokeWithRetry:
 
     @pytest.mark.asyncio
     async def test_retries_on_timeout_then_raises(self):
+        """Test that invoke returns None after retries on timeout (graceful degradation)."""
         with patch("src.core.ai_service.app_settings") as mock_settings, \
              patch("src.core.ai_service.qwen_agent") as mock_agent:
             mock_settings.use_gigachat = False
@@ -150,13 +151,15 @@ class TestAIServiceInvokeWithRetry:
             mock_agent._configured = True
             mock_agent.invoke = AsyncMock(side_effect=asyncio.TimeoutError())
             svc = AIService()
-            with pytest.raises(asyncio.TimeoutError):
-                await svc.invoke_with_retry(
-                    {"tool_input": "test"}, max_retries=2, retry_delay=0.01
-                )
+            # New behavior: returns None instead of raising (graceful degradation)
+            result = await svc.invoke_with_retry(
+                {"tool_input": "test"}, max_retries=2, retry_delay=0.01
+            )
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_retries_on_exception_then_raises(self):
+        """Test that invoke returns None after retries on exception (graceful degradation)."""
         with patch("src.core.ai_service.app_settings") as mock_settings, \
              patch("src.core.ai_service.qwen_agent") as mock_agent:
             mock_settings.use_gigachat = False
@@ -166,10 +169,11 @@ class TestAIServiceInvokeWithRetry:
             mock_agent._configured = True
             mock_agent.invoke = AsyncMock(side_effect=RuntimeError("boom"))
             svc = AIService()
-            with pytest.raises(RuntimeError):
-                await svc.invoke_with_retry(
-                    {"tool_input": "test"}, max_retries=2, retry_delay=0.01
-                )
+            # New behavior: returns None instead of raising (graceful degradation)
+            result = await svc.invoke_with_retry(
+                {"tool_input": "test"}, max_retries=2, retry_delay=0.01
+            )
+            assert result is None
 
     @pytest.mark.asyncio
     async def test_succeeds_on_second_attempt(self):

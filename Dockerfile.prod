@@ -1,0 +1,81 @@
+# Multi-stage production Dockerfile for NeoFin AI Backend
+# Optimized for size, security, and layer caching
+
+# ==============================================================================
+# Stage 1: Builder - Compile dependencies and install packages
+# ==============================================================================
+FROM python:3.11.6-slim AS builder
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/app/venv \
+    PATH="/app/venv/bin:$PATH"
+
+# Install build-time dependencies only
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+        tesseract-ocr \
+        poppler-utils \
+        libgl1 \
+        ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy requirements and build virtual environment
+COPY requirements.txt .
+RUN python -m venv $VIRTUAL_ENV \
+    && $VIRTUAL_ENV/bin/pip install --upgrade pip setuptools wheel \
+    && $VIRTUAL_ENV/bin/pip install --no-cache-dir -r requirements.txt
+
+# ==============================================================================
+# Stage 2: Runtime - Minimal production image
+# ==============================================================================
+FROM python:3.11.6-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/app/venv \
+    PATH="/app/venv/bin:$PATH"
+
+# Install runtime-only dependencies (no build tools)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        poppler-utils \
+        libgl1 \
+        curl \
+        ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy pre-built virtual environment from builder
+COPY --from=builder /app/venv /app/venv
+
+# Copy application code
+COPY --chown=appuser:appuser src ./src
+COPY --chown=appuser:appuser alembic.ini .
+COPY --chown=appuser:appuser migrations ./migrations
+COPY --chown=appuser:appuser entrypoint.sh .
+
+# Create non-root user and set ownership in one layer
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chmod +x entrypoint.sh
+
+# Drop unnecessary capabilities for security
+RUN setcap -r /usr/sbin/setcap 2>/dev/null || true
+
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/system/health || exit 1
+
+EXPOSE 8000
+
+ENTRYPOINT ["./entrypoint.sh"]
