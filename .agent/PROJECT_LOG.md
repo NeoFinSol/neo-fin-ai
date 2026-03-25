@@ -1,5 +1,21 @@
 # Project Log
 
+## 2026-03-25 — Qwen Regression Fixes: Группа 5 (тесты)
+
+### Тесты верификации исправлений и integration тесты
+
+**Изменения:**
+- `tests/test_qwen_regression_fixes.py` — 26 unit-тестов, покрывающих все 14 багов (БАГ 1–14); попутно обнаружена и исправлена ещё одна f-строка в `tasks.py` (NLP logger)
+- `tests/test_qwen_regression_integration.py` — 13 integration-тестов через TestClient: upload→polling flow (БАГ 1), multi-analysis multipart (БАГ 3), CORS default_origins (БАГ 7)
+
+**Итого тестов по Qwen regression:**
+- `test_qwen_regression_exploratory.py` — 8 тестов (воспроизведение багов)
+- `test_qwen_regression_preservation.py` — 9 тестов (PBT + unit, preservation)
+- `test_qwen_regression_fixes.py` — 26 тестов (верификация исправлений)
+- `test_qwen_regression_integration.py` — 13 тестов (integration flow)
+
+---
+
 ## 2026-03-25 — Qwen Regression Fixes: Группа 4 (мелкие нарушения)
 
 ### БАГ 12–14: console.log в production, err: any, устаревшая документация

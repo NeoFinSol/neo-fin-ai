@@ -388,9 +388,9 @@
 
 ## Группа 5 — Тесты (Fix + Integration)
 
-- [ ] 17. Write fix verification tests
+- [x] 17. Write fix verification tests
 
-  - [ ] 17.1 Написать unit-тесты для верификации исправлений в `tests/test_qwen_regression_fixes.py`
+  - [x] 17.1 Написать unit-тесты для верификации исправлений в `tests/test_qwen_regression_fixes.py`
     - `test_polling_uses_upload_endpoint`: POST /upload → task_id → polling
     - `test_polling_stops_on_404`: HTTP 404 → остановить polling
     - `test_polling_retries_on_5xx`: HTTP 5xx → retry, не останавливать
@@ -409,15 +409,15 @@
     - `test_mask_number_none_returns_dash`: `_mask_number(None)` → `"—"`
     - _Requirements: 2.1–2.20_
 
-- [ ] 18. Write integration tests
+- [-] 18. Write integration tests
 
-  - [ ] 18.1 Написать integration-тесты в `tests/test_qwen_regression_integration.py`
+  - [x] 18.1 Написать integration-тесты в `tests/test_qwen_regression_integration.py`
     - `test_full_upload_polling_flow`: POST /upload → polling → completed → результат отображается
     - `test_multi_analysis_with_files`: multipart запрос с файлами → корректная обработка без `AttributeError`
     - `test_app_startup_dev_mode_invalid_cors`: запуск с `dev_mode=True` + невалидный CORS → нет `NameError`, используются `default_origins`
     - _Requirements: 2.1, 2.9, 2.18_
 
-- [ ] 18.2 Патчноут и коммит — Группа 5 (тесты)
+- [x] 18.2 Патчноут и коммит — Группа 5 (тесты)
   - Обновить `.agent/PROJECT_LOG.md`: добавить запись сверху с итоговой статистикой тестов
   - Выполнить коммит:
     ```
