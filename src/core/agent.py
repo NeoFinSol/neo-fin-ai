@@ -3,7 +3,8 @@ import logging
 from typing import Optional
 
 import aiohttp
-from aiohttp import ClientError, ClientTimeout, ContentTypeError
+from aiohttp import ClientError, ContentTypeError
+from src.core.base_agent import BaseAIAgent, AIAgentError
 
 logger = logging.getLogger(__name__)
 
@@ -13,18 +14,17 @@ RETRY_DELAY = 1.0  # seconds
 RETRY_BACKOFF = 2.0  # multiplier
 
 
-class ConfigurationError(Exception):
+class ConfigurationError(AIAgentError):
     """Raised when agent is not properly configured."""
     pass
 
 
-class Agent:
+class Agent(BaseAIAgent):
     def __init__(self, timeout: int = DEFAULT_TIMEOUT):
+        super().__init__(timeout=timeout)
         self._auth_token: Optional[str] = None
         self._url: Optional[str] = None
         self.model: str = "qwen3.5-plus"
-        self.timeout = timeout
-        self._configured: bool = False
 
     def set_config(self, auth_token: Optional[str], url: Optional[str]) -> None:
         """
@@ -133,13 +133,13 @@ class Agent:
         
         for attempt in range(retries):
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        f"{self._url}/chat",
-                        json=req_json,
-                        headers=headers,
-                        timeout=ClientTimeout(total=actual_timeout)
-                    ) as res:
+                session = await self._get_session()
+                async with session.post(
+                    f"{self._url}/chat",
+                    json=req_json,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=actual_timeout)
+                ) as res:
                         try:
                             data = await res.json()
                             if isinstance(data, dict):

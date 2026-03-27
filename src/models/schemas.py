@@ -52,6 +52,20 @@ class ExtractionMetadataItem(BaseModel):
     )
 
 
+class ScoreFactor(BaseModel):
+    name: str = Field(description="Название фактора")
+    description: str = Field(description="Описание влияния фактора")
+    impact: Literal["positive", "negative", "neutral"] = Field(description="Тип влияния")
+
+
+class ScoreSchema(BaseModel):
+    score: float = Field(ge=0.0, le=100.0, description="Итоговый балл")
+    risk_level: str = Field(description="Уровень риска (low, medium, high, critical)")
+    confidence_score: float = Field(ge=0.0, le=1.0, description="Достоверность данных")
+    factors: list[ScoreFactor] = Field(description="Список влияющих факторов")
+    normalized_scores: dict[str, float | None] = Field(description="Нормализованные баллы по каждому коэффициенту")
+
+
 # ---------------------------------------------------------------------------
 # Analysis History API schemas (analysis-history-visualization)
 # Requirements: 6.1, 6.2, 6.3
@@ -87,7 +101,7 @@ class AnalysisDetailResponse(BaseModel):
 # Requirements: 2.3
 # ---------------------------------------------------------------------------
 
-RiskLevel = Literal["low", "medium", "high"]
+RiskLevel = Literal["low", "medium", "high", "critical"]
 
 
 class PeriodInput(BaseModel):

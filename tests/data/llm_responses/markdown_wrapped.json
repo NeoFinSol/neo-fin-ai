@@ -1,0 +1,28 @@
+```json
+[
+    {
+        "metric": "revenue",
+        "value": 75000000.0,
+        "confidence_score": 0.9,
+        "source_fragment": "Выручка 75 000 000"
+    },
+    {
+        "metric": "total_assets",
+        "value": 180000000.0,
+        "confidence_score": 0.9,
+        "source_fragment": "Итого активов 180 000 000"
+    },
+    {
+        "metric": "equity",
+        "value": 60000000.0,
+        "confidence_score": 0.85,
+        "source_fragment": "Капитал 60 000 000"
+    },
+    {
+        "metric": "net_profit",
+        "value": 3800000.0,
+        "confidence_score": 0.8,
+        "source_fragment": "Чистая прибыль 3 800 000"
+    }
+]
+```

@@ -1,0 +1,14 @@
+[
+    {
+        "metric": "revenue",
+        "value": 42000000.0,
+        "confidence_score": 0.5,
+        "source_fragment": "Выручка ~42 млн"
+    },
+    {
+        "metric": "total_assets",
+        "value": 95000000.0,
+        "confidence_score": 0.5,
+        "source_fragment": "Активы ~95 млн"
+    }
+]

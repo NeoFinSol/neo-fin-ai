@@ -144,6 +144,45 @@ curl -X POST http://localhost:8000/upload \
 
 ---
 
+### WebSocket /ws/{task_id}
+
+Real-time уведомления о статусе выполнения задачи. Рекомендуется использовать вместо polling для мгновенного обновления UI.
+
+**URL**: `ws://<host>/ws/{task_id}`
+
+**События (JSON)**:
+
+1.  **Начало извлечения**:
+    ```json
+    {"status": "extracting", "message": "Извлечение данных из PDF..."}
+    ```
+2.  **Скоринг**:
+    ```json
+    {"status": "scoring", "message": "Расчет финансовых коэффициентов..."}
+    ```
+3.  **AI-анализ**:
+    ```json
+    {"status": "analyzing", "message": "Генерация выводов через AI..."}
+    ```
+4.  **Завершение**:
+    ```json
+    {
+      "status": "completed",
+      "result": { ... полные данные анализа ... }
+    }
+    ```
+5.  **Ошибка**:
+    ```json
+    {"status": "failed", "error": "Описание ошибки"}
+    ```
+
+**Преимущества**:
+- Мгновенное отображение прогресса (progress bar).
+- Снижение нагрузки на базу данных (нет частых SELECT запросов).
+- Автоматическое закрытие соединения после завершения.
+
+---
+
 ### GET /result/{task_id}
 
 Получение статуса и результата анализа. Клиент опрашивает эндпоинт каждые 2000 мс до получения статуса `completed` или `failed`.
@@ -202,6 +241,7 @@ X-API-Key: <ключ>
     "score": {
       "score": 72.5,
       "risk_level": "medium",
+      "confidence_score": 0.85,
       "factors": [
         {"name": "Текущая ликвидность", "impact": "positive"},
         {"name": "Рентабельность активов", "impact": "neutral"}
@@ -244,6 +284,7 @@ X-API-Key: <ключ>
 | `data.ratios` | object | 13 рассчитанных коэффициентов (значение `null` — нехватка данных) |
 | `data.score.score` | float \[0–100\] | Интегральный скоринг |
 | `data.score.risk_level` | `low` \| `medium` \| `high` | Уровень риска (low ≥ 75, medium ≥ 50, high < 50) |
+| `data.score.confidence_score` | float \[0.0–1.0\] | Достоверность отчёта (сумма весов найденных данных) |
 | `data.score.factors` | array | Факторы с полем `impact`: `positive` \| `neutral` \| `negative` |
 | `data.score.normalized_scores` | object | Нормализованные значения \[0.0–1.0\] по каждому коэффициенту |
 | `data.nlp` | object | NLP-анализ (пустые массивы если LLM не настроен или произошёл timeout) |
@@ -478,6 +519,7 @@ X-API-Key: <ключ>
       },
       "score": 61.0,
       "risk_level": "medium",
+      "confidence_score": 0.55,
       "extraction_metadata": {
         "revenue": {"confidence": 0.9, "source": "table_exact"},
         "equity": {"confidence": 0.3, "source": "derived"}

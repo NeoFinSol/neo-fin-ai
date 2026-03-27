@@ -63,6 +63,7 @@ pytesseract~=0.3.10
 # opencv-python 4.13.x - Computer vision (compatible with numpy 2.x)
 # pillow 10.0.x - Image processing
 camelot-py~=0.11.0
+ghostscript~=0.8.1
 opencv-python~=4.13.0
 pillow~=10.0.0
 

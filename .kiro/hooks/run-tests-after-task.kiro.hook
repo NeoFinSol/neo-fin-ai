@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Run Tests After Task",
+  "description": "Запускает pytest после завершения каждого spec-таска и репортит результат",
+  "version": "1",
+  "when": {
+    "type": "postTaskExecution"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run `python -m pytest tests/test_qwen_regression_exploratory_2.py tests/test_qwen_regression_preservation_2.py -v --tb=short` and briefly report how many passed/failed. Do not attempt to fix any failures — just report the results."
+  }
+}

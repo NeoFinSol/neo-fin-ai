@@ -4,6 +4,8 @@ import re
 from typing import Any
 
 from src.core.ai_service import ai_service
+from src.core.prompts import LLM_ANALYSIS_PROMPT
+from src.analysis.llm_extractor import clean_for_llm, is_clean_financial_text
 
 logger = logging.getLogger(__name__)
 
@@ -12,23 +14,24 @@ async def analyze_narrative(full_text: str) -> dict[str, list[str]]:
     if not full_text:
         return _empty_result()
 
-    narrative_text = _extract_narrative(full_text)
-    if not narrative_text:
-        narrative_text = full_text
+    # Gate: if text is OCR garbage, skip LLM entirely — saves 80-90% tokens
+    if not is_clean_financial_text(full_text):
+        logger.warning("NLP analysis skipped: text quality too low (%d chars)", len(full_text))
+        return _empty_result()
 
-    prompt = (
-        "Проанализируй следующий текст пояснительной записки к финансовой "
-        "отчётности. Выдели ключевые риски, важные факторы, влияющие на "
-        "финансовое состояние, и дай рекомендации. Ответ верни в формате JSON "
-        "с полями: risks (list), key_factors (list), recommendations (list).\n\n"
-        f"{narrative_text}"
-    )
+    # Filter to financially relevant lines before extracting narrative
+    cleaned_text = clean_for_llm(full_text)
+    if not cleaned_text:
+        return _empty_result()
+    narrative_text = _extract_narrative(cleaned_text)
+    if not narrative_text:
+        narrative_text = cleaned_text
 
     try:
         response = await ai_service.invoke(
             input={
-                "tool_input": prompt,
-                "system": "Ты эксперт по финансовому анализу. Отвечай точно и структурированно."
+                "tool_input": narrative_text,
+                "system": LLM_ANALYSIS_PROMPT,
             },
             timeout=120
         )
@@ -70,9 +73,10 @@ def _extract_narrative(text: str) -> str:
             break
 
     if start_index == -1:
-        return text
+        # No narrative section found — use beginning of text, truncated
+        return text[:6000].strip()
 
-    extracted = text[start_index: start_index + 8000]
+    extracted = text[start_index: start_index + 6000]
     return extracted.strip()
 
 

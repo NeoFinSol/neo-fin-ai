@@ -3,14 +3,29 @@ import logging
 import os
 import re
 
+from dotenv import load_dotenv
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = BASE_DIR / ".env"
 
+# Explicitly load .env file into os.environ for other modules that use os.getenv()
+if ENV_FILE.exists():
+    load_dotenv(str(ENV_FILE))
+
 
 class AppSettings(BaseSettings):
+    # Database
+    database_url: str | None = Field(
+        None, alias="DATABASE_URL", description="PostgreSQL connection string"
+    )
+    db_pool_size: int = Field(5, alias="DB_POOL_SIZE")
+    db_max_overflow: int = Field(10, alias="DB_MAX_OVERFLOW")
+    db_pool_timeout: int = Field(30, alias="DB_POOL_TIMEOUT")
+    db_pool_recycle: int = Field(3600, alias="DB_POOL_RECYCLE")
+    db_pool_pre_ping: bool = Field(True, alias="DB_POOL_PRE_PING")
+
     # Security
     api_key: str | None = Field(
         None, alias="API_KEY", description="API key for authentication"
@@ -78,6 +93,28 @@ class AppSettings(BaseSettings):
         description="Minimum confidence score to include an extracted metric [0.0–1.0]",
     )
 
+    # LLM Extraction settings
+    llm_extraction_enabled: bool = Field(
+        False,
+        alias="LLM_EXTRACTION_ENABLED",
+        description="Enable LLM-based financial metric extraction (experimental)",
+    )
+    llm_chunk_size: int = Field(
+        12_000,
+        alias="LLM_CHUNK_SIZE",
+        description="Max characters per LLM request chunk [1000–50000]",
+    )
+    llm_max_chunks: int = Field(
+        5,
+        alias="LLM_MAX_CHUNKS",
+        description="Max number of text chunks to process per PDF [1–20]",
+    )
+    llm_token_budget: int = Field(
+        50_000,
+        alias="LLM_TOKEN_BUDGET",
+        description="Max total characters to process per PDF (≈ tokens × 4) [1000–200000]",
+    )
+
     # Logging settings
     log_level: str = Field(
         "INFO",
@@ -124,6 +161,63 @@ class AppSettings(BaseSettings):
                 "CONFIDENCE_THRESHOLD=%s out of [0.0, 1.0]. Using default 0.5", value
             )
             return 0.5
+        return value
+
+    @field_validator("llm_chunk_size", mode="before")
+    @classmethod
+    def validate_llm_chunk_size(cls, v: int | str | None) -> int:
+        """Validate LLM chunk size; fall back to default on invalid input."""
+        default = 12_000
+        if v is None:
+            return default
+        try:
+            value = int(v)
+        except (TypeError, ValueError):
+            logging.warning("Invalid LLM_CHUNK_SIZE=%r. Using default %d", v, default)
+            return default
+        if not (1_000 <= value <= 50_000):
+            logging.warning(
+                "LLM_CHUNK_SIZE=%d out of [1000, 50000]. Using default %d", value, default
+            )
+            return default
+        return value
+
+    @field_validator("llm_max_chunks", mode="before")
+    @classmethod
+    def validate_llm_max_chunks(cls, v: int | str | None) -> int:
+        """Validate LLM max chunks; fall back to default on invalid input."""
+        default = 5
+        if v is None:
+            return default
+        try:
+            value = int(v)
+        except (TypeError, ValueError):
+            logging.warning("Invalid LLM_MAX_CHUNKS=%r. Using default %d", v, default)
+            return default
+        if not (1 <= value <= 20):
+            logging.warning(
+                "LLM_MAX_CHUNKS=%d out of [1, 20]. Using default %d", value, default
+            )
+            return default
+        return value
+
+    @field_validator("llm_token_budget", mode="before")
+    @classmethod
+    def validate_llm_token_budget(cls, v: int | str | None) -> int:
+        """Validate LLM token budget; fall back to default on invalid input."""
+        default = 50_000
+        if v is None:
+            return default
+        try:
+            value = int(v)
+        except (TypeError, ValueError):
+            logging.warning("Invalid LLM_TOKEN_BUDGET=%r. Using default %d", v, default)
+            return default
+        if not (1_000 <= value <= 200_000):
+            logging.warning(
+                "LLM_TOKEN_BUDGET=%d out of [1000, 200000]. Using default %d", value, default
+            )
+            return default
         return value
 
     @field_validator("rate_limit", mode="before")

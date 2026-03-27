@@ -1,4 +1,0 @@
-# file: E:\neo-fin-ai\src\core\constants.py
-# hypothesis_version: 6.151.9
-
-[b'%PDF-', 0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 60.0, 100, 120, 1024, 5000, '10/minute', '100/minute', '1000/minute', 'Authorization', 'Content-Type', 'DELETE', 'GET', 'INFO', 'OPTIONS', 'POST', 'PUT', 'X-API-Key', 'X-Requested-With', 'high', 'http://127.0.0.1', 'http://127.0.0.1:80', 'http://localhost', 'http://localhost:80', 'low', 'medium', 'text', 'Долговая нагрузка']

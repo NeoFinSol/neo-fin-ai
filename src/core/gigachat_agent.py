@@ -7,6 +7,7 @@ from typing import Optional
 
 import aiohttp
 from aiohttp import ClientError, ClientTimeout, ContentTypeError
+from src.core.base_agent import BaseAIAgent
 
 logger = logging.getLogger(__name__)
 
@@ -40,17 +41,26 @@ else:
     )
 
 
-class GigaChatAgent:
+class GigaChatAgent(BaseAIAgent):
     """Agent for interacting with GigaChat AI API."""
     
     def __init__(self, timeout: int = DEFAULT_TIMEOUT):
+        super().__init__(timeout=timeout)
         self._client_id: Optional[str] = None
         self._client_secret: Optional[str] = None
         self._auth_token: Optional[str] = None
         self._token_expires_at: float = 0
         self.model: str = "GigaChat-Pro"
-        self.timeout = timeout
-        self._configured: bool = False
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create an aiohttp session with GigaChat SSL context."""
+        if self._session is None or self._session.closed:
+            connector = aiohttp.TCPConnector(ssl=_gigachat_ssl_context)
+            self._session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=aiohttp.ClientTimeout(total=self.timeout)
+            )
+        return self._session
 
     def set_config(
         self, 
@@ -123,33 +133,31 @@ class GigaChatAgent:
         }
         
         try:
-            # Use TCPConnector with custom SSL context for GigaChat
-            connector = aiohttp.TCPConnector(ssl=_gigachat_ssl_context)
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.post(
-                    self._auth_url,
-                    headers=headers,
-                    data=data,
-                    timeout=ClientTimeout(total=30)
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error("GigaChat auth failed: %d - %s", response.status, error_text)
-                        raise ValueError(f"GigaChat authentication failed: {response.status}")
-                    
-                    result = await response.json()
-                    access_token = result.get("access_token")
-                    expires_in = result.get("expires_in", 3600)  # Default 1 hour
-                    
-                    if not access_token:
-                        raise ValueError("No access_token in GigaChat auth response")
-                    
-                    # Cache token (subtract 5 minutes to be safe)
-                    self._auth_token = access_token
-                    self._token_expires_at = time.time() + expires_in - 300
-                    
-                    logger.info("Successfully obtained GigaChat access token")
-                    return access_token
+            session = await self._get_session()
+            async with session.post(
+                self._auth_url,
+                headers=headers,
+                data=data,
+                timeout=ClientTimeout(total=30)
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error("GigaChat auth failed: %d - %s", response.status, error_text)
+                    raise ValueError(f"GigaChat authentication failed: {response.status}")
+                
+                result = await response.json()
+                access_token = result.get("access_token")
+                expires_in = result.get("expires_in", 3600)  # Default 1 hour
+                
+                if not access_token:
+                    raise ValueError("No access_token in GigaChat auth response")
+                
+                # Cache token (subtract 5 minutes to be safe)
+                self._auth_token = access_token
+                self._token_expires_at = time.time() + expires_in - 300
+                
+                logger.info("Successfully obtained GigaChat access token")
+                return access_token
                     
         except aiohttp.ClientError as e:
             logger.error("Failed to connect to GigaChat auth: %s", e)
@@ -170,21 +178,15 @@ class GigaChatAgent:
             Optional[str]: Agent response or None
             
         Raises:
-            asyncio.TimeoutError: If request times out
             ValueError: If agent is not configured
         """
         self._ensure_configured()
         
-        actual_timeout = timeout or self.timeout
-        try:
-            async with asyncio.timeout(actual_timeout):
-                return await self.request(
-                    messages=input.get("tool_input", ""),
-                    system=input.get("system"),
-                )
-        except asyncio.TimeoutError:
-            logger.error("GigaChat request timeout after %d seconds", actual_timeout)
-            raise
+        return await self.request(
+            messages=input.get("tool_input", ""),
+            system=input.get("system"),
+            timeout=timeout
+        )
 
     async def request(
         self, 
@@ -239,27 +241,28 @@ class GigaChatAgent:
                     "messages": messages_list,
                 }
                 
-                # Use TCPConnector with custom SSL context for GigaChat
-                connector = aiohttp.TCPConnector(ssl=_gigachat_ssl_context)
-                async with aiohttp.ClientSession(connector=connector) as session:
-                    async with session.post(
-                        self._chat_url,
-                        json=req_json,
-                        headers=headers,
-                        timeout=ClientTimeout(total=actual_timeout)
-                    ) as res:
-                        if res.status != 200:
-                            error_text = await res.text()
-                            logger.error("GigaChat API error %d: %s", res.status, error_text[:200])
-                            
-                            # Token might be expired, clear it
-                            if res.status == 401:
-                                self._auth_token = None
-                                self._token_expires_at = 0
-                            
-                            if attempt < retries - 1:
-                                continue  # Retry
-                            return None
+                session = await self._get_session()
+                async with session.post(
+                    self._chat_url,
+                    json=req_json,
+                    headers=headers,
+                    timeout=ClientTimeout(total=actual_timeout)
+                ) as res:
+                    if res.status != 200:
+                        error_text = await res.text()
+                        logger.error("GigaChat API error %d: %s", res.status, error_text[:200])
+                        
+                        # Token might be expired, clear it
+                        if res.status == 401:
+                            self._auth_token = None
+                            self._token_expires_at = 0
+                        
+                        if attempt < retries - 1:
+                            delay = RETRY_DELAY * (RETRY_BACKOFF ** attempt)
+                            logger.info("Retrying in %.2f seconds (status %d)...", delay, res.status)
+                            await asyncio.sleep(delay)
+                            continue
+                        return None
                         
                         try:
                             data = await res.json()

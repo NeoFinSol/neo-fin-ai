@@ -1,4 +1,0 @@
-# file: E:\neo-fin-ai\src\db\database.py
-# hypothesis_version: 6.151.9
-
-[100, '0', '1', '10', '30', '3600', '5', 'CI', 'DATABASE_URL', 'DB_MAX_OVERFLOW', 'DB_POOL_PRE_PING', 'DB_POOL_RECYCLE', 'DB_POOL_SIZE', 'DB_POOL_TIMEOUT', 'TESTING', 'true']

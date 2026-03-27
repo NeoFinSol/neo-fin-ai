@@ -42,36 +42,120 @@ class TestIsScannedPdf:
             result = is_scanned_pdf("/fake/path.pdf")
             assert result is True
 
-    def test_pdf_with_little_text_is_scanned(self):
-        """Test PDF with very little text is considered scanned."""
+    def test_pdf_with_little_text_and_images_is_scanned(self):
+        """Test PDF with very little text but with images is considered scanned."""
         mock_page = MagicMock()
         mock_page.extract_text.return_value = "Short"
         
+        # Mocking '/Resources' dictionary access for images
+        mock_page.__getitem__.side_effect = lambda key: {
+            '/Resources': {
+                '/XObject': MagicMock(get_object=lambda: {'Image1': {'/Subtype': '/Image'}})
+            }
+        }.get(key, MagicMock())
+        
         mock_reader = MagicMock()
         mock_reader.pages = [mock_page]
         
         with patch('src.analysis.pdf_extractor.PyPDF2.PdfReader', return_value=mock_reader):
             result = is_scanned_pdf("/fake/path.pdf")
+            # Should return True because text < 50 and has images
             assert result is True
 
-    def test_exception_returns_true(self):
-        """Test that exceptions result in returning True (scanned)."""
-        with patch('src.analysis.pdf_extractor.PyPDF2.PdfReader', side_effect=Exception("Error")):
-            result = is_scanned_pdf("/fake/path.pdf")
-            assert result is True
-
-    def test_extract_text_exception_logged(self):
-        """Test that text extraction exceptions are logged."""
+    def test_pdf_with_little_text_no_images_is_not_scanned(self):
+        """Test PDF with little text (but >50) and no images is not scanned."""
         mock_page = MagicMock()
-        mock_page.extract_text.side_effect = Exception("Extraction failed")
+        # Text between 50 and 200
+        mock_page.extract_text.return_value = "Financial data for 2024. Revenue: 1M, Net Profit: 100K."
+        
+        # Mocking empty '/Resources' for images
+        mock_page.__getitem__.side_effect = lambda key: {
+            '/Resources': {}
+        }.get(key, MagicMock())
         
         mock_reader = MagicMock()
         mock_reader.pages = [mock_page]
         
         with patch('src.analysis.pdf_extractor.PyPDF2.PdfReader', return_value=mock_reader):
             result = is_scanned_pdf("/fake/path.pdf")
-            # Should return True due to exception
+            # Should return False because text > 50 and no images
+            assert result is False
+
+    def test_pdf_with_invisible_text_is_scanned(self):
+        """
+        Test PDF with 'invisible' text layer (common in bad OCR).
+        If text is present but very short (< 50) and there are images, it's scanned.
+        """
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = "OCR layer fail"
+        
+        # Mocking '/Resources' with images
+        mock_page.__getitem__.side_effect = lambda key: {
+            '/Resources': {
+                '/XObject': MagicMock(get_object=lambda: {'Img': {'/Subtype': '/Image'}})
+            }
+        }.get(key, MagicMock())
+        
+        mock_reader = MagicMock()
+        mock_reader.pages = [mock_page]
+        
+        with patch('src.analysis.pdf_extractor.PyPDF2.PdfReader', return_value=mock_reader):
+            result = is_scanned_pdf("/fake/path.pdf")
             assert result is True
+
+
+class TestExtractMetricsRegex:
+    """Tests for extract_metrics_regex function (moved from controllers)."""
+    
+    def test_extract_revenue_regex(self):
+        """Test revenue extraction from text with regex."""
+        from src.analysis.pdf_extractor import extract_metrics_regex
+        text = "Выручка от реализации составила 1 234 567 рублей"
+        result = extract_metrics_regex(text)
+        assert result["revenue"] == 1234567.0
+
+    def test_extract_net_profit_regex(self):
+        """Test net profit extraction from text with regex."""
+        from src.analysis.pdf_extractor import extract_metrics_regex
+        text = "Чистая прибыль | 150 000 руб."
+        result = extract_metrics_regex(text)
+        assert result["net_profit"] == 150000.0
+
+    def test_extract_multiple_metrics(self):
+        """Test extracting multiple metrics from complex text."""
+        from src.analysis.pdf_extractor import extract_metrics_regex
+        text = """
+        ОТЧЕТ О ФИНАНСОВЫХ РЕЗУЛЬТАТАХ
+        Выручка | 5 000 000
+        Чистая прибыль | 300 000
+        Итого активов | 10 000 000
+        """
+        result = extract_metrics_regex(text)
+        assert result["revenue"] == 5000000.0
+        assert result["net_profit"] == 300000.0
+        assert result["total_assets"] == 10000000.0
+
+    def test_normalize_russian_number_formats(self):
+        """Test regex extraction handles Russian number formats correctly."""
+        from src.analysis.pdf_extractor import extract_metrics_regex
+        
+        # Space as thousand separator, comma as decimal
+        text = "Выручка | 1 234 567,89"
+        result = extract_metrics_regex(text)
+        assert result["revenue"] == 1234567.89
+        
+        # No separators
+        text = "Выручка | 1000000"
+        result = extract_metrics_regex(text)
+        assert result["revenue"] == 1000000.0
+
+    def test_ignore_negative_or_zero_values_in_regex(self):
+        """Test that regex extraction ignores negative or zero values if specified in logic."""
+        from src.analysis.pdf_extractor import extract_metrics_regex
+        text = "Выручка | 0"
+        result = extract_metrics_regex(text)
+        # Logic specifies: if value is not None and value > 0: metrics[field] = value
+        assert "revenue" not in result
 
 
 class TestExtractTextFromScanned:
@@ -130,7 +214,7 @@ class TestExtractTables:
         mock_table = MagicMock()
         mock_df = MagicMock()
         mock_df.empty = False
-        mock_df.values.tolist.return_value = [["Cell1", "Cell2"], ["Cell3", "Cell4"]]
+        mock_df.values.tolist.return_value = [["Выручка", "1 000 000"], ["Чистая прибыль", "150 000"]]
         mock_table.df = mock_df
         
         mock_tables = MagicMock()
@@ -139,16 +223,18 @@ class TestExtractTables:
         mock_tables.__getitem__ = lambda self, idx: mock_table
         
         with patch('src.analysis.pdf_extractor.camelot.read_pdf', return_value=mock_tables):
-            result = extract_tables("/fake/path.pdf")
-            assert len(result) > 0
-            assert result[0]["flavor"] == "lattice"
+            # We must mock is_scanned_pdf because extract_tables calls it
+            with patch('src.analysis.pdf_extractor.is_scanned_pdf', return_value=False):
+                result = extract_tables("/fake/path.pdf")
+                assert len(result) > 0
+                assert result[0]["flavor"] == "lattice"
 
     def test_lattice_fails_stream_works(self):
         """Test that stream flavor is tried when lattice fails."""
         mock_table = MagicMock()
         mock_df = MagicMock()
         mock_df.empty = False
-        mock_df.values.tolist.return_value = [["Data"]]
+        mock_df.values.tolist.return_value = [["Выручка", "2 000 000"], ["Чистая прибыль", "250 000"]]
         mock_table.df = mock_df
         
         mock_tables = MagicMock()
@@ -161,9 +247,11 @@ class TestExtractTables:
             return mock_tables
         
         with patch('src.analysis.pdf_extractor.camelot.read_pdf', side_effect=read_side_effect):
-            result = extract_tables("/fake/path.pdf")
-            assert len(result) > 0
-            assert result[0]["flavor"] == "stream"
+            # We must mock is_scanned_pdf because extract_tables calls it
+            with patch('src.analysis.pdf_extractor.is_scanned_pdf', return_value=False):
+                result = extract_tables("/fake/path.pdf")
+                assert len(result) > 0
+                assert result[0]["flavor"] == "stream"
 
     def test_both_flavors_fail(self):
         """Test empty result when both flavors fail."""

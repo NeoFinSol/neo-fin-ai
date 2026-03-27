@@ -1,0 +1,62 @@
+[
+    {
+        "metric": "revenue",
+        "value": 125000000.0,
+        "confidence_score": 0.9,
+        "source_fragment": "Выручка от реализации 125 000 000"
+    },
+    {
+        "metric": "net_profit",
+        "value": 8500000.0,
+        "confidence_score": 0.9,
+        "source_fragment": "Чистая прибыль 8 500 000"
+    },
+    {
+        "metric": "total_assets",
+        "value": 310000000.0,
+        "confidence_score": 0.9,
+        "source_fragment": "Итого активов 310 000 000"
+    },
+    {
+        "metric": "equity",
+        "value": 95000000.0,
+        "confidence_score": 0.85,
+        "source_fragment": "Капитал и резервы 95 000 000"
+    },
+    {
+        "metric": "liabilities",
+        "value": 215000000.0,
+        "confidence_score": 0.85,
+        "source_fragment": "Итого обязательств 215 000 000"
+    },
+    {
+        "metric": "current_assets",
+        "value": 87000000.0,
+        "confidence_score": 0.8,
+        "source_fragment": "Оборотные активы 87 000 000"
+    },
+    {
+        "metric": "short_term_liabilities",
+        "value": 62000000.0,
+        "confidence_score": 0.8,
+        "source_fragment": "Краткосрочные обязательства 62 000 000"
+    },
+    {
+        "metric": "accounts_receivable",
+        "value": 34000000.0,
+        "confidence_score": 0.75,
+        "source_fragment": "Дебиторская задолженность 34 000 000"
+    },
+    {
+        "metric": "inventory",
+        "value": 18000000.0,
+        "confidence_score": 0.75,
+        "source_fragment": "Запасы 18 000 000"
+    },
+    {
+        "metric": "cash_and_equivalents",
+        "value": 12000000.0,
+        "confidence_score": 0.9,
+        "source_fragment": "Денежные средства 12 000 000"
+    }
+]

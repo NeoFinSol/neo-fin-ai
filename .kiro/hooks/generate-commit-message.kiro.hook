@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Generate Commit Message",
+  "description": "Ручной хук — генерирует commit message по текущему git diff",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Запусти `git diff --staged` (или `git diff HEAD` если ничего не staged) и на основе изменений сгенерируй commit message в формате Conventional Commits:\n\n```\n<type>(<scope>): <краткое описание>\n\n<опциональное тело — что изменено и почему>\n```\n\nТипы: feat, fix, refactor, test, docs, chore\nScope: модуль или файл (например: pdf_extractor, scoring, frontend)\n\nПримеры:\n- `fix(pdf_extractor): apply scale factor inside parse_financial_statements`\n- `refactor(tasks): remove double scale factor application`\n- `feat(llm_extractor): add clean_for_llm OCR preprocessing`\n\nВыведи готовый commit message который можно скопировать и использовать."
+  }
+}

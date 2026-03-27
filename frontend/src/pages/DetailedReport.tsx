@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
     Title, Text, Card, SimpleGrid, Stack, Group, Badge,
     Table, ThemeIcon, Button, Divider, Container, Box,
-    Tabs, Progress, Loader
+    Tabs, Progress, Loader, Alert, Tooltip
 } from '@mantine/core';
 // Импорт графиков
 import { BarChart } from '@mantine/charts';
@@ -11,144 +11,16 @@ import {
     AlertTriangle, Printer, Download, PieChart,
     BarChart3, Wallet, Minus, Info
 } from 'lucide-react';
-import { AnalysisData, FinancialRatios, PeriodResult, MultiAnalysisProgress, MultiAnalysisResponse } from '../api/interfaces';
+import { AnalysisData, FinancialRatios } from '../api/interfaces';
 import ConfidenceBadge from '../components/ConfidenceBadge';
 import TrendChart from '../components/TrendChart';
-import { apiClient } from '../api/client';
-
-const POLL_INTERVAL_MS = 2500;
-
-// ---------------------------------------------------------------------------
-// Custom hook: polling for multi-period analysis session
-// ---------------------------------------------------------------------------
-
-interface MultiAnalysisPollingState {
-    status: 'idle' | 'processing' | 'completed' | 'failed';
-    periods: PeriodResult[] | null;
-    progress: MultiAnalysisProgress | null;
-}
-
-function useMultiAnalysisPolling(sessionId: string | undefined): MultiAnalysisPollingState {
-    const [state, setState] = useState<MultiAnalysisPollingState>({
-        status: 'idle',
-        periods: null,
-        progress: null,
-    });
-
-    useEffect(() => {
-        if (!sessionId) return;
-
-        setState({ status: 'processing', periods: null, progress: null });
-
-        let timeoutId: ReturnType<typeof setTimeout>;
-        let cancelled = false;
-
-        const fetchOnce = async () => {
-            if (cancelled) return;
-
-            try {
-                const { data } = await apiClient.get<MultiAnalysisResponse>(
-                    `/multi-analysis/${sessionId}`
-                );
-
-                if (cancelled) return;
-
-                if (data.status === 'completed') {
-                    setState({ status: 'completed', periods: data.periods, progress: null });
-                    return; // stop polling
-                }
-
-                // status === 'processing'
-                setState((prev) => ({
-                    ...prev,
-                    status: 'processing',
-                    progress: 'progress' in data ? data.progress : prev.progress,
-                }));
-            } catch (err: unknown) {
-                if (cancelled) return;
-                const httpStatus = (err as { response?: { status?: number } })?.response?.status;
-                if (httpStatus === 404 || httpStatus === 422) {
-                    setState({ status: 'failed', periods: null, progress: null });
-                    return; // stop polling
-                }
-                // transient network error — schedule next poll anyway
-            }
-
-            if (!cancelled) {
-                timeoutId = setTimeout(fetchOnce, POLL_INTERVAL_MS);
-            }
-        };
-
-        timeoutId = setTimeout(fetchOnce, 0); // start immediately
-
-        return () => {
-            cancelled = true;
-            clearTimeout(timeoutId);
-        };
-    }, [sessionId]);
-
-    return state;
-}
+import { useMultiAnalysisPolling } from '../hooks/useMultiAnalysisPolling';
+import { buildChartData, getBarColor } from '../utils/chartUtils';
 
 interface DetailedReportProps {
     result: AnalysisData;
     filename?: string;
     multiSessionId?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Chart helpers (exported for testing)
-// ---------------------------------------------------------------------------
-
-export const THRESHOLDS: Partial<Record<keyof FinancialRatios, number>> = {
-    current_ratio: 2.0,
-    quick_ratio: 1.0,
-    roa: 0.05,
-    roe: 0.10,
-    equity_ratio: 0.5,
-};
-
-const RATIO_LABELS: Partial<Record<keyof FinancialRatios, string>> = {
-    current_ratio: 'Тек. ликвидность',
-    quick_ratio: 'Быстрая ликв.',
-    absolute_liquidity_ratio: 'Абс. ликвидность',
-    roa: 'ROA',
-    roe: 'ROE',
-    ros: 'ROS',
-    ebitda_margin: 'EBITDA margin',
-    equity_ratio: 'Автономия',
-    financial_leverage: 'Фин. рычаг',
-    interest_coverage: 'Покрытие %',
-    asset_turnover: 'Оборач. активов',
-    inventory_turnover: 'Оборач. запасов',
-    receivables_turnover: 'Оборач. деб. зад.',
-};
-
-export interface ChartDataPoint {
-    label: string;
-    value: number;
-    color: string;
-    key: string;
-}
-
-export function buildChartData(ratios: FinancialRatios): ChartDataPoint[] {
-    return (Object.keys(ratios) as Array<keyof FinancialRatios>)
-        .filter((key) => {
-            const v = ratios[key];
-            return v !== null && v !== 0;
-        })
-        .map((key) => ({
-            key,
-            label: RATIO_LABELS[key] ?? key,
-            value: ratios[key] as number,
-            color: getBarColor(key, ratios[key] as number),
-        }));
-}
-
-export function getBarColor(key: keyof FinancialRatios, value: number): string {
-    const threshold = THRESHOLDS[key];
-    if (threshold === undefined) return 'blue.6';
-    return value >= threshold ? 'teal.6' : 'red.5';
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +152,20 @@ export const DetailedReport = ({ result, filename, multiSessionId }: DetailedRep
     return (
         <Container size="xl" py="2rem">
             <Stack gap="xl">
+                {/* LOW CONFIDENCE ALERT */}
+                {result.score.confidence_score < 0.6 && (
+                    <Alert
+                        icon={<AlertTriangle size={20} />}
+                        title="Низкая достоверность отчета"
+                        color="orange"
+                        variant="light"
+                        radius="md"
+                    >
+                        Внимание! Отчет сформирован на основе неполных данных.
+                        Достоверность: <b>{(result.score.confidence_score * 100).toFixed(0)}%</b>
+                    </Alert>
+                )}
+
                 {/* HEADER SECTION */}
                 <Group justify="space-between" align="center">
                     <Stack gap={4}>
@@ -313,17 +199,24 @@ export const DetailedReport = ({ result, filename, multiSessionId }: DetailedRep
                                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="2rem">
                                     <Stack justify="center" align="center" py="xl">
                                         <Text size="sm" fw={700} c="dimmed" tt="uppercase" lts="0.05em">Итоговый скоринг</Text>
-                                        <Title
-                                            order={1}
-                                            style={{
-                                                fontSize: '5rem',
-                                                fontFamily: 'JetBrains Mono',
-                                                color: getRiskColor(result.score.risk_level),
-                                                lineHeight: 1
-                                            }}
+                                        <Tooltip
+                                            label={`Достоверность данных: ${(result.score.confidence_score * 100).toFixed(0)}%. Рассчитано на основе весов доступных коэффициентов.`}
+                                            withArrow
+                                            position="top"
                                         >
-                                            {result.score.score}
-                                        </Title>
+                                            <Title
+                                                order={1}
+                                                style={{
+                                                    fontSize: '5rem',
+                                                    fontFamily: 'JetBrains Mono',
+                                                    color: getRiskColor(result.score.risk_level),
+                                                    lineHeight: 1,
+                                                    cursor: 'help'
+                                                }}
+                                            >
+                                                {result.score.score}
+                                            </Title>
+                                        </Tooltip>
                                         <Badge
                                             size="xl" radius="xl" px="xl"
                                             style={{

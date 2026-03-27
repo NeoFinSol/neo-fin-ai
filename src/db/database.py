@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import os
@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
 from src.core.security import get_safe_db_url_for_logging
+from src.models.settings import app_settings
 
-# DATABASE_URL is read from environment variable.
+# DATABASE_URL is read from environment variable via app_settings.
 # Validation is deferred to get_engine() to allow module imports during testing.
-# Set TESTING=1 or CI=1 to bypass validation during tests.
-DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")
+DATABASE_URL: Optional[str] = app_settings.database_url
 
 # Engine будет создан лениво при первом вызове get_engine()
 _engine: Optional[AsyncEngine] = None
@@ -54,14 +54,12 @@ def get_engine() -> AsyncEngine:
         if is_testing and not db_url:
             db_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin_test"
 
-        # Connection pool settings from environment variables with safe defaults
-        # For asyncpg, pool settings are passed via create_async_engine parameters
-        # which are supported by SQLAlchemy 2.0+ for async engines
-        pool_size = int(os.getenv("DB_POOL_SIZE", "5"))  # Default: 5 connections
-        max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "10"))  # Default: 10 overflow
-        pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "30"))  # Default: 30 seconds
-        pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # Default: 1 hour
-        pool_pre_ping = os.getenv("DB_POOL_PRE_PING", "true").lower() == "true"
+        # Connection pool settings from app_settings
+        pool_size = app_settings.db_pool_size
+        max_overflow = app_settings.db_max_overflow
+        pool_timeout = app_settings.db_pool_timeout
+        pool_recycle = app_settings.db_pool_recycle
+        pool_pre_ping = app_settings.db_pool_pre_ping
 
         # Validate pool settings to prevent misconfiguration
         if pool_size < 1:

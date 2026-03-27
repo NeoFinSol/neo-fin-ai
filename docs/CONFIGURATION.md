@@ -49,11 +49,9 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
 |---|---|---|:---:|---|
 | `GIGACHAT_CLIENT_ID` | `string` | — | — | Client ID из личного кабинета Sber |
 | `GIGACHAT_CLIENT_SECRET` | `string` | — | — | Client Secret из личного кабинета Sber |
-| `GIGACHAT_AUTH_URL` | `string` | `https://ngw.devices.sberbank.ru:9443/api/v2/oauth` | — | URL получения OAuth2-токена |
-| `GIGACHAT_CHAT_URL` | `string` | `https://gigachat.devices.sberbank.ru/api/v1/chat/completions` | — | URL chat completions API |
 
 Условие активации: заданы оба — `GIGACHAT_CLIENT_ID` и `GIGACHAT_CLIENT_SECRET`.
-Требует российского аккаунта Sber. Токен кешируется на 55 минут.
+Реализован как **Singleton ClientSession** с экспоненциальными ретраями и кешированием токена на 55 минут.
 
 ---
 

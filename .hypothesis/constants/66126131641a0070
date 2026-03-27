@@ -1,4 +1,0 @@
-# file: E:\neo-fin-ai\src\analysis\ratios.py
-# hypothesis_version: 6.151.9
-
-['EBITDA маржа', 'accounts_receivable', 'average_inventory', 'cash_and_equivalents', 'cost_of_goods_sold', 'current_assets', 'ebit', 'ebitda', 'equity', 'interest_expense', 'inventory', 'liabilities', 'net_profit', 'revenue', 'total_assets', 'Покрытие процентов', 'Финансовый рычаг']

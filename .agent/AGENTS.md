@@ -1,5 +1,5 @@
 # AGENTS.md — Правила работы с проектом NeoFin AI
-<!-- Версия: 1.3 | Обновлено: 2026-03-25 -->
+<!-- Версия: 1.4 | Обновлено: 2026-03-26 -->
 
 > Все вспомогательные файлы агента лежат в `.agent/`. При сомнениях — читай их в первую очередь.
 
@@ -8,6 +8,7 @@
 ## 🎯 Основные принципы
 
 - **Архитектура**: Layered (routers → tasks → analysis pipeline → ai_service → db/crud). Зависимости строго однонаправленные — сверху вниз.
+- **WebSocket**: используется для real-time обновлений статуса задач (`/ws/{task_id}`). Фронтенд использует гибридную стратегию (WS + Polling fallback).
 - **Лимит контекста**: при приближении к 90k токенов — предложить сжатие.
 - **Коммиты**: после каждой завершённой логической единицы (фича, багфикс, рефакторинг модуля).
 - **Язык кода**: английский (имена, комментарии в коде). Документация и мета-файлы — русский.
@@ -23,20 +24,18 @@
 ```
 src/
 ├── app.py              → точка входа FastAPI, middleware, lifespan
-├── tasks.py            → оркестратор pipeline; RATIO_KEY_MAP; _build_score_payload()
-├── analysis/           → чистые функции: pdf_extractor, ratios, scoring, nlp_analysis, recommendations
-├── core/               → ai_service (единственная точка входа к AI), gigachat_agent, agent
+├── tasks.py            → оркестратор pipeline; декомпозирован на фазы
+├── analysis/           → чистые функции: pdf_extractor, ratios (с RATIO_KEY_MAP), scoring (с build_score_payload), nlp_analysis, recommendations
+├── core/               → ai_service, base_agent (базовый класс), gigachat_agent, agent, ws_manager (WebSocket)
 ├── db/                 → database (lazy engine), crud (единственный файл с SQL), models
 ├── models/             → schemas (Pydantic), settings (env-переменные)
-└── routers/            → upload, result, analyze, system
+└── routers/            → upload, result, analyses, websocket, multi_analysis
 
 frontend/src/
-├── api/                → client.ts (axios), interfaces.ts (ОСНОВНОЙ контракт), types.ts (НЕ ИСПОЛЬЗОВАТЬ)
-├── hooks/              → usePdfAnalysis.ts (polling 2000ms)
+├── api/                → client.ts (axios), interfaces.ts (ОСНОВНОЙ контракт)
+├── hooks/              → usePdfAnalysis.ts, useAnalysisSocket.ts (WebSocket), useMultiAnalysisPolling.ts
 ├── pages/              → Dashboard, DetailedReport, AnalysisHistory, Auth
-└── components/         → Layout.tsx, ProtectedRoute.tsx
-
-.agent/                 → инфраструктура для AI-агента (этот файл + мета-документы)
+└── components/         → Layout.tsx, ProtectedRoute.tsx, ConfidenceBadge.tsx
 migrations/versions/    → 0001_create_analyses, 0002_add_indexes
 
 Docker (production):
@@ -57,8 +56,8 @@ Docker (production):
 | `.agent/local_notes.md` | Известные баги, воркэраунды, архив решённых проблем |
 | `.agent/PROJECT_LOG.md` | История изменений — читать последние 3 записи для быстрого вката |
 | `.agent/architecture.md` | Слои, data flow, паттерны, жёсткие лимиты |
-| `src/tasks.py` | RATIO_KEY_MAP и _build_score_payload() — маппинг данных backend→frontend |
-| `frontend/src/api/interfaces.ts` | Контракт данных frontend; менять синхронно с backend |
+| `src/tasks.py` | Оркестратор pipeline; декомпозирован на фазы |
+| `frontend/src/api/interfaces.ts` | Контракт данных frontend; единственный источник правды |
 
 > ⚠️ Правило: эти файлы обновляются ПЕРЕД сжатием контекста. Не сжимай контекст без обновления `.agent/overview.md` и `.agent/PROJECT_LOG.md`.
 
@@ -118,8 +117,8 @@ Docker (production):
 | ❌ `analysis/*` не импортируют FastAPI/SQLAlchemy | `ratios.py` делает `from fastapi import ...` |
 | ❌ SQL только в `src/db/crud.py` | `tasks.py` вызывает `session.execute()` |
 | ❌ AI только через `src/core/ai_service.py` | `nlp_analysis.py` импортирует `gigachat_agent` напрямую |
-| ❌ `ratios.py` не меняет язык ключей | Добавление EN-ключей в `ratios.py` сломает `RATIO_KEY_MAP` |
-| ✅ Новые коэффициенты → добавить в `RATIO_KEY_MAP` в `tasks.py` | |
+| ❌ Маппинг и трансляция ключей в `tasks.py` | Перенос `translate_ratios()` из `ratios.py` в `tasks.py` |
+| ✅ Новые коэффициенты → добавить в `ratios.py` и `scoring.py` | |
 | ✅ Новые поля ответа → синхронно обновить `interfaces.ts` | |
 
 ### Жёсткие лимиты (не менять без тестирования всего pipeline):
@@ -251,8 +250,7 @@ NGINX_RATE_LIMIT   = 10r/s   # nginx.conf: limit_req_zone rate
 - ❌ Не удаляй комментарии, объясняющие «почему», а не «что»
 - ❌ Не игнорируй `.agent/local_notes.md` при работе с похожим кодом
 - ❌ Не предлагай сжатие контекста без обновления мета-файлов
-- ❌ Не используй `frontend/src/api/types.ts` — только `interfaces.ts`
-- ❌ Не добавляй EN-ключи в `ratios.py` — маппинг только в `tasks.py`
+- ❌ Не используй `frontend/src/api/types.ts` (удалён) — только `interfaces.ts`
 - ❌ Не вызывай `gigachat_agent` или `agent` напрямую — только через `ai_service.py`
 - ❌ Не пиши SQL вне `src/db/crud.py`
 - ❌ Не меняй один таймаут AI — меняй все три файла сразу

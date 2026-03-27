@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 import os
 import tempfile
@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from src.core.auth import get_api_key
 from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
 from src.db.crud import create_analysis, get_analysis
-from src.tasks import process_pdf
+from src.tasks import process_pdf, cancel_task
 from src.utils.masking import mask_analysis_data
 
 logger = logging.getLogger(__name__)
@@ -154,3 +154,18 @@ async def get_result(
     payload = {"status": analysis.status}
     payload.update(result)
     return payload
+
+
+@router.delete("/cancel/{task_id}")
+async def cancel_analysis(
+    task_id: str,
+    api_key: str = Depends(get_api_key),
+):
+    """Cancel an in-progress analysis task."""
+    analysis = await get_analysis(task_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if analysis.status not in ("processing", "uploading"):
+        return {"status": analysis.status, "message": "Task already finished"}
+    cancel_task(task_id)
+    return {"status": "cancelled", "task_id": task_id}

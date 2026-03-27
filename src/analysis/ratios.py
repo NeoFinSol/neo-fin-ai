@@ -1,7 +1,56 @@
-﻿import logging
+import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Маппинг русских ключей ratios → snake_case English для frontend
+# Порядок соответствует группам: ликвидность, рентабельность, устойчивость, активность
+RATIO_KEY_MAP = {
+    # Liquidity
+    "Коэффициент текущей ликвидности": "current_ratio",
+    "Коэффициент быстрой ликвидности": "quick_ratio",
+    "Коэффициент абсолютной ликвидности": "absolute_liquidity_ratio",
+    # Profitability
+    "Рентабельность активов (ROA)": "roa",
+    "Рентабельность собственного капитала (ROE)": "roe",
+    "Рентабельность продаж (ROS)": "ros",
+    "EBITDA маржа": "ebitda_margin",
+    # Financial stability
+    "Коэффициент автономии": "equity_ratio",
+    "Финансовый рычаг": "financial_leverage",
+    "Покрытие процентов": "interest_coverage",
+    # Business activity
+    "Оборачиваемость активов": "asset_turnover",
+    "Оборачиваемость запасов": "inventory_turnover",
+    "Оборачиваемость дебиторской задолженности": "receivables_turnover",
+}
+
+
+def translate_ratios(ratios: dict) -> dict:
+    """
+    Convert Russian ratio keys to snake_case English for frontend.
+    
+    Args:
+        ratios: Dictionary with Russian keys from calculate_ratios
+        
+    Returns:
+        dict: Dictionary with English keys
+    """
+    result = {}
+    unknown_keys = []
+    
+    for k, v in ratios.items():
+        en_key = RATIO_KEY_MAP.get(k)
+        if en_key:
+            result[en_key] = v
+        else:
+            # Drop unknown keys — do not forward Russian keys to the frontend
+            unknown_keys.append(k)
+    
+    if unknown_keys:
+        logger.warning("Unmapped ratio keys (frontend may break): %s", unknown_keys)
+    
+    return result
 
 
 def calculate_ratios(financial_data: dict[str, Any]) -> dict[str, float | None]:
@@ -163,7 +212,7 @@ def _log_missing_data(financial_data: dict[str, Any]) -> None:
 
     for field in critical_fields:
         if financial_data.get(field) is None:
-            logger.warning(f"Missing critical financial field: {field}")
+            logger.warning("Missing critical financial field: %s", field)
 
     # Log warning for extended fields used in new ratios
     extended_fields = [
@@ -174,4 +223,4 @@ def _log_missing_data(financial_data: dict[str, Any]) -> None:
 
     for field in extended_fields:
         if financial_data.get(field) is None:
-            logger.debug(f"Optional field not available: {field}")
+            logger.debug("Optional field not available: %s", field)

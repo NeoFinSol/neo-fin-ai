@@ -1,31 +1,24 @@
 import contextlib
 import logging
 import os
-import time
 from typing import List
 
-from dotenv import load_dotenv
-
-# Load .env before any module-level os.getenv() calls (e.g. database.py)
-load_dotenv()
-
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
-import uvicorn
 
+from src.models.settings import app_settings
 import src.routers.system as system_router
 import src.routers.analyze as analyze_router
 import src.routers.pdf_tasks as pdf_tasks_router
 import src.routers.analyses as analyses_router
 import src.routers.multi_analysis as multi_analysis_router
+import src.routers.websocket as websocket_router
 from src.core.ai_service import ai_service
-from src.models.settings import app_settings
-from src.utils.logging_config import setup_logging, get_logger, metrics
+from src.utils.logging_config import setup_logging, get_logger
 from src.utils.error_handler import register_exception_handlers
 
 
@@ -285,3 +278,4 @@ app.include_router(analyze_router.router)
 app.include_router(pdf_tasks_router.router)
 app.include_router(analyses_router.router)
 app.include_router(multi_analysis_router.router)
+app.include_router(websocket_router.router)

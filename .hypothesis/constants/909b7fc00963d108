@@ -1,4 +1,0 @@
-# file: E:\neo-fin-ai\src\utils\logging_config.py
-# hypothesis_version: 6.151.9
-
-[0.0, 1000, ' | ', '%Y-%m-%d %H:%M:%S', '+00:00', 'CRITICAL', 'DEBUG', 'ERROR', 'INFO', 'LOG_FORMAT', 'LOG_LEVEL', 'WARNING', 'Z', 'ai_failures', 'backend', 'duration_ms', 'exception', 'extra', 'extra_data', 'failed_tasks', 'httpcore', 'httpx', 'json', 'level', 'message', 'module', 'service', 'session_id', 'sqlalchemy.engine', 'successful_tasks', 'task_id', 'text', 'timestamp', 'total_tasks', 'traceback', 'type', 'uvicorn.access']

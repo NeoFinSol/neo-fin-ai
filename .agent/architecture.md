@@ -15,22 +15,22 @@ NeoFin AI — ИИ-ассистент финансового директора:
 ┌─────────────────────────────────────────────────────────┐
 │         Frontend: React 19 / Mantine 8 / Vite 6         │
 │  frontend/src/pages/, frontend/src/components/          │
-│  Отвечает: UI, polling, отображение результатов         │
+│  Отвечает: UI, WebSocket-обновления, отображение        │
 │  НЕ должно: содержать бизнес-логику, прямые SQL-запросы │
 └────────────────────┬────────────────────────────────────┘
-                     │ HTTP REST (axios)
-                     │ POST /upload → GET /result/{id} (polling 2000ms)
+                     │ HTTP REST + WebSocket (/ws/{id})
+                     │ POST /upload → WebSocket update → Result
 ┌────────────────────▼────────────────────────────────────┐
 │              API Layer: FastAPI routers                  │
-│  src/routers/upload.py, src/routers/result.py           │
-│  Отвечает: валидация входа, HTTP-ответы, auth-проверка  │
+│  src/routers/upload.py, src/routers/websocket.py        │
+│  Отвечает: валидация входа, WS-соединения, auth-проверка│
 │  НЕ должно: содержать бизнес-логику, импортировать БД   │
 └────────────────────┬────────────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────────────┐
 │            Controllers: бизнес-логика запроса           │
-│  src/controllers/ (если выделены) или src/tasks.py      │
-│  Отвечает: оркестрация pipeline, маппинг ключей         │
+│  src/tasks.py + src/core/ws_manager.py                  │
+│  Отвечает: оркестрация pipeline, WS-broadcast           │
 │  НЕ должно: импортировать из routers, знать о HTTP      │
 └────────────────────┬────────────────────────────────────┘
                      │
@@ -67,7 +67,7 @@ NeoFin AI — ИИ-ассистент финансового директора:
 - `routers/*` → только валидация + вызов функций из `tasks.py` или controllers; никакой логики внутри
 - `controllers` / `tasks.py` → не импортируют ничего из `routers/`
 - `src/analysis/*` → нет импортов `fastapi`, `sqlalchemy`, `httpx`/`requests` к AI
-- `src/core/gigachat_agent.py`, `src/core/agent.py` → вызываются только из `src/core/ai_service.py`
+- `src/core/gigachat_agent.py`, `src/core/agent.py` → вызываются только из `src/core/ai_service.py` (через `BaseAIAgent`)
 - `session.add()`, `session.commit()`, `session.execute()` → только в `src/db/crud.py`
 
 ---
@@ -77,38 +77,40 @@ NeoFin AI — ИИ-ассистент финансового директора:
 ```
 src/
 ├── app.py                        # точка входа FastAPI: middleware, lifespan, подключение routers
-├── tasks.py                      # process_pdf(): BackgroundTask, RATIO_KEY_MAP, _build_score_payload()
+├── tasks.py                      # process_pdf(): оркестратор pipeline; использует чистые функции из analysis/
 ├── analysis/
 │   ├── __init__.py
-│   ├── pdf_extractor.py          # извлечение текста (PyPDF2), таблиц (camelot/pdfplumber), OCR (tesseract)
-│   ├── ratios.py                 # 13 финансовых коэффициентов; возвращает русскоязычные ключи
-│   ├── scoring.py                # интегральный скоринг 0–100; 4 группы весов; возвращает details: dict
+│   ├── pdf_extractor.py          # извлечение текста (PyPDF2), таблиц (camelot), OCR (tesseract); regex fallback
+│   ├── ratios.py                 # 13 финансовых коэффициентов; RATIO_KEY_MAP и translate_ratios()
+│   ├── scoring.py                # интегральный скоринг 0–100; 4 группы весов; build_score_payload()
 │   ├── nlp_analysis.py           # NLP-анализ через ai_service; подключён в tasks.py
 │   └── recommendations.py        # 3–5 рекомендаций с ссылками на метрики; timeout 65s; graceful degrade
 ├── core/
 │   ├── __init__.py
 │   ├── ai_service.py             # AIService: _configure(), выбор провайдера, graceful degrade
-│   ├── gigachat_agent.py         # GigaChat: OAuth2 flow, SSL, Bearer token кеш 55 мин, retry 3x
-│   └── agent.py                  # DeepSeek: Bearer token, retry 3x exponential backoff
+│   ├── base_agent.py             # BaseAIAgent: базовый класс с Singleton aiohttp.ClientSession
+│   ├── gigachat_agent.py         # GigaChat: наследует BaseAIAgent, OAuth2 flow, SSL, ретраи
+│   ├── agent.py                  # DeepSeek: наследует BaseAIAgent, Bearer token, ретраи
+│   └── ws_manager.py             # ConnectionManager: управление WebSocket-подписками
 ├── db/
 │   ├── __init__.py
 │   ├── database.py               # get_engine() lazy init, AsyncSession factory, get_db() dependency
-│   ├── models.py                 # ORM-модель Analysis (таблица analyses)
-│   └── crud.py                   # create_analysis(), get_analysis(), update_analysis(),
-│                                 # get_analyses_list() — только здесь SQL
+│   ├── models.py                 # ORM-model Analysis (таблица analyses)
+│   └── crud.py                   # create_analysis(), get_analysis(), update_analysis()
 ├── models/
 │   ├── __init__.py
-│   ├── schemas.py                # Pydantic-схемы: UploadResponse, AnalysisResult,
-│                                 # AnalysisSummaryResponse, AnalysisListResponse, AnalysisDetailResponse
+│   ├── schemas.py                # Pydantic-схемы: UploadResponse, AnalysisResult, ScoreSchema
 │   └── settings.py               # Settings(BaseSettings): все env-переменные с валидацией
 ├── routers/
 │   ├── __init__.py
 │   ├── upload.py                 # POST /upload: валидация PDF, magic header, size ≤50MB, BackgroundTask
-│   ├── result.py                 # GET /result/{task_id}: чтение статуса из БД; маскировка при DEMO_MODE
-│   └── analyses.py               # GET /analyses (пагинация), GET /analyses/{task_id}; маскировка при DEMO_MODE
+│   ├── result.py                 # GET /result/{task_id}: чтение статуса из БД (fallback для WS)
+│   ├── websocket.py              # /ws/{task_id}: WebSocket-эндпоинт для real-time обновлений
+│   └── analyses.py               # GET /analyses (пагинация), GET /analyses/{task_id}
 └── utils/
     ├── __init__.py
-    └── masking.py                # mask_analysis_data(data, demo_mode): чистая функция, без FastAPI/SQLAlchemy
+    ├── masking.py                # mask_analysis_data(data, demo_mode): чистая функция
+    └── file_utils.py             # cleanup_temp_file(): безопасная очистка временных ресурсов
 
 frontend/
 ├── index.html
@@ -288,8 +290,9 @@ interface FinancialRatios {
 interface Score {
   score: number
   risk_level: string
+  confidence_score: number
   factors: ScoreFactor[]
-  normalized_scores: Record<string, number>
+  normalized_scores: Record<string, number | null>
 }
 
 interface ScoreFactor {
@@ -324,21 +327,18 @@ interface AnalysisListResponse {
 
 ### ⚠️ Критичные несоответствия backend ↔ frontend
 
-**Несоответствие 1: ключи коэффициентов**
-- `src/analysis/ratios.py` возвращает русскоязычные ключи:
-  `{"Коэффициент текущей ликвидности": 1.5, "Рентабельность активов": 0.08, ...}`
-- Frontend ожидает EN snake_case ключи: `{current_ratio: 1.5, roa: 0.08, ...}`
-- Маппинг происходит в `src/tasks.py` через `RATIO_KEY_MAP` (13 ключей).
-- Функция `_translate_ratios()` в `tasks.py` применяет этот маппинг перед сохранением в БД.
+**Несоответствие 1: ключи коэффициентов (Исправлено)**
+- Маппинг и трансляция ключей теперь инкапсулированы в слое `analysis` ([ratios.py](file:///e:/neo-fin-ai/src/analysis/ratios.py)).
+- Оркестратор ([tasks.py](file:///e:/neo-fin-ai/src/tasks.py)) вызывает `translate_ratios()` перед сохранением.
 
-**Несоответствие 2: структура scoring**
-- `src/analysis/scoring.py` возвращает `details: dict` (плоский словарь с числовыми значениями)
-- Frontend ожидает `factors: [{name, description, impact}]` (список объектов)
-- Преобразование выполняет `_build_score_payload()` в `src/tasks.py`
+**Несоответствие 2: структура scoring (Исправлено)**
+- Формирование `payload` факторов теперь инкапсулировано в [scoring.py](file:///e:/neo-fin-ai/src/analysis/scoring.py) через `build_score_payload()`.
 
-**Несоответствие 3: дублирование типов** *(технический долг)*
-- `frontend/src/api/types.ts` дублирует `interfaces.ts` с расхождениями в типах
-- Использовать только `interfaces.ts` — `types.ts` не трогать до рефакторинга
+**Несоответствие 3: дублирование типов (Исправлено)**
+- Файл `frontend/src/api/types.ts` удалён. Проект использует единый контракт в [interfaces.ts](file:///e:/neo-fin-ai/frontend/src/api/interfaces.ts).
+
+**Несоответствие 4: утечка неизвестных ключей в translate_ratios (Исправлено)**
+- `translate_ratios()` теперь дропает ключи, отсутствующие в `RATIO_KEY_MAP`, вместо проброса на фронтенд.
 
 ---
 
@@ -351,66 +351,41 @@ User
 POST /upload (multipart/form-data, file ≤ 50MB)
  │
  ├─ validate: magic header b"%PDF-" на первых 8 байт
- ├─ validate: content-type == "application/pdf"
- ├─ validate: size ≤ 50MB (читается чанками по 8KB)
- ├─ save → SpooledTemporaryFile (RAM до 1MB, потом диск)
  ├─ generate task_id (UUID4)
- ├─ crud.create_analysis(task_id, status="processing")  ← БД
+ ├─ crud.create_analysis(task_id, status="processing")
  ├─ BackgroundTasks.add_task(process_pdf, task_id, tmp_path)
- └─ return {task_id, status: "processing"}  ← немедленно
+ └─ return {task_id, status: "processing"}
 
                     [BackgroundTask: process_pdf()]
                      │
-                     ├─ is_scanned(pdf)?
-                     │   ├─ YES → pdf2image + pytesseract (OCR)
-                     │   └─ NO  → PyPDF2 (текст) + pdfplumber (таблицы)
+                     ├─ [Phase 1: Extraction]
+                     │   ├─ is_scanned(pdf)? → extract text/tables
+                     │   ├─ parse metrics → apply_confidence_filter
+                     │   └─ ws_manager.broadcast(task_id, status="extracting")
                      │
-                     ├─ extract_tables():
-                     │   ├─ camelot lattice mode
-                     │   └─ fallback: camelot stream mode
+                     ├─ [Phase 2: Scoring]
+                     │   ├─ calculate_ratios → translate_ratios
+                     │   ├─ calculate_integral_score → build_score_payload
+                     │   └─ ws_manager.broadcast(task_id, status="scoring")
                      │
-                     ├─ parse_financial_statements()
-                     │   └─ → dict[str, float | None]  (сырые метрики)
+                     ├─ [Phase 3: AI Analysis]
+                     │   ├─ analyze_narrative (GigaChat/DeepSeek)
+                     │   ├─ generate_recommendations
+                     │   └─ ws_manager.broadcast(task_id, status="analyzing")
                      │
-                     ├─ calculate_ratios(metrics)
-                     │   └─ → dict[ru_key, float | None]  (5 коэффициентов, RU-ключи)
+                     ├─ [Phase 4: Finalize]
+                     │   ├─ crud.update_analysis(task_id, status="completed", result={...})
+                     │   └─ ws_manager.broadcast(task_id, status="completed", result={...})
                      │
-                     ├─ calculate_integral_score(ratios)
-                     │   └─ → {score: float, risk_level: str, details: dict}
-                     │
-                     ├─ _translate_ratios(ratios, RATIO_KEY_MAP)
-                     │   └─ → dict[en_key, float | None]  (EN-ключи для frontend)
-                     │
-                     ├─ _build_score_payload(score_result)
-                     │   └─ → {score, risk_level, factors: [{name,description,impact}], normalized_scores}
-                     │
-                     ├─ [optional] analyze_narrative() via ai_service.analyze()
-                     │   ├─ asyncio.wait_for(timeout=60s)
-                     │   ├─ SUCCESS → {risks: [], key_factors: [], recommendations: []}
-                     │   └─ FAIL/TIMEOUT → {risks: [], key_factors: [], recommendations: []}  (graceful)
-                     │
-                     ├─ crud.update_analysis(task_id, status="completed", result={...})  ← БД
-                     └─ finally: os.unlink(tmp_path)  (cleanup tempfile)
+                     └─ finally: cleanup_temp_file(file_path)
 
-Frontend polling (usePdfAnalysis.ts, каждые 2000ms)
+Frontend WebSocket (useAnalysisSocket.ts)
  │
  ▼
-GET /result/{task_id}
+WS /ws/{task_id}
  │
- ├─ status == "processing" → продолжать polling
- ├─ status == "failed"     → показать ошибку, остановить polling
- └─ status == "completed"  → остановить polling
-     │
-     ├─ [если DEMO_MODE=1] mask_analysis_data(result, True)  ← src/utils/masking.py
-     │
-     ▼
-     data: {scanned, text, tables, metrics, ratios, score, nlp}
-      │
-      ├─ Dashboard.tsx → MetricCard (score, risk_level, ratios)
-      └─ navigate /reports → DetailedReport.tsx
-          ├─ BarChart из реальных ratios (buildChartData, getBarColor, THRESHOLDS)
-          ├─ score gauge + factors список
-          └─ nlp секция (risks, key_factors, recommendations)
+ ├─ onMessage: обновление UI (статус-бар, прогресс)
+ └─ onComplete: редирект на /reports или показ DetailedReport
 
 История анализов (AnalysisHistory.tsx, Этап 3)
  │
@@ -546,6 +521,34 @@ async def update_analysis(task_id: str, **kwargs):
     else:
         # update fields
         await session.commit()
+
+### g) WebSocket Connection Management — `src/core/ws_manager.py`
+
+```python
+# src/core/ws_manager.py
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, Set[WebSocket]] = {}
+    async def connect(self, websocket: WebSocket, task_id: str): ...
+    async def broadcast(self, task_id: str, message: dict): ...
+```
+
+Используется для группировки соединений по `task_id`. Позволяет нескольким вкладкам/пользователям следить за одной задачей без лишней нагрузки на БД.
+
+### h) Base AI Agent (Singleton Session) — `src/core/base_agent.py`
+
+```python
+# src/core/base_agent.py
+class BaseAIAgent:
+    _session: Optional[aiohttp.ClientSession] = None
+    @classmethod
+    async def get_session(cls) -> aiohttp.ClientSession:
+        if cls._session is None or cls._session.closed:
+            cls._session = aiohttp.ClientSession(...)
+        return cls._session
+```
+
+Предотвращает исчерпание портов (port exhaustion) при большом количестве параллельных запросов к AI-провайдерам.
 ```
 
 Защита от race condition между `/upload` endpoint и `process_pdf` background task: если запись ещё не создана — создаём.
@@ -562,9 +565,8 @@ src/models/settings.py              — все env-переменные, их т
 src/db/database.py                  — как создаётся engine и session; lazy init паттерн
 frontend/src/api/interfaces.ts      — ОСНОВНОЙ контракт данных frontend; любое изменение backend-ответа
                                       должно отражаться здесь
-src/tasks.py                        — RATIO_KEY_MAP (маппинг RU→EN ключей) и _build_score_payload()
-                                      (преобразование details→factors); без понимания этого файла
-                                      любые правки ratios.py или scoring.py сломают frontend
+src/tasks.py                        — Оркестратор pipeline; точка входа для фоновых задач;
+                                      читать для понимания порядка вызовов (ratios -> scoring -> ai)
 ```
 
 **Читать перед изменением конкретного слоя:**
@@ -573,9 +575,9 @@ src/tasks.py                        — RATIO_KEY_MAP (маппинг RU→EN к
 [Analysis pipeline]
 src/analysis/pdf_extractor.py       — _METRIC_KEYWORDS dict определяет, какие строки считаются
                                       финансовыми метриками; изменение влияет на все downstream расчёты
-src/analysis/ratios.py              — формулы 5 коэффициентов; ключи ОБЯЗАТЕЛЬНО русские (маппинг в tasks.py)
+src/analysis/ratios.py              — формулы 13 коэффициентов; RATIO_KEY_MAP и translate_ratios()
 src/analysis/scoring.py             — weights dict и пороговые значения; нормализация 0–100;
-                                      структура details dict должна соответствовать _build_score_payload()
+                                      build_score_payload() для формирования данных фронтенда
 
 [AI/NLP]
 src/core/ai_service.py              — логика _configure(): порядок выбора провайдера, graceful degrade
@@ -627,6 +629,7 @@ BUILD_README.md                       команда docker-compose up --build
 - Polling → WebSocket или Server-Sent Events (SSE)
 - SlowAPI memory storage → Redis storage
 - Tempfiles → объектное хранилище (S3 / MinIO) с presigned URLs
+- **Logging**: внедрить агрегацию логов (ELK/Loki)
 
 **Жёсткие лимиты (нельзя менять без тестирования всего pipeline):**
 
@@ -634,7 +637,9 @@ BUILD_README.md                       команда docker-compose up --build
 MAX_PDF_PAGES    = 100        # защита от DoS; проверяется в pdf_extractor.py
 MAX_FILE_SIZE    = 50MB       # проверяется в upload.py при чтении чанками
 AI_TIMEOUT       = 120s       # задан в agent.py, gigachat_agent.py, ai_service.py — менять везде
-NLP_TIMEOUT      = 60s        # asyncio.wait_for в ai_service.analyze()
+NLP_TIMEOUT      = 60s        # asyncio.wait_for в tasks.py
+REC_TIMEOUT      = 90s        # timeout=90 в recommendations.py → ai_service.invoke()
+MAX_OCR_PAGES    = 50         # константа в pdf_extractor.py; OCR останавливается после 50 страниц
 POLLING_INTERVAL = 2000ms     # захардкожен в frontend/src/hooks/usePdfAnalysis.ts
 TOKEN_CACHE_TTL  = 55min      # GigaChat Bearer token; меньше срока жизни токена (60 мин)
 SPOOLED_MAX_SIZE = 1MB        # SpooledTemporaryFile RAM-порог в upload.py
@@ -649,12 +654,4 @@ CHUNK_SIZE       = 8192       # размер чанка при чтении фа
 [HIGH]     frontend/src/pages/Auth.tsx (handleSubmit)
            — сохраняет введённый API key в localStorage без валидации на backend;
              любая строка принимается как валидный ключ
-
-[MEDIUM]   frontend/src/api/types.ts vs interfaces.ts
-           — дублирование типов с расхождениями в полях; часть компонентов может
-             импортировать из types.ts и получать неверные типы;
-             использовать только interfaces.ts
-
-[LOW]      корень репозитория: GIT_COMMIT_SUCCESS.txt, GIT_PUSH_SUCCESS.txt
-           — мусорные файлы от CI артефактов; не несут логики; можно удалить
 ```

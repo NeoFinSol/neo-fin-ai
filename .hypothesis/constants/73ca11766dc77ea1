@@ -1,4 +1,0 @@
-# file: E:\neo-fin-ai\src\routers\pdf_tasks.py
-# hypothesis_version: 6.151.9
-
-[400, 404, 500, 8192, '.pdf', '/result/{task_id}', '/upload', '0', '1', 'DEMO_MODE', 'Empty file', 'PDF file expected', 'Task not found', 'application/pdf', 'pdf', 'processing', 'status', 'task_id']

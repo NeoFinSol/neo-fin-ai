@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Check Local Notes Before Task",
+  "description": "Перед началом таска из спека — читает local_notes.md и проверяет известные проблемы",
+  "version": "1",
+  "when": {
+    "type": "preTaskExecution"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Перед началом таска прочитай `.agent/local_notes.md` и проверь: есть ли там известные проблемы, workaround-ы или предупреждения, которые касаются текущего таска?\n\nЕсли есть релевантные заметки — кратко перечисли их и учти при выполнении.\nЕсли ничего релевантного нет — ответь \"✅ No relevant notes, proceeding\" и продолжай."
+  }
+}

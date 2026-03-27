@@ -69,10 +69,40 @@ backend/obj/
 .env.local
 
 .claude/
-"test_*.py"  
-"test_*.bat"  
-"check_*.py"  
-"*.bat"  
-".qwen/"  
-".hypothesis/"  
-"coverage.*" 
+# One-off debug/check scripts in root
+test_*.py
+check_*.py
+test_*.bat
+check_*.bat
+run_check.bat
+run_final.bat
+run_ocr.bat
+
+# IDE and tool directories
+.qwen/
+.grok/
+.lingma/
+.qodo/
+.hypothesis/
+.pytest_cache/
+.ruff_cache/
+
+# Coverage artifacts
+coverage.json
+coverage.xml
+coverage_html/
+.coverage
+
+# Visual Studio
+*.pyproj
+*.sln
+TestResults/
+
+# Local venvs (use env/ only locally, never commit)
+env1/
+env2/
+
+# Temp/debug files
+backend.log
+error.txt
+*.traineddata

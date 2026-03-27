@@ -1,8 +1,8 @@
 import logging
-import os
 from typing import Optional
 
 import aiohttp
+from src.core.base_agent import BaseAIAgent
 
 logger = logging.getLogger(__name__)
 
@@ -10,15 +10,14 @@ DEFAULT_TIMEOUT = 120
 MAX_RETRIES = 3
 
 
-class HuggingFaceAgent:
+class HuggingFaceAgent(BaseAIAgent):
     """Agent for interacting with Hugging Face Inference API."""
 
     def __init__(self, timeout: int = DEFAULT_TIMEOUT):
+        super().__init__(timeout=timeout)
         self._token: Optional[str] = None
         self._model: str = "Qwen/Qwen3.5-9B-Instruct"
         self._base_url: str = "https://router.huggingface.co/v1"
-        self.timeout = timeout
-        self._configured: bool = False
 
     def set_config(
         self,
@@ -68,13 +67,13 @@ class HuggingFaceAgent:
         url = f"{self._base_url}/chat/completions"
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    url,
-                    json=payload,
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=timeout or self.timeout),
-                ) as response:
+            session = await self._get_session()
+            async with session.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=timeout or self.timeout),
+            ) as response:
                     if response.status != 200:
                         error_text = await response.text()
                         logger.error("HF API error %d: %s", response.status, error_text)

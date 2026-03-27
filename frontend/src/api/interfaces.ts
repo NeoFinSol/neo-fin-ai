@@ -48,6 +48,7 @@ export interface ScoreFactor {
 export interface ScoreData {
   score: number;
   risk_level: 'low' | 'medium' | 'high';
+  confidence_score: number;
   factors: ScoreFactor[];
   normalized_scores: Partial<Record<keyof FinancialRatios, number | null>>;
 }

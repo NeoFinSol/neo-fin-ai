@@ -32,9 +32,9 @@ def _format_metric_value(value: Optional[float | int | None]) -> str:
         return "—"
     if isinstance(value, float):
         # Show percentages and ratios nicely
-        if value < 0.1:  # Likely a ratio or percentage decimal
+        if abs(value) < 0.1:  # Likely a ratio or percentage decimal
             return f"{value:.2f}"
-        elif value > 100:  # Likely a large number (currency, etc.)
+        elif abs(value) > 100:  # Likely a large number (currency, etc.)
             return f"{value:,.0f}"
         else:
             return f"{value:.2f}"
@@ -157,7 +157,7 @@ async def generate_recommendations(
                     "Отвечай только JSON без дополнительного текста."
                 ),
             },
-            timeout=60,
+            timeout=90,
         )
 
         if not response:
@@ -175,7 +175,7 @@ async def generate_recommendations(
         return recommendations
 
     except asyncio.TimeoutError:
-        logger.warning("Recommendations generation timed out (60s)")
+        logger.warning("Recommendations generation timed out (90s)")
         return FALLBACK_RECOMMENDATIONS
     except ImportError:
         logger.debug("AI service not available for recommendations generation")
@@ -219,7 +219,7 @@ def _parse_recommendations_response(response_text: str) -> list[str]:
     try:
         parsed = json.loads(json_str)
     except json.JSONDecodeError as e:
-        logger.warning(f"Failed to parse recommendations JSON: {e}")
+        logger.warning("Failed to parse recommendations JSON: %s", e)
         return []
 
     # Extract recommendations list
@@ -229,11 +229,11 @@ def _parse_recommendations_response(response_text: str) -> list[str]:
         logger.warning("Recommendations field is not a list")
         return []
 
-    # Convert all items to strings and filter empty ones
-    result = [str(r).strip() for r in recommendations if r]
+    # Deduplicate while preserving first-occurrence order
+    result = list(dict.fromkeys(str(r).strip() for r in recommendations if r))
 
     if len(result) < 3:
-        logger.warning(f"Generated only {len(result)} recommendations, expected 3-5")
+        logger.warning("Generated only %d recommendations, expected 3-5", len(result))
 
     return result
 

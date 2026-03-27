@@ -1,0 +1,46 @@
+{
+    "metrics": [
+        {
+            "metric": "revenue",
+            "value": 98000000.0,
+            "confidence_score": 0.9,
+            "source_fragment": "Выручка 98 000 000"
+        },
+        {
+            "metric": "net_profit",
+            "value": 5200000.0,
+            "confidence_score": 0.85,
+            "source_fragment": "Чистая прибыль 5 200 000"
+        },
+        {
+            "metric": "total_assets",
+            "value": 245000000.0,
+            "confidence_score": 0.9,
+            "source_fragment": "Баланс 245 000 000"
+        },
+        {
+            "metric": "equity",
+            "value": 78000000.0,
+            "confidence_score": 0.8,
+            "source_fragment": "Собственный капитал 78 000 000"
+        },
+        {
+            "metric": "liabilities",
+            "value": 167000000.0,
+            "confidence_score": 0.8,
+            "source_fragment": "Итого обязательств 167 000 000"
+        },
+        {
+            "metric": "current_assets",
+            "value": 55000000.0,
+            "confidence_score": 0.75,
+            "source_fragment": "Оборотные активы 55 000 000"
+        },
+        {
+            "metric": "short_term_liabilities",
+            "value": 41000000.0,
+            "confidence_score": 0.75,
+            "source_fragment": "Краткосрочные обязательства 41 000 000"
+        }
+    ]
+}

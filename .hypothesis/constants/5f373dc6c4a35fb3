@@ -1,4 +1,0 @@
-# file: E:\neo-fin-ai\src\utils\error_handler.py
-# hypothesis_version: 6.151.9
-
-[400, 422, 500, 503, '0', '1', 'DATABASE_ERROR', 'DEV_MODE', 'INTERNAL_ERROR', 'Invalid data format', 'Invalid request data', 'VALIDATION_ERROR', 'client', 'code', 'details', 'error', 'errors', 'extra_data', 'failed', 'message', 'method', 'path', 'status', 'type', 'unknown']

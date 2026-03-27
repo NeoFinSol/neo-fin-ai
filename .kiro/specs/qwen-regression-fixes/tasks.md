@@ -409,7 +409,7 @@
     - `test_mask_number_none_returns_dash`: `_mask_number(None)` → `"—"`
     - _Requirements: 2.1–2.20_
 
-- [-] 18. Write integration tests
+- [x] 18. Write integration tests
 
   - [x] 18.1 Написать integration-тесты в `tests/test_qwen_regression_integration.py`
     - `test_full_upload_polling_flow`: POST /upload → polling → completed → результат отображается

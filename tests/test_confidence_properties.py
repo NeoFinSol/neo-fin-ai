@@ -25,7 +25,7 @@ from src.analysis.pdf_extractor import (
     ExtractionSource,
     determine_source,
 )
-from src.tasks import _apply_confidence_filter, CONFIDENCE_THRESHOLD
+from src.analysis.pdf_extractor import apply_confidence_filter, CONFIDENCE_THRESHOLD
 
 
 # =============================================================================

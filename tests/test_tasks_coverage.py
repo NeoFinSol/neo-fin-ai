@@ -5,12 +5,14 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from pathlib import Path
 
+from src.utils.file_utils import cleanup_temp_file
 from src.tasks import (
-    _cleanup_temp_file,
     _ensure_analysis_exists,
-    _build_score_payload,
-    _translate_risk_level,
-    process_pdf,
+    _run_extraction_phase,
+    _run_scoring_phase,
+    _run_ai_analysis_phase,
+    _finalize_task,
+    _handle_task_failure
 )
 
 

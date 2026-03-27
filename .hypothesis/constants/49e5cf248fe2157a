@@ -1,4 +1,0 @@
-# file: E:\neo-fin-ai\src\routers\system.py
-# hypothesis_version: 6.151.9
-
-[503, '/health', '/healthz', '/ready', '/system', 'SELECT 1', 'ai_service', 'components', 'database', 'degraded', 'healthy', 'not_configured', 'ok', 'ready', 'status', 'system', 'timestamp', 'unhealthy', 'unknown']

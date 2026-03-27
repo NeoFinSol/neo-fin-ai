@@ -1,4 +1,0 @@
-# file: E:\neo-fin-ai\src\routers\multi_analysis.py
-# hypothesis_version: 6.151.9
-
-[202, 404, 422, '.pdf', '/multi-analysis', '/{session_id}', 'Session not found', 'completed', 'failed', 'multi-analysis', 'periods', 'processing', 'total', 'Максимум 5 периодов']

@@ -1,25 +1,59 @@
-﻿import asyncio
-import io
+import asyncio
 import logging
 import os
 import re
 import time
-from pathlib import Path
-
-import PyPDF2
 
 from src.analysis import pdf_extractor
 from src.analysis.nlp_analysis import analyze_narrative
-from src.analysis.pdf_extractor import ExtractionMetadata
-from src.analysis.ratios import calculate_ratios
-from src.analysis.recommendations import generate_recommendations
-from src.analysis.scoring import calculate_integral_score
-from src.controllers.analyze import _extract_metrics_with_regex
-from src.db.crud import create_analysis, update_analysis, update_multi_session, AnalysisAlreadyExistsError
-from src.utils.logging_config import get_logger, metrics
-from sqlalchemy.exc import SQLAlchemyError
+from src.analysis.pdf_extractor import (
+    extract_metrics_regex,
+    apply_confidence_filter,
+    extract_text,
+    is_scanned_pdf,
+    extract_text_from_scanned,
+    extract_tables,
+    parse_financial_statements_with_metadata,
+)
 
+# Alias expected by tests (БАГ 10 — module-level import requirement)
+_extract_metrics_with_regex = extract_metrics_regex
+from src.analysis.ratios import calculate_ratios, translate_ratios
+from src.analysis.recommendations import generate_recommendations
+from src.analysis.scoring import (
+    calculate_integral_score, 
+    build_score_payload
+)
+from src.core.ws_manager import ws_manager
+from src.db.crud import create_analysis, update_analysis, update_multi_session, AnalysisAlreadyExistsError
+from src.models.settings import app_settings
+from src.analysis.llm_extractor import extract_with_llm, is_clean_financial_text
+from src.core.ai_service import ai_service
+from src.utils.logging_config import get_logger, metrics
+from src.utils.file_utils import cleanup_temp_file
+from sqlalchemy.exc import SQLAlchemyError
 logger = get_logger(__name__)
+# ---------------------------------------------------------------------------
+# Cancellation registry — in-memory set of cancelled task IDs
+# ---------------------------------------------------------------------------
+_cancelled_tasks: set[str] = set()
+
+
+def cancel_task(task_id: str) -> None:
+    """Mark a task as cancelled. process_pdf checks this before each phase."""
+    _cancelled_tasks.add(task_id)
+    logger.info("Task %s marked for cancellation", task_id)
+
+
+def is_task_cancelled(task_id: str) -> bool:
+    """Return True if the task has been cancelled."""
+    return task_id in _cancelled_tasks
+
+
+def _clear_cancelled(task_id: str) -> None:
+    """Remove task from cancellation registry after it finishes."""
+    _cancelled_tasks.discard(task_id)
+
 
 _RAW_THRESHOLD = os.getenv("CONFIDENCE_THRESHOLD", "0.5")
 try:
@@ -62,405 +96,283 @@ async def _ensure_analysis_exists(task_id: str) -> bool:
             logger.critical("Failed to ensure analysis exists for task %s", task_id)
             return False
         return True
-    except SQLAlchemyError as e:
+    except SQLAlchemyError:
         logger.exception("DB error ensuring analysis for task %s", task_id)
         return False
 
 
-def _cleanup_temp_file(file_path: str | os.PathLike | io.IOBase | None) -> None:
-    """
-    Safely cleanup temporary file or file-like object.
-    
-    Supports:
-    - str: File path
-    - os.PathLike: Path object
-    - io.IOBase: file-like objects (BytesIO, StringIO, open files)
-    - None: No-op
-    
-    Args:
-        file_path: Path to file or file-like object
-    """
-    if file_path is None:
-        return
-    
-    # 1. File-like objects (BytesIO, StringIO, open files)
-    if hasattr(file_path, 'close') and callable(getattr(file_path, 'close')):
-        try:
-            file_path.close()
-            logger.debug("Closed file-like object: %s", type(file_path).__name__)
-        except Exception as exc:
-            logger.warning("Failed to close file-like object: %s", exc)
-        return
-    
-    # 2. Path as str/Path/PathLike
-    from pathlib import Path, PurePath
-    try:
-        # Path() accepts str, Path, PathLike — but not bytes without decoding
-        if isinstance(file_path, (str, PurePath)):
-            path = Path(file_path)
-        else:
-            path = Path(str(file_path))
-        
-        if path.is_file():
-            path.unlink(missing_ok=True)
-            logger.debug("Deleted temporary file: %s", path)
-    except (TypeError, OSError, ValueError) as exc:
-        logger.warning("Failed to cleanup path %r: %s", file_path, type(exc).__name__)
 
 
-def _apply_confidence_filter(
-    metadata: dict[str, ExtractionMetadata],
-    threshold: float | None = None,
-) -> tuple[dict[str, float | None], dict[str, dict]]:
-    """
-    Filter extraction metadata by confidence threshold.
-
-    Args:
-        metadata: Per-metric extraction results from parse_financial_statements_with_metadata.
-        threshold: Minimum confidence to keep a value. Defaults to CONFIDENCE_THRESHOLD.
-                   confidence >= threshold → keep value; confidence < threshold → None.
-                   value=None is always preserved as None regardless of confidence.
-
-    Returns:
-        filtered_metrics: All keys preserved; low-confidence values replaced with None.
-        extraction_metadata_payload: {key: {"confidence": float, "source": str}} for all keys.
-    """
-    if threshold is None:
-        threshold = CONFIDENCE_THRESHOLD
-
-    filtered_metrics: dict[str, float | None] = {}
-    extraction_metadata_payload: dict[str, dict] = {}
-
-    for key, meta in metadata.items():
-        if meta.value is None or meta.confidence < threshold:
-            filtered_metrics[key] = None
-        else:
-            filtered_metrics[key] = meta.value
-
-        extraction_metadata_payload[key] = {
-            "confidence": meta.confidence,
-            "source": meta.source,
-        }
-
-    return filtered_metrics, extraction_metadata_payload
 
 
-# Маппинг русских ключей ratios → snake_case English для frontend
-# Порядок соответствует группам: ликвидность, рентабельность, устойчивость, активность
-RATIO_KEY_MAP = {
-    # Liquidity
-    "Коэффициент текущей ликвидности": "current_ratio",
-    "Коэффициент быстрой ликвидности": "quick_ratio",
-    "Коэффициент абсолютной ликвидности": "absolute_liquidity_ratio",
-    # Profitability
-    "Рентабельность активов (ROA)": "roa",
-    "Рентабельность собственного капитала (ROE)": "roe",
-    "Рентабельность продаж (ROS)": "ros",
-    "EBITDA маржа": "ebitda_margin",
-    # Financial stability
-    "Коэффициент автономии": "equity_ratio",
-    "Финансовый рычаг": "financial_leverage",
-    "Покрытие процентов": "interest_coverage",
-    # Business activity
-    "Оборачиваемость активов": "asset_turnover",
-    "Оборачиваемость запасов": "inventory_turnover",
-    "Оборачиваемость дебиторской задолженности": "receivables_turnover",
-}
-
-# Маппинг Russian metric keys → English for frontend FinancialMetrics
-METRIC_KEY_MAP = {
-    "revenue": "revenue",
-    "net_profit": "net_profit",
-    "total_assets": "total_assets",
-    "equity": "equity",
-    "liabilities": "liabilities",
-    "current_assets": "current_assets",
-    "short_term_liabilities": "short_term_liabilities",
-    "accounts_receivable": "accounts_receivable",
-}
-
-
-def _translate_ratios(ratios: dict) -> dict:
-    """
-    Convert Russian ratio keys to camelCase English for frontend.
-    
-    Args:
-        ratios: Dictionary with Russian keys from calculate_ratios
-        
-    Returns:
-        dict: Dictionary with English keys
-        
-    Side Effects:
-        Logs warning for unmapped keys (for monitoring)
-    """
-    result = {}
-    unknown_keys = []
-    
-    for k, v in ratios.items():
-        en_key = RATIO_KEY_MAP.get(k)
-        if en_key:
-            result[en_key] = v
-        else:
-            # Keep unmapped keys but log them for monitoring
-            unknown_keys.append(k)
-            result[k] = v
-    
-    if unknown_keys:
-        logger.warning("Unmapped ratio keys (frontend may break): %s", unknown_keys)
-    
-    return result
-
-
-def _build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
-    """
-    Transform backend score structure to match frontend ScoreData interface.
-
-    Frontend expects:
-      { score, risk_level, factors: [{name, description, impact}],
-        normalized_scores: {en_key: float | null, ...} }
-    """
-    details = raw_score.get("details", {})  # normalized 0-1 values per ratio (RU keys)
-
-    # Human-readable names for frontend display
-    FRIENDLY_NAMES: dict[str, str] = {
-        "Коэффициент текущей ликвидности": "Текущая ликвидность",
-        "Коэффициент быстрой ликвидности": "Быстрая ликвидность",
-        "Коэффициент абсолютной ликвидности": "Абсолютная ликвидность",
-        "Рентабельность активов (ROA)": "Рентабельность активов",
-        "Рентабельность собственного капитала (ROE)": "Рентабельность капитала",
-        "Рентабельность продаж (ROS)": "Рентабельность продаж",
-        "EBITDA маржа": "EBITDA маржа",
-        "Коэффициент автономии": "Финансовая независимость",
-        "Финансовый рычаг": "Финансовый рычаг",
-        "Покрытие процентов": "Покрытие процентов",
-        "Оборачиваемость активов": "Оборачиваемость активов",
-        "Оборачиваемость запасов": "Оборачиваемость запасов",
-        "Оборачиваемость дебиторской задолженности": "Оборачиваемость ДЗ",
-    }
-
-    factors = []
-    normalized_scores: dict[str, float | None] = {
-        en_key: None for en_key in RATIO_KEY_MAP.values()
-    }
-
-    for ru_name, norm_val in details.items():
-        en_key = RATIO_KEY_MAP.get(ru_name)
-        if not en_key:
-            continue
-
-        normalized_scores[en_key] = norm_val
-        actual_val = ratios_en.get(en_key)
-
-        # Determine impact based on normalized score
-        if norm_val is None:
-            impact = "neutral"
-        elif norm_val >= 0.65:
-            impact = "positive"
-        elif norm_val >= 0.35:
-            impact = "neutral"
-        else:
-            impact = "negative"
-
-        friendly_name = FRIENDLY_NAMES.get(ru_name, ru_name)
-
-        if actual_val is None:
-            actual_str = "—"
-        elif isinstance(actual_val, (int, float)):
-            actual_str = f"{actual_val:.2f}"
-        else:
-            try:
-                actual_str = f"{float(actual_val):.2f}"
-            except (TypeError, ValueError):
-                actual_str = str(actual_val)
-
-        factors.append({
-            "name": friendly_name,
-            "description": f"Значение: {actual_str}",
-            "impact": impact,
-        })
-
-    return {
-        "score": raw_score.get("score", 0),
-        "risk_level": _translate_risk_level(raw_score.get("risk_level", "высокий")),
-        "factors": factors,
-        "normalized_scores": normalized_scores,
-    }
-
-
-def _translate_risk_level(ru: str) -> str:
-    """Translate Russian risk level to English."""
-    return {"низкий": "low", "средний": "medium", "высокий": "high"}.get(ru, "high")
-
-
-def _extract_text_from_pdf(pdf_path: str) -> str:
-    """
-    Extract text from PDF using PyPDF2.
-
-    Args:
-        pdf_path: Path to PDF file
-
-    Returns:
-        str: Extracted text content
-    """
-    reader = PyPDF2.PdfReader(pdf_path)
-    texts: list[str] = []
-    for page_index, page in enumerate(reader.pages, start=1):
-        try:
-            texts.append(page.extract_text() or "")
-        except Exception as exc:
-            logger.warning("Failed to extract text from page %s: %s", page_index, exc)
-    return "\n".join(texts).strip()
 
 
 async def process_pdf(task_id: str, file_path: str) -> None:
     """
     Process PDF file and update analysis results.
     
-    Logs all key events with task_id correlation and timing.
-    Records metrics for success/failure/ai failures.
-    
-    Args:
-        task_id: Unique task identifier
-        file_path: Path to temporary PDF file
+    Orchestrates the full pipeline:
+    1. Extraction (text, tables, metrics)
+    2. Ratios & Scoring
+    3. AI Analysis (NLP, recommendations)
+    4. Database Update & WS Notification
     """
     start_time = time.monotonic()
     metrics.record_task_start()
     
-    # Create logger with task context
     task_logger = get_logger(__name__, task_id=task_id)
     
     try:
         task_logger.info("PDF processing started")
         
-        # Ensure analysis record exists (upsert pattern)
-        db_available = await _ensure_analysis_exists(task_id)
-        if not db_available:
+        if not await _ensure_analysis_exists(task_id):
             task_logger.critical("Database unavailable - aborting processing")
             metrics.record_task_failure()
             return
 
-        # --- Extraction Phase ---
-        extract_start = time.monotonic()
-        scanned = await asyncio.to_thread(pdf_extractor.is_scanned_pdf, file_path)
-        if scanned:
-            text = await asyncio.to_thread(pdf_extractor.extract_text_from_scanned, file_path)
-        else:
-            text = await asyncio.to_thread(_extract_text_from_pdf, file_path)
+        if is_task_cancelled(task_id):
+            task_logger.info("Task cancelled before extraction")
+            await update_analysis(task_id, "failed", None)
+            _clear_cancelled(task_id)
+            return
 
-        tables = await asyncio.to_thread(pdf_extractor.extract_tables, file_path)
-        metadata = await asyncio.to_thread(
-            pdf_extractor.parse_financial_statements_with_metadata, tables, text
-        )
-        metrics_filtered, extraction_metadata_payload = _apply_confidence_filter(metadata)
-        
-        # Fallback: if critical metrics are missing, use regex extraction from text
-        critical_missing = not metrics_filtered.get("revenue") or not metrics_filtered.get("total_assets")
-        if critical_missing and text:
-            task_logger.warning("Critical metrics missing, using regex fallback")
-            regex_metrics = _extract_metrics_with_regex(text)
-            # Merge: regex metrics only for missing keys
-            for key, value in regex_metrics.items():
-                if value is not None and metrics_filtered.get(key) is None:
-                    metrics_filtered[key] = value
-                    task_logger.info("Filled %s from regex fallback: %s", key, value)
-        
-        extract_duration = (time.monotonic() - extract_start) * 1000
-        task_logger.info("PDF extraction completed", extra={"duration_ms": extract_duration})
+        # 1. Extraction Phase
+        extraction_results = await _run_extraction_phase(file_path, task_logger)
+        text = extraction_results["text"]
+        metrics_filtered = extraction_results["metrics"]
+        metadata_payload = extraction_results["metadata"]
+        scanned = extraction_results["scanned"]
+        tables = extraction_results["tables"]
 
-        # --- Ratios & Scoring Phase ---
-        ratios_start = time.monotonic()
-        ratios_ru = await asyncio.to_thread(calculate_ratios, metrics_filtered)
-        ratios_duration = (time.monotonic() - ratios_start) * 1000
-        task_logger.info("Ratios calculation completed", extra={"duration_ms": ratios_duration})
-        
-        scoring_start = time.monotonic()
-        raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
-        scoring_duration = (time.monotonic() - scoring_start) * 1000
-        task_logger.info("Scoring completed", extra={"duration_ms": scoring_duration})
+        if is_task_cancelled(task_id):
+            task_logger.info("Task cancelled before scoring")
+            await update_analysis(task_id, "failed", None)
+            _clear_cancelled(task_id)
+            return
 
-        # Translate for frontend compatibility
-        ratios_en = _translate_ratios(ratios_ru)
-        score_payload = _build_score_payload(raw_score, ratios_en)
+        # 2. Ratios & Scoring Phase
+        scoring_results = await _run_scoring_phase(metrics_filtered, task_logger)
+        ratios_en = scoring_results["ratios_en"]
+        score_payload = scoring_results["score_payload"]
 
-        # --- NLP Analysis Phase ---
-        nlp_result = {"risks": [], "key_factors": [], "recommendations": []}
-        if text and len(text) > 500:
-            nlp_start = time.monotonic()
-            try:
-                nlp_result = await asyncio.wait_for(
-                    analyze_narrative(text),
-                    timeout=60.0
-                )
-                nlp_duration = (time.monotonic() - nlp_start) * 1000
-                task_logger.info("NLP analysis completed", extra={"duration_ms": nlp_duration})
-            except ImportError:
-                task_logger.debug("NLP analysis module not available")
-            except asyncio.TimeoutError:
-                task_logger.warning("NLP analysis timed out")
-                metrics.record_ai_failure()
-            except Exception as nlp_exc:
-                task_logger.warning("NLP analysis failed: %s", nlp_exc, exc_info=True)
-                metrics.record_ai_failure()
+        if is_task_cancelled(task_id):
+            task_logger.info("Task cancelled before AI")
+            await update_analysis(task_id, "failed", None)
+            _clear_cancelled(task_id)
+            return
 
-        # --- Recommendations Phase ---
-        try:
-            rec_start = time.monotonic()
-            recommendations = await asyncio.wait_for(
-                generate_recommendations(metrics_filtered, ratios_en, nlp_result),
-                timeout=65.0
-            )
-            rec_duration = (time.monotonic() - rec_start) * 1000
-            nlp_result["recommendations"] = recommendations
-            task_logger.info("Generated %d recommendations", len(recommendations), extra={"duration_ms": rec_duration})
-        except ImportError:
-            task_logger.debug("Recommendations module not available")
-        except asyncio.TimeoutError:
-            task_logger.warning("Recommendations generation timed out")
-            metrics.record_ai_failure()
-        except Exception as rec_exc:
-            task_logger.warning("Recommendations generation failed: %s", rec_exc, exc_info=True)
-            metrics.record_ai_failure()
+        # 3. AI Analysis Phase
+        nlp_result = await _run_ai_analysis_phase(text, metrics_filtered, ratios_en, task_logger)
 
-        # --- Update Database ---
+        # 4. Save & Notify
         total_duration = (time.monotonic() - start_time) * 1000
-        await update_analysis(
-            task_id,
-            "completed",
-            {
-                "data": {
-                    "scanned": scanned,
-                    "text": text[:5000],  # Limit text size stored in DB
-                    "tables": tables[:10],  # Limit tables stored
-                    "metrics": metrics_filtered,
-                    "ratios": ratios_en,   # English keys for frontend
-                    "score": score_payload,  # Full ScoreData shape
-                    "nlp": nlp_result,
-                    "extraction_metadata": extraction_metadata_payload,
-                }
-            },
-        )
+        result_payload = {
+            "data": {
+                "scanned": scanned,
+                "text": text[:5000],
+                "tables": tables[:10],
+                "metrics": metrics_filtered,
+                "ratios": ratios_en,
+                "score": score_payload,
+                "nlp": nlp_result,
+                "extraction_metadata": metadata_payload,
+            }
+        }
         
-        task_logger.info("PDF processing completed successfully", extra={"duration_ms": total_duration})
-        metrics.record_task_success(total_duration)
+        _clear_cancelled(task_id)
+        await _finalize_task(task_id, result_payload, total_duration, task_logger)
         
     except Exception as exc:
-        total_duration = (time.monotonic() - start_time) * 1000
-        task_logger.exception("PDF processing failed: %s", exc, extra={"duration_ms": total_duration})
-        metrics.record_task_failure()
-        
-        try:
-            await update_analysis(task_id, "failed", {"error": str(exc)})
-        except Exception as update_exc:
-            task_logger.critical("Failed to update task status to 'failed': %s", update_exc)
+        await _handle_task_failure(task_id, exc, start_time, task_logger)
     finally:
-        # Clean up temporary file with safer deletion pattern
-        _cleanup_temp_file(file_path)
+        # Unified cleanup for both success and failure cases
+        cleanup_temp_file(file_path)
+
+
+async def _try_llm_extraction(
+    text: str,
+    tables: list,
+    task_logger: logging.Logger,
+) -> dict:
+    """Attempt LLM-based metric extraction with fallback to regex/camelot.
+
+    Returns a tuple-compatible dict from parse_financial_statements_with_metadata
+    or LLM extraction result, always as dict[str, ExtractionMetadata].
+    Logs the reason for any fallback switch.
+    """
+    fallback = await asyncio.to_thread(
+        parse_financial_statements_with_metadata, tables, text
+    )
+
+    if not ai_service.is_configured:
+        task_logger.warning(
+            "LLM extraction skipped: reason=%s", "llm_unavailable"
+        )
+        return fallback
+
+    try:
+        result = await extract_with_llm(
+            text,
+            ai_service,
+            chunk_size=app_settings.llm_chunk_size,
+            max_chunks=app_settings.llm_max_chunks,
+            token_budget=app_settings.llm_token_budget,
+        )
+    except Exception as exc:
+        task_logger.warning(
+            "LLM extraction failed: reason=%s error=%s", "llm_error", repr(exc)
+        )
+        return fallback
+
+    if result is None:
+        task_logger.warning(
+            "LLM extraction returned None: reason=%s", "llm_error"
+        )
+        return fallback
+
+    # Count non-null metrics
+    non_null = sum(1 for m in result.values() if m.value is not None)
+
+    if non_null < 3:
+        missing = [
+            k for k in ("revenue", "total_assets", "equity")
+            if result.get(k) is None or result[k].value is None
+        ]
+        task_logger.warning(
+            "LLM extraction insufficient (%d metrics): reason=%s missing=%s",
+            non_null, "insufficient_metrics", missing,
+        )
+        # Merge: fill missing keys from fallback
+        for key, meta in fallback.items():
+            if result.get(key) is None or result[key].value is None:
+                result[key] = meta
+        return result
+
+    return result
+
+
+async def _run_extraction_phase(file_path: str, logger: logging.Logger) -> dict:
+    """Run text and table extraction from PDF."""
+    start = time.monotonic()
+    
+    scanned = await asyncio.to_thread(is_scanned_pdf, file_path)
+    if scanned:
+        text = await asyncio.to_thread(extract_text_from_scanned, file_path)
+        if not is_clean_financial_text(text):
+            logger.warning(
+                "OCR text quality is poor (%d chars) — financial keywords not found",
+                len(text),
+            )
+    else:
+        text = await asyncio.to_thread(extract_text, file_path)
+
+    # Skip camelot for scanned/glyph-encoded PDFs — it can't read raster images
+    # and wastes 5-8 minutes processing pages that yield no tables
+    if scanned:
+        tables = []
+        logger.info("Skipping camelot table extraction for scanned/OCR PDF")
+    else:
+        tables = await asyncio.to_thread(extract_tables, file_path)
+    if app_settings.llm_extraction_enabled:
+        metadata = await _try_llm_extraction(text, tables, logger)
+    else:
+        metadata = await asyncio.to_thread(
+            parse_financial_statements_with_metadata, tables, text
+        )
+    metrics_filtered, metadata_payload = apply_confidence_filter(metadata)
+
+    # NOTE: scale factor is already applied inside parse_financial_statements_with_metadata.
+    # Do NOT call _detect_scale_factor here again — that would double-scale all values.
+
+    # Regex fallback for critical metrics
+    if (not metrics_filtered.get("revenue") or not metrics_filtered.get("total_assets")) and text:
+        logger.warning("Critical metrics missing, using regex fallback")
+        regex_metrics = extract_metrics_regex(text)
+        for key, value in regex_metrics.items():
+            if value is not None and metrics_filtered.get(key) is None:
+                metrics_filtered[key] = value
+    
+    logger.info("PDF extraction completed", extra={"duration_ms": (time.monotonic() - start) * 1000})
+    return {
+        "text": text,
+        "metrics": metrics_filtered,
+        "metadata": metadata_payload,
+        "scanned": scanned,
+        "tables": tables
+    }
+
+
+async def _run_scoring_phase(metrics_filtered: dict, logger: logging.Logger) -> dict:
+    """Calculate ratios and integral score."""
+    start = time.monotonic()
+    
+    ratios_ru = await asyncio.to_thread(calculate_ratios, metrics_filtered)
+    raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
+    
+    ratios_en = translate_ratios(ratios_ru)
+    score_payload = build_score_payload(raw_score, ratios_en)
+    
+    logger.info("Scoring completed", extra={"duration_ms": (time.monotonic() - start) * 1000})
+    return {"ratios_en": ratios_en, "score_payload": score_payload}
+
+
+async def _run_ai_analysis_phase(text: str, extracted_metrics: dict, ratios: dict, task_logger: logging.Logger) -> dict:
+    """Run NLP narrative analysis and generate recommendations."""
+    nlp_result = {"risks": [], "key_factors": [], "recommendations": []}
+
+    if text and len(text) > 500:
+        try:
+            nlp_result = await asyncio.wait_for(analyze_narrative(text), timeout=60.0)
+        except Exception as e:
+            task_logger.warning("NLP analysis failed: %s", e)
+
+    try:
+        recommendations = await asyncio.wait_for(
+            generate_recommendations(extracted_metrics, ratios, nlp_result),
+            timeout=65.0
+        )
+        nlp_result["recommendations"] = recommendations
+    except Exception as e:
+        task_logger.warning("Recommendations generation failed: %s", e)
+
+    return nlp_result
+
+
+async def _finalize_task(task_id: str, payload: dict, duration: float, logger: logging.Logger) -> None:
+    """Update DB and broadcast success."""
+    await update_analysis(task_id, "completed", payload)
+    await ws_manager.broadcast(task_id, {
+        "type": "status_update",
+        "task_id": task_id,
+        "status": "completed",
+        "progress": 100,
+        "result": payload
+    })
+    logger.info("PDF processing completed successfully", extra={"duration_ms": duration})
+    metrics.record_task_success(duration)
+
+
+async def _handle_task_failure(task_id: str, exc: Exception, start_time: float, logger: logging.Logger) -> None:
+    """Handle task errors and notify clients."""
+    duration = (time.monotonic() - start_time) * 1000
+    logger.exception("PDF processing failed: %s", exc, extra={"duration_ms": duration})
+    metrics.record_task_failure()
+    
+    try:
+        error_msg = str(exc)
+        await update_analysis(task_id, "failed", {"error": error_msg})
+        await ws_manager.broadcast(task_id, {
+            "type": "status_update",
+            "task_id": task_id,
+            "status": "failed",
+            "error": error_msg
+        })
+    except Exception as update_exc:
+        logger.critical("Failed to update task status: %s", update_exc)
 
 
 # ---------------------------------------------------------------------------
-# Multi-Period Analysis (neofin-competition-release)
-# Requirements: 2.4
-# ---------------------------------------------------------------------------
+# Multi-period analysis orchestrator
 
 _MULTI_ANALYSIS_TIMEOUT = 600  # seconds
 
@@ -512,18 +424,18 @@ async def _process_single_period(period_label: str, file_path: str) -> dict:
         if scanned:
             text = await asyncio.to_thread(pdf_extractor.extract_text_from_scanned, file_path)
         else:
-            text = await asyncio.to_thread(_extract_text_from_pdf, file_path)
+            text = await asyncio.to_thread(pdf_extractor.extract_text, file_path)
 
         tables = await asyncio.to_thread(pdf_extractor.extract_tables, file_path)
         metadata = await asyncio.to_thread(
             pdf_extractor.parse_financial_statements_with_metadata, tables, text
         )
-        metrics, extraction_metadata_payload = _apply_confidence_filter(metadata)
+        metrics, extraction_metadata_payload = apply_confidence_filter(metadata)
         ratios_ru = await asyncio.to_thread(calculate_ratios, metrics)
         raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
 
-        ratios_en = _translate_ratios(ratios_ru)
-        score_payload = _build_score_payload(raw_score, ratios_en)
+        ratios_en = translate_ratios(ratios_ru)
+        score_payload = build_score_payload(raw_score, ratios_en)
 
         return {
             "period_label": period_label,
@@ -593,7 +505,7 @@ async def process_multi_analysis(
         period_logger.info("Processing period %d/%d", idx + 1, total)
 
         result = await _process_single_period(period_label, file_path)
-        _cleanup_temp_file(file_path)
+        cleanup_temp_file(file_path)
         
         if "error" in result:
             failed_count += 1
@@ -603,10 +515,20 @@ async def process_multi_analysis(
         
         collected.append(result)
 
+        progress_payload = {"completed": idx + 1, "total": total}
         await update_multi_session(
             session_id,
-            progress={"completed": idx + 1, "total": total},
+            progress=progress_payload,
         )
+        
+        # --- Broadcast Multi-Analysis Progress via WebSocket ---
+        # Note: session_id is used as task_id for broadcasting
+        await ws_manager.broadcast(session_id, {
+            "type": "progress_update",
+            "session_id": session_id,
+            "status": "processing",
+            "progress": progress_payload
+        })
 
     sorted_results = sort_periods_chronologically(collected)
     
@@ -630,9 +552,24 @@ async def process_multi_analysis(
         session_logger.info("Session completed successfully", extra={"duration_ms": total_duration})
         metrics.record_task_success(total_duration)
 
+    final_payload = {
+        "periods": sorted_results
+    }
     await update_multi_session(
         session_id,
         status=final_status,
         progress={"completed": total, "total": total},
-        result={"periods": sorted_results},
+        result=final_payload,
     )
+    
+    # --- Broadcast Multi-Analysis Final via WebSocket ---
+    await ws_manager.broadcast(session_id, {
+        "type": "status_update",
+        "session_id": session_id,
+        "status": final_status,
+        "progress": {"completed": total, "total": total},
+        "result": final_payload
+    })
+
+
+

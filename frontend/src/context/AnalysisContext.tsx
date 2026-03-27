@@ -2,8 +2,9 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import { apiClient } from '../api/client';
 import { AnalysisData } from '../api/interfaces';
 import { notifications } from '@mantine/notifications';
+import { useAnalysisSocket, WSMessage } from '../hooks/useAnalysisSocket';
 
-const MAX_POLLING_ATTEMPTS = 15;
+const MAX_POLLING_ATTEMPTS = 600; // 600 attempts * 2000ms = 20 minutes (OCR can be slow)
 const POLLING_INTERVAL = 2000;
 
 type AnalysisStatus = 'idle' | 'uploading' | 'processing' | 'completed' | 'failed';
@@ -24,7 +25,43 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const [result, setResult] = useState<AnalysisData | null>(null);
     const [filename, setFilename] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
     const timeoutId = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+    const onWSMessage = useCallback((msg: WSMessage) => {
+        if (msg.status === 'completed') {
+            setResult(msg.result?.data ?? null);
+            setStatus('completed');
+            notifications.update({
+                id: 'pdf-analysis',
+                title: 'Анализ завершен (Real-time)',
+                message: 'Финансовый отчет успешно обработан',
+                color: 'green',
+                loading: false,
+                autoClose: 5000,
+            });
+            clearTimeout(timeoutId.current);
+        } else if (msg.status === 'failed') {
+            const errorMsg = msg.error || 'Ошибка анализа через WS';
+            setError(errorMsg);
+            setStatus('failed');
+            notifications.update({
+                id: 'pdf-analysis',
+                title: 'Ошибка анализа',
+                message: errorMsg,
+                color: 'red',
+                loading: false,
+                autoClose: 5000,
+            });
+            clearTimeout(timeoutId.current);
+        }
+    }, []);
+
+    useAnalysisSocket({
+        taskId: activeTaskId,
+        onMessage: onWSMessage,
+        enabled: status === 'processing',
+    });
 
     useEffect(() => {
         return () => {
@@ -51,12 +88,16 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         let cancelled = false;
 
+        // Reset cancel flag for new analysis
+        cancelledRef.current = false;
+
         try {
             const uploadResponse = await apiClient.post<{ task_id: string }>('/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
 
             const taskId = uploadResponse.data.task_id;
+            setActiveTaskId(taskId);
 
             setStatus('processing');
             notifications.update({
@@ -69,7 +110,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             let attempts = 0;
 
             const poll = async () => {
-                if (cancelled) return;
+                if (cancelled || cancelledRef.current) return;
 
                 if (attempts >= MAX_POLLING_ATTEMPTS) {
                     const msg = 'Превышено максимальное количество попыток опроса';
@@ -92,7 +133,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     const pollResponse = await apiClient.get<{ status: string; result?: AnalysisData }>(`/result/${taskId}`);
                     const taskStatus = pollResponse.data.status;
 
-                    if (cancelled) return;
+                    if (cancelled || cancelledRef.current) return;
 
                     if (taskStatus === 'completed') {
                         setResult(pollResponse.data.result ?? null);
@@ -122,7 +163,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                         timeoutId.current = setTimeout(poll, POLLING_INTERVAL);
                     }
                 } catch (err: unknown) {
-                    if (cancelled) return;
+                    if (cancelled || cancelledRef.current) return;
 
                     const axiosErr = err as { response?: { status?: number; data?: { detail?: string } } };
                     const httpStatus = axiosErr?.response?.status;
@@ -151,7 +192,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
             timeoutId.current = setTimeout(poll, POLLING_INTERVAL);
         } catch (err: unknown) {
-            if (cancelled) return;
+            if (cancelled || cancelledRef.current) return;
             const axiosMsg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
             const finalMsg = axiosMsg || (err instanceof Error ? err.message : 'Ошибка при загрузке файла');
             setError(finalMsg);
@@ -167,11 +208,17 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
     }, []);
 
+    const cancelledRef = useRef(false);
+
     const reset = useCallback(() => {
+        cancelledRef.current = true;
+        clearTimeout(timeoutId.current);
+        setActiveTaskId(null);
         setStatus('idle');
         setResult(null);
         setFilename('');
         setError(null);
+        notifications.hide('pdf-analysis');
     }, []);
 
     return (
@@ -186,3 +233,5 @@ export const useAnalysis = () => {
     if (!ctx) throw new Error('useAnalysis must be used inside AnalysisProvider');
     return ctx;
 };
+
+

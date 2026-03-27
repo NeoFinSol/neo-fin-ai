@@ -7,7 +7,21 @@
 
 ## 🚀 Ближайшие спринты (1-4 недели)
 
-### Task 6.1 — OCR Performance Optimization [HIGH]
+### Task 6.1 — Scoring Model Refinement [HIGH] ✅ COMPLETED
+**Статус**: Завершено 2026-03-27
+
+**Реализовано**:
+- ✅ Добавлен уровень риска "critical" (score < 35)
+- ✅ Пороги риска: 75 (low) / 55 (medium) / 35 (high) / <35 (critical)
+- ✅ Функция `_build_factor_description()` генерирует осмысленные описания с ссылками на бенчмарки
+- ✅ Нормализация улучшена: `_normalize_positive` и `_normalize_inverse` корректно обрабатывают граничные случаи
+- ✅ `RiskLevel` enum в schemas.py синхронизирован с scoring.py
+
+**Результат**: Скоринг теперь предоставляет пользователям контекст вместо просто "Значение: 1.23"
+
+---
+
+### Task 6.2 — OCR Performance Optimization [HIGH]
 **Проблема**: OCR 80 страниц = 3-5 минут (pdf2image + tesseract)
 
 **Решения**:
@@ -20,7 +34,7 @@
 
 ---
 
-### Task 6.2 — Multi-Column PDF Parsing [HIGH]
+### Task 6.3 — Multi-Column PDF Parsing [HIGH]
 **Проблема**: Таблицы с 2+ колонками (2022 | 2021) сливаются в одно число
 
 **Решения**:
@@ -33,7 +47,7 @@
 
 ---
 
-### Task 6.3 — Confidence Score Unit Tests [HIGH]
+### Task 6.4 — Confidence Score Unit Tests [MEDIUM]
 **Файлы**: `tests/test_confidence.py`
 
 **Тесты**:
@@ -42,20 +56,7 @@
 - [ ] `test_build_metric()` — создание метрик
 - [ ] Property-based: `test_confidence_range()` — [0.0, 1.0]
 
-**Deadline**: 2026-03-27
-
----
-
-### Task 6.4 — PDF Extractor Pro Tests [MEDIUM]
-**Файлы**: `tests/test_pdf_extractor_pro.py`
-
-**Тесты**:
-- [ ] `test_extract_metrics_simple_pdf()`
-- [ ] `test_extract_metrics_ocr_fallback()`
-- [ ] `test_is_text_poor_toc_only()`
-- [ ] `test_normalize_number_formats()`
-
-**Deadline**: 2026-03-29
+**Deadline**: 2026-04-03
 
 ---
 

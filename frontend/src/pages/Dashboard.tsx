@@ -117,6 +117,15 @@ export function Dashboard() {
             <Text size="xs" c="dimmed" ta="center">
               Обработка может занять от 30 секунд до 5 минут
             </Text>
+
+            <Button
+              variant="subtle"
+              color="gray"
+              size="xs"
+              onClick={() => { reset(); savedRef.current = false; }}
+            >
+              Отменить и начать заново
+            </Button>
           </Stack>
         ) : (
           <Dropzone
