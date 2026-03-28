@@ -171,7 +171,11 @@ curl -X POST http://localhost:8000/upload \
       "result": { ... полные данные анализа ... }
     }
     ```
-5.  **Ошибка**:
+5.  **Отмена пользователем**:
+    ```json
+    {"status": "cancelled", "error": "Task cancelled by user"}
+    ```
+6.  **Ошибка**:
     ```json
     {"status": "failed", "error": "Описание ошибки"}
     ```
@@ -185,7 +189,7 @@ curl -X POST http://localhost:8000/upload \
 
 ### GET /result/{task_id}
 
-Получение статуса и результата анализа. Клиент опрашивает эндпоинт каждые 2000 мс до получения статуса `completed` или `failed`.
+Получение статуса и результата анализа. Клиент опрашивает эндпоинт каждые 2000 мс до получения терминального статуса `completed`, `cancelled` или `failed`.
 
 **Запрос**
 
@@ -202,6 +206,14 @@ X-API-Key: <ключ>
 ```json
 {
   "status": "processing"
+}
+```
+
+**Ответ `200 OK` — отмена запрошена**
+
+```json
+{
+  "status": "cancelling"
 }
 ```
 
@@ -274,11 +286,21 @@ X-API-Key: <ключ>
 }
 ```
 
+**Ответ `200 OK` — отменено**
+
+```json
+{
+  "status": "cancelled",
+  "error": "Task cancelled by user",
+  "reason_code": "cancelled_by_request"
+}
+```
+
 **Поля ответа**
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `status` | `processing` \| `completed` \| `failed` | Статус задачи |
+| `status` | `processing` \| `cancelling` \| `completed` \| `cancelled` \| `failed` | Статус задачи |
 | `data.scanned` | boolean | `true` — документ распознан через OCR |
 | `data.metrics` | object | Извлечённые финансовые показатели (значение `null` — не найдено) |
 | `data.ratios` | object | 13 рассчитанных коэффициентов (значение `null` — нехватка данных) |
@@ -289,6 +311,19 @@ X-API-Key: <ключ>
 | `data.score.normalized_scores` | object | Нормализованные значения \[0.0–1.0\] по каждому коэффициенту |
 | `data.nlp` | object | Текстовый ИИ-анализ (пустые массивы, если языковая модель не настроена или произошёл тайм-аут) |
 | `data.extraction_metadata` | object | Оценка достоверности и источник для каждого показателя |
+
+### DELETE /cancel/{task_id}
+
+Запрос отмены одиночного анализа. Эндпоинт не гарантирует мгновенную остановку процесса: он фиксирует запрос в БД и запускает best-effort отмену в runtime. До финального завершения `GET /result/{task_id}` может возвращать `status: "cancelling"`.
+
+**Ответ `200 OK`**
+
+```json
+{
+  "status": "cancelling",
+  "task_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+}
+```
 
 **Структура `extraction_metadata`**
 
@@ -475,7 +510,7 @@ curl -X POST http://localhost:8000/multi-analysis \
 
 ### GET /multi-analysis/{session_id}
 
-Получение статуса или результатов многопериодного анализа. Клиент опрашивает эндпоинт до получения `status: "completed"`.
+Получение статуса или результатов многопериодного анализа. Клиент опрашивает эндпоинт до получения терминального статуса `completed`, `cancelled` или `failed`.
 
 **Запрос**
 
@@ -493,6 +528,19 @@ X-API-Key: <ключ>
 {
   "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "status": "processing",
+  "progress": {
+    "completed": 1,
+    "total": 3
+  }
+}
+```
+
+**Ответ `200 OK` — отмена запрошена**
+
+```json
+{
+  "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "status": "cancelling",
   "progress": {
     "completed": 1,
     "total": 3
@@ -540,6 +588,19 @@ X-API-Key: <ключ>
 }
 ```
 
+**Ответ `200 OK` — отменено**
+
+```json
+{
+  "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "status": "cancelled",
+  "progress": {
+    "completed": 1,
+    "total": 3
+  }
+}
+```
+
 **Поля ответа (completed)**
 
 | Поле | Тип | Описание |
@@ -561,6 +622,19 @@ X-API-Key: <ключ>
 |---|---|
 | `404` | Сессия с указанным `session_id` не найдена |
 | `422` | Обработка сессии завершилась с ошибкой (`status: "failed"`) |
+
+### DELETE /multi-analysis/{session_id}
+
+Запрос отмены многопериодной сессии. Как и в одиночном анализе, эндпоинт фиксирует запрос в БД и инициирует best-effort остановку worker-задачи. Финальный `cancelled` устанавливает уже сам worker после безопасного выхода на границе фазы.
+
+**Ответ `200 OK`**
+
+```json
+{
+  "status": "cancelling",
+  "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+}
+```
 
 **Пример**
 

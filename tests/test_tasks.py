@@ -165,6 +165,8 @@ class TestProcessPdf:
         with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock) as mock_create, \
              patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None), \
+             patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock), \
+             patch("src.tasks.is_analysis_cancel_requested", new_callable=AsyncMock, return_value=False), \
              patch("src.tasks.is_scanned_pdf", return_value=False), \
              patch("src.tasks.extract_text", return_value="Extracted text"), \
              patch("src.tasks.extract_tables", return_value=[]), \
@@ -190,6 +192,8 @@ class TestProcessPdf:
         with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock) as mock_create, \
              patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None), \
+             patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock), \
+             patch("src.tasks.is_analysis_cancel_requested", new_callable=AsyncMock, return_value=False), \
              patch("src.tasks.is_scanned_pdf", return_value=False), \
              patch("src.tasks.extract_text", return_value="Text"), \
              patch("src.tasks.extract_tables", return_value=[]), \
@@ -216,6 +220,8 @@ class TestProcessPdf:
         with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock), \
              patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None), \
+             patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock), \
+             patch("src.tasks.is_analysis_cancel_requested", new_callable=AsyncMock, return_value=False), \
              patch("src.tasks.is_scanned_pdf", return_value=True), \
              patch("src.tasks.extract_text_from_scanned", return_value="OCR text"), \
              patch("src.tasks.extract_tables", return_value=[]), \
@@ -237,6 +243,8 @@ class TestProcessPdf:
 
         with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock), \
+             patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock), \
+             patch("src.tasks.is_analysis_cancel_requested", new_callable=AsyncMock, return_value=False), \
              patch("src.tasks.is_scanned_pdf", side_effect=Exception("PDF corrupted")), \
              patch("src.tasks.broadcast_task_event", new_callable=AsyncMock) as mock_ws, \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
@@ -261,6 +269,8 @@ class TestProcessPdf:
         with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock), \
              patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None), \
+             patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock), \
+             patch("src.tasks.is_analysis_cancel_requested", new_callable=AsyncMock, return_value=False), \
              patch("src.tasks.is_scanned_pdf", return_value=False), \
              patch("src.tasks.extract_text", return_value="Text"), \
              patch("src.tasks.extract_tables", return_value=[]), \
@@ -285,6 +295,8 @@ class TestProcessPdf:
 
         with patch("src.tasks.update_analysis", new_callable=AsyncMock), \
              patch("src.tasks.create_analysis", new_callable=AsyncMock), \
+             patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock), \
+             patch("src.tasks.is_analysis_cancel_requested", new_callable=AsyncMock, return_value=False), \
              patch("src.tasks.is_scanned_pdf", side_effect=Exception("Error")), \
             patch("src.tasks.broadcast_task_event", new_callable=AsyncMock), \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
@@ -292,6 +304,26 @@ class TestProcessPdf:
 
             await process_pdf(task_id, file_path)
 
+            mock_cleanup.assert_called_once_with(file_path)
+
+    @pytest.mark.asyncio
+    async def test_cancellation_marks_analysis_cancelled(self):
+        task_id = "cancelled-task"
+        file_path = "/tmp/cancelled.pdf"
+
+        with patch("src.tasks.mark_analysis_cancelled", new_callable=AsyncMock) as mock_mark_cancelled, \
+             patch("src.tasks.broadcast_task_event", new_callable=AsyncMock) as mock_ws, \
+             patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock), \
+             patch("src.tasks.is_analysis_cancel_requested", new_callable=AsyncMock, return_value=True), \
+             patch("src.tasks._ensure_analysis_exists", return_value=True), \
+             patch("src.tasks.cleanup_temp_file") as mock_cleanup:
+
+            await process_pdf(task_id, file_path)
+
+            mock_mark_cancelled.assert_awaited_once()
+            assert mock_mark_cancelled.await_args.args == (task_id, {"error": "Task cancelled by user", "reason_code": "cancelled_by_request"})
+            mock_ws.assert_awaited_once()
+            assert mock_ws.await_args.args[1]["status"] == "cancelled"
             mock_cleanup.assert_called_once_with(file_path)
 
     @pytest.mark.asyncio

@@ -1,4 +1,11 @@
-export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'uploading';
+export type AnalysisStatus =
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'uploading'
+  | 'cancelling'
+  | 'cancelled';
 
 export interface FinancialMetrics {
   revenue: number | null;
@@ -146,7 +153,7 @@ export interface MultiAnalysisAcceptedResponse {
 
 export interface MultiAnalysisProcessingResponse {
   session_id: string;
-  status: 'processing';
+  status: 'processing' | 'cancelling';
   progress: MultiAnalysisProgress;
 }
 
@@ -156,6 +163,13 @@ export interface MultiAnalysisCompletedResponse {
   periods: PeriodResult[];
 }
 
+export interface MultiAnalysisCancelledResponse {
+  session_id: string;
+  status: 'cancelled';
+  progress: MultiAnalysisProgress;
+}
+
 export type MultiAnalysisResponse =
   | MultiAnalysisProcessingResponse
-  | MultiAnalysisCompletedResponse;
+  | MultiAnalysisCompletedResponse
+  | MultiAnalysisCancelledResponse;

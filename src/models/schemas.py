@@ -141,7 +141,7 @@ class MultiAnalysisAcceptedResponse(BaseModel):
 
 class MultiAnalysisProcessingResponse(BaseModel):
     session_id: str
-    status: Literal["processing"]
+    status: Literal["processing", "cancelling"]
     progress: MultiAnalysisProgress
 
 
@@ -151,4 +151,14 @@ class MultiAnalysisCompletedResponse(BaseModel):
     periods: list[PeriodResult] = Field(min_length=1)
 
 
-MultiAnalysisResponse = MultiAnalysisProcessingResponse | MultiAnalysisCompletedResponse
+class MultiAnalysisCancelledResponse(BaseModel):
+    session_id: str
+    status: Literal["cancelled"]
+    progress: MultiAnalysisProgress
+
+
+MultiAnalysisResponse = (
+    MultiAnalysisProcessingResponse
+    | MultiAnalysisCompletedResponse
+    | MultiAnalysisCancelledResponse
+)

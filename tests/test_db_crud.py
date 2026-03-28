@@ -14,6 +14,14 @@ from src.db.crud import (
     find_multi_session_cleanup_candidates,
     get_analysis,
     get_multi_session,
+    is_analysis_cancel_requested,
+    is_multi_session_cancel_requested,
+    mark_analysis_cancelled,
+    mark_multi_session_cancelled,
+    request_analysis_cancel,
+    request_multi_session_cancel,
+    touch_analysis_runtime_heartbeat,
+    touch_multi_session_runtime_heartbeat,
     update_analysis,
 )
 
@@ -294,6 +302,101 @@ class TestUpdateAnalysis:
             assert mock_existing.result == {"partial": "data"}
 
     @pytest.mark.asyncio
+    async def test_request_analysis_cancel_sets_timestamp(self):
+        mock_existing = MagicMock()
+        mock_existing.task_id = "test-123"
+        mock_existing.status = "processing"
+        mock_existing.cancel_requested_at = None
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_existing)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            result = await request_analysis_cancel("test-123")
+
+        assert result.cancel_requested_at is not None
+        mock_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_mark_analysis_cancelled_sets_runtime_fields(self):
+        mock_existing = MagicMock()
+        mock_existing.task_id = "test-123"
+        mock_existing.status = "processing"
+        mock_existing.result = None
+        mock_existing.cancel_requested_at = None
+        mock_existing.cancelled_at = None
+        mock_existing.runtime_heartbeat_at = None
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_existing)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        payload = {"error": "Task cancelled by user", "reason_code": "cancelled_by_request"}
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            result = await mark_analysis_cancelled("test-123", payload)
+
+        assert result.status == "cancelled"
+        assert result.cancel_requested_at is not None
+        assert result.cancelled_at is not None
+        assert result.runtime_heartbeat_at is not None
+
+    @pytest.mark.asyncio
+    async def test_is_analysis_cancel_requested_uses_db_state(self):
+        mock_existing = MagicMock()
+        mock_existing.status = "processing"
+        mock_existing.cancel_requested_at = datetime.now(timezone.utc)
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_existing)
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            assert await is_analysis_cancel_requested("test-123") is True
+
+    @pytest.mark.asyncio
+    async def test_touch_analysis_runtime_heartbeat_updates_timestamp(self):
+        mock_existing = MagicMock()
+        mock_existing.status = "processing"
+        mock_existing.runtime_heartbeat_at = None
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_existing)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            result = await touch_analysis_runtime_heartbeat("test-123")
+
+        assert result.runtime_heartbeat_at is not None
+
+    @pytest.mark.asyncio
     async def test_update_sqlalchemy_error(self):
         """Test SQLAlchemyError during update."""
         mock_session = AsyncMock()
@@ -412,6 +515,101 @@ class TestMultiSessionCrud:
         with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
             with pytest.raises(SQLAlchemyError):
                 await get_multi_session("session-123")
+
+    @pytest.mark.asyncio
+    async def test_request_multi_session_cancel_sets_timestamp(self):
+        mock_record = MagicMock()
+        mock_record.session_id = "session-123"
+        mock_record.status = "processing"
+        mock_record.cancel_requested_at = None
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_record)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            result = await request_multi_session_cancel("session-123")
+
+        assert result.cancel_requested_at is not None
+
+    @pytest.mark.asyncio
+    async def test_mark_multi_session_cancelled_sets_runtime_fields(self):
+        mock_record = MagicMock()
+        mock_record.session_id = "session-123"
+        mock_record.status = "processing"
+        mock_record.cancel_requested_at = None
+        mock_record.cancelled_at = None
+        mock_record.runtime_heartbeat_at = None
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_record)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            result = await mark_multi_session_cancelled(
+                "session-123",
+                progress={"completed": 1, "total": 3},
+                result={"error": "Task cancelled by user"},
+            )
+
+        assert result.status == "cancelled"
+        assert result.cancel_requested_at is not None
+        assert result.cancelled_at is not None
+        assert result.runtime_heartbeat_at is not None
+
+    @pytest.mark.asyncio
+    async def test_is_multi_session_cancel_requested_uses_db_state(self):
+        mock_record = MagicMock()
+        mock_record.status = "processing"
+        mock_record.cancel_requested_at = datetime.now(timezone.utc)
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_record)
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            assert await is_multi_session_cancel_requested("session-123") is True
+
+    @pytest.mark.asyncio
+    async def test_touch_multi_session_runtime_heartbeat_updates_timestamp(self):
+        mock_record = MagicMock()
+        mock_record.status = "processing"
+        mock_record.runtime_heartbeat_at = None
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_record)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            result = await touch_multi_session_runtime_heartbeat("session-123")
+
+        assert result.runtime_heartbeat_at is not None
 
 
 class TestCleanupCrud:

@@ -11,9 +11,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.core.auth import get_api_key
 from src.core.task_queue import dispatch_pdf_task
 from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
-from src.db.crud import create_analysis, get_analysis, update_analysis
+from src.db.crud import create_analysis, get_analysis, is_analysis_cancellation_pending, update_analysis
 from src.exceptions import DatabaseError, TaskRuntimeError
-from src.tasks import process_pdf, cancel_task
+from src.tasks import process_pdf, request_analysis_cancellation
 from src.utils.masking import mask_analysis_data
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,12 @@ async def _cleanup_temp_file(file_path: str) -> None:
         logger.debug("Temporary file already deleted: %s", file_path)
     except Exception as exc:
         logger.warning("Failed to delete temporary file %s: %s", file_path, exc)
+
+
+def _analysis_runtime_status(analysis) -> str:
+    if is_analysis_cancellation_pending(analysis):
+        return "cancelling"
+    return analysis.status
 
 
 @router.post("/upload")
@@ -171,7 +177,7 @@ async def get_result(
     result = analysis.result if analysis.result and isinstance(analysis.result, dict) else {}
     demo_mode = os.getenv("DEMO_MODE", "0") == "1"
     result = mask_analysis_data(result, demo_mode)
-    payload = {"status": analysis.status}
+    payload = {"status": _analysis_runtime_status(analysis)}
     payload.update(result)
     return payload
 
@@ -191,5 +197,5 @@ async def cancel_analysis(
         raise HTTPException(status_code=404, detail="Task not found")
     if analysis.status not in ("processing", "uploading"):
         return {"status": analysis.status, "message": "Task already finished"}
-    cancel_task(task_id)
-    return {"status": "cancelled", "task_id": task_id}
+    await request_analysis_cancellation(task_id)
+    return {"status": "cancelling", "task_id": task_id}

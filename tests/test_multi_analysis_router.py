@@ -308,6 +308,7 @@ class TestGetMultiAnalysisStatus:
         mock_session.status = "processing"
         mock_session.progress = {"completed": 2, "total": 5}
         mock_session.result = None
+        mock_session.cancel_requested_at = None
         
         with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_session
@@ -325,6 +326,7 @@ class TestGetMultiAnalysisStatus:
         mock_session = MagicMock()
         mock_session.status = "completed"
         mock_session.progress = {"completed": 3, "total": 3}
+        mock_session.cancel_requested_at = None
         mock_session.result = {
             "periods": [
                 {
@@ -375,6 +377,7 @@ class TestGetMultiAnalysisStatus:
         mock_session = MagicMock()
         mock_session.status = "failed"
         mock_session.progress = {"completed": 1, "total": 3}
+        mock_session.cancel_requested_at = None
         
         with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_session
@@ -382,6 +385,58 @@ class TestGetMultiAnalysisStatus:
             response = client.get("/multi-analysis/failed-session")
         
         assert response.status_code == 422
+
+    def test_get_multi_analysis_cancelling(self, client):
+        mock_session = MagicMock()
+        mock_session.status = "processing"
+        mock_session.progress = {"completed": 1, "total": 3}
+        mock_session.result = None
+        mock_session.cancel_requested_at = object()
+
+        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_session
+
+            response = client.get("/multi-analysis/cancelling-session")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "session_id": "cancelling-session",
+            "status": "cancelling",
+            "progress": {"completed": 1, "total": 3},
+        }
+
+    def test_get_multi_analysis_cancelled(self, client):
+        mock_session = MagicMock()
+        mock_session.status = "cancelled"
+        mock_session.progress = {"completed": 2, "total": 3}
+        mock_session.result = {"error": "Task cancelled by user"}
+        mock_session.cancel_requested_at = object()
+
+        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_session
+
+            response = client.get("/multi-analysis/cancelled-session")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "session_id": "cancelled-session",
+            "status": "cancelled",
+            "progress": {"completed": 2, "total": 3},
+        }
+
+    def test_delete_multi_analysis_requests_cancellation(self, client):
+        mock_session = MagicMock()
+        mock_session.status = "processing"
+        mock_session.cancel_requested_at = None
+
+        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_session
+            with patch("src.routers.multi_analysis.request_multi_session_cancellation", new_callable=AsyncMock) as mock_request:
+                response = client.delete("/multi-analysis/session-123")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "cancelling", "session_id": "session-123"}
+        mock_request.assert_awaited_once_with("session-123")
 
 
 # =============================================================================
@@ -534,6 +589,7 @@ class TestRoundTrip:
         mock_session = MagicMock()
         mock_session.status = "completed"
         mock_session.progress = {"completed": len(valid_labels), "total": len(valid_labels)}
+        mock_session.cancel_requested_at = None
         mock_session.result = {
             "periods": [
                 {
@@ -604,6 +660,7 @@ class TestMultiAnalysisIntegration:
         mock_session_processing = MagicMock()
         mock_session_processing.status = "processing"
         mock_session_processing.progress = {"completed": 1, "total": 2}
+        mock_session_processing.cancel_requested_at = None
         
         with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_session_processing
@@ -616,6 +673,7 @@ class TestMultiAnalysisIntegration:
         # Step 3: Check completed status
         mock_session_completed = MagicMock()
         mock_session_completed.status = "completed"
+        mock_session_completed.cancel_requested_at = None
         mock_session_completed.result = {
             "periods": [
                 {

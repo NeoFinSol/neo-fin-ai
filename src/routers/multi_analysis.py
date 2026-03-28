@@ -16,16 +16,22 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.auth import get_api_key
 from src.core.task_queue import dispatch_multi_analysis_task
-from src.db.crud import create_multi_session, get_multi_session, update_multi_session
+from src.db.crud import (
+    create_multi_session,
+    get_multi_session,
+    is_multi_session_cancellation_pending,
+    update_multi_session,
+)
 from src.exceptions import DatabaseError, TaskRuntimeError
 from src.models.schemas import (
     MultiAnalysisAcceptedResponse,
+    MultiAnalysisCancelledResponse,
     MultiAnalysisCompletedResponse,
     MultiAnalysisProcessingResponse,
     MultiAnalysisProgress,
     PeriodInput,
 )
-from src.tasks import process_multi_analysis
+from src.tasks import process_multi_analysis, request_multi_session_cancellation
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/multi-analysis", tags=["multi-analysis"])
@@ -40,6 +46,12 @@ def _cleanup_temp_files(paths: list[str]) -> None:
             continue
         except OSError as exc:
             logger.warning("Failed to remove temp file %s: %s", path, exc)
+
+
+def _multi_session_runtime_status(session) -> str:
+    if is_multi_session_cancellation_pending(session):
+        return "cancelling"
+    return session.status
 
 
 @router.post("", status_code=202, response_model=MultiAnalysisAcceptedResponse)
@@ -110,12 +122,16 @@ async def start_multi_analysis(
 
 @router.get(
     "/{session_id}",
-    response_model=MultiAnalysisProcessingResponse | MultiAnalysisCompletedResponse,
+    response_model=(
+        MultiAnalysisProcessingResponse
+        | MultiAnalysisCompletedResponse
+        | MultiAnalysisCancelledResponse
+    ),
 )
 async def get_multi_analysis_status(
     session_id: str,
     _api_key: str = Depends(get_api_key),
-) -> MultiAnalysisProcessingResponse | MultiAnalysisCompletedResponse:
+) -> MultiAnalysisProcessingResponse | MultiAnalysisCompletedResponse | MultiAnalysisCancelledResponse:
     """Return current status of a multi-period analysis session."""
     try:
         session = await get_multi_session(session_id)
@@ -133,15 +149,48 @@ async def get_multi_analysis_status(
             periods=result.get("periods", []),
         )
 
+    if session.status == "cancelled":
+        progress_raw = session.progress or {}
+        return MultiAnalysisCancelledResponse(
+            session_id=session_id,
+            status="cancelled",
+            progress=MultiAnalysisProgress(
+                completed=progress_raw.get("completed", 0),
+                total=progress_raw.get("total", 0),
+            ),
+        )
+
     if session.status == "failed":
         raise HTTPException(status_code=422, detail="Session processing failed")
 
     progress_raw = session.progress or {}
     return MultiAnalysisProcessingResponse(
         session_id=session_id,
-        status="processing",
+        status=_multi_session_runtime_status(session),
         progress=MultiAnalysisProgress(
             completed=progress_raw.get("completed", 0),
             total=progress_raw.get("total", 0),
         ),
     )
+
+
+@router.delete("/{session_id}")
+async def cancel_multi_analysis(
+    session_id: str,
+    _api_key: str = Depends(get_api_key),
+):
+    """Request cancellation for an in-progress multi-period analysis session."""
+    try:
+        session = await get_multi_session(session_id)
+    except SQLAlchemyError as exc:
+        logger.error("Failed to load multi-analysis session %s for cancellation: %s", session_id, exc)
+        raise DatabaseError("Database operation failed") from exc
+
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.status != "processing":
+        return {"status": session.status, "message": "Session already finished"}
+
+    await request_multi_session_cancellation(session_id)
+    return {"status": "cancelling", "session_id": session_id}

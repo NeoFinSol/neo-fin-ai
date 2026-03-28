@@ -31,7 +31,30 @@ class AnalysisAlreadyExistsError(IntegrityError):
 
 _TERMINAL_ANALYSIS_STATUSES = ("completed", "failed", "cancelled")
 _PROCESSING_ANALYSIS_STATUSES = ("uploading", "processing")
-_TERMINAL_MULTI_SESSION_STATUSES = ("completed", "failed")
+_TERMINAL_MULTI_SESSION_STATUSES = ("completed", "failed", "cancelled")
+_PROCESSING_MULTI_SESSION_STATUSES = ("processing",)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def is_analysis_cancellation_pending(analysis: Analysis | None) -> bool:
+    if analysis is None:
+        return False
+    return (
+        analysis.cancel_requested_at is not None
+        and analysis.status in _PROCESSING_ANALYSIS_STATUSES
+    )
+
+
+def is_multi_session_cancellation_pending(record: MultiAnalysisSession | None) -> bool:
+    if record is None:
+        return False
+    return (
+        record.cancel_requested_at is not None
+        and record.status in _PROCESSING_MULTI_SESSION_STATUSES
+    )
 
 
 def _coerce_float(value) -> float | None:
@@ -46,6 +69,12 @@ def _coerce_bool(value) -> bool | None:
     if isinstance(value, bool):
         return value
     return None
+
+
+def _merge_result_payload(existing_result: dict | None, next_result: dict | None) -> dict | None:
+    if not isinstance(existing_result, dict) or not isinstance(next_result, dict):
+        return next_result
+    return {**existing_result, **next_result}
 
 
 def _derive_analysis_summary(status: str, result: dict | None) -> dict[str, object | None]:
@@ -88,7 +117,7 @@ def _derive_analysis_summary(status: str, result: dict | None) -> dict[str, obje
         "risk_level": risk_level,
         "scanned": _coerce_bool(data.get("scanned")),
         "confidence_score": confidence_score,
-        "completed_at": datetime.now(timezone.utc) if status == "completed" else None,
+        "completed_at": _utcnow() if status == "completed" else None,
         "error_message": error_message,
     }
 
@@ -142,7 +171,7 @@ def _build_multi_session_cleanup_filters(
         )
     if stale_processing_before is not None:
         filters.append(
-            (MultiAnalysisSession.status == "processing")
+            (MultiAnalysisSession.status.in_(_PROCESSING_MULTI_SESSION_STATUSES))
             & (MultiAnalysisSession.updated_at < stale_processing_before)
         )
     return filters
@@ -208,6 +237,9 @@ async def update_analysis(task_id: str, status: str, result: dict | None = None)
 
             next_result = existing.result if result is None else result
             _apply_analysis_summary_fields(existing, status, next_result)
+            if status == "cancelled":
+                existing.cancelled_at = _utcnow()
+                existing.cancel_requested_at = existing.cancel_requested_at or existing.cancelled_at
             await session.commit()
             await session.refresh(existing)
             logger.info("Updated analysis record: task_id=%s, status=%s", task_id, status)
@@ -270,6 +302,81 @@ async def get_analysis(task_id: str) -> Analysis | None:
             return await session.scalar(stmt)
         except SQLAlchemyError as e:
             logger.error("Database error getting analysis: %s", e)
+            raise
+
+
+async def request_analysis_cancel(task_id: str) -> Analysis | None:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(Analysis).where(Analysis.task_id == task_id)
+            record = await session.scalar(stmt)
+            if record is None:
+                return None
+
+            if record.status in _PROCESSING_ANALYSIS_STATUSES and record.cancel_requested_at is None:
+                record.cancel_requested_at = _utcnow()
+            await session.commit()
+            await session.refresh(record)
+            return record
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error requesting analysis cancellation: %s", e)
+            raise
+
+
+async def mark_analysis_cancelled(task_id: str, result: dict | None = None) -> Analysis | None:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(Analysis).where(Analysis.task_id == task_id)
+            record = await session.scalar(stmt)
+            if record is None:
+                return None
+
+            now = _utcnow()
+            next_result = record.result if result is None else _merge_result_payload(record.result, result)
+            _apply_analysis_summary_fields(record, "cancelled", next_result)
+            record.cancel_requested_at = record.cancel_requested_at or now
+            record.cancelled_at = now
+            record.runtime_heartbeat_at = now
+            await session.commit()
+            await session.refresh(record)
+            return record
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error marking analysis cancelled: %s", e)
+            raise
+
+
+async def is_analysis_cancel_requested(task_id: str) -> bool:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(Analysis).where(Analysis.task_id == task_id)
+            record = await session.scalar(stmt)
+            return is_analysis_cancellation_pending(record)
+        except SQLAlchemyError as e:
+            logger.error("Database error reading analysis cancellation state: %s", e)
+            raise
+
+
+async def touch_analysis_runtime_heartbeat(task_id: str) -> Analysis | None:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(Analysis).where(Analysis.task_id == task_id)
+            record = await session.scalar(stmt)
+            if record is None:
+                return None
+            if record.status not in _TERMINAL_ANALYSIS_STATUSES:
+                record.runtime_heartbeat_at = _utcnow()
+            await session.commit()
+            await session.refresh(record)
+            return record
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error touching analysis runtime heartbeat: %s", e)
             raise
 
 
@@ -343,8 +450,12 @@ async def update_multi_session(
             if progress is not None:
                 record.progress = progress
             if result is not None:
-                record.result = result
-            record.updated_at = datetime.now(timezone.utc)
+                record.result = _merge_result_payload(record.result, result)
+            now = _utcnow()
+            record.updated_at = now
+            if status == "cancelled":
+                record.cancelled_at = now
+                record.cancel_requested_at = record.cancel_requested_at or now
 
             await session.commit()
             await session.refresh(record)
@@ -375,6 +486,102 @@ async def get_multi_session(session_id: str) -> MultiAnalysisSession | None:
             return await session.scalar(stmt)
         except SQLAlchemyError as e:
             logger.error("Database error getting multi_analysis_session: %s", e)
+            raise
+
+
+async def request_multi_session_cancel(session_id: str) -> MultiAnalysisSession | None:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(MultiAnalysisSession).where(
+                MultiAnalysisSession.session_id == session_id
+            )
+            record = await session.scalar(stmt)
+            if record is None:
+                return None
+
+            if record.status in _PROCESSING_MULTI_SESSION_STATUSES and record.cancel_requested_at is None:
+                now = _utcnow()
+                record.cancel_requested_at = now
+                record.updated_at = now
+            await session.commit()
+            await session.refresh(record)
+            return record
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error requesting multi-session cancellation: %s", e)
+            raise
+
+
+async def mark_multi_session_cancelled(
+    session_id: str,
+    *,
+    progress: dict | None = None,
+    result: dict | None = None,
+) -> MultiAnalysisSession | None:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(MultiAnalysisSession).where(
+                MultiAnalysisSession.session_id == session_id
+            )
+            record = await session.scalar(stmt)
+            if record is None:
+                return None
+
+            now = _utcnow()
+            record.status = "cancelled"
+            if progress is not None:
+                record.progress = progress
+            if result is not None:
+                record.result = _merge_result_payload(record.result, result)
+            record.cancel_requested_at = record.cancel_requested_at or now
+            record.cancelled_at = now
+            record.runtime_heartbeat_at = now
+            record.updated_at = now
+            await session.commit()
+            await session.refresh(record)
+            return record
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error marking multi-session cancelled: %s", e)
+            raise
+
+
+async def is_multi_session_cancel_requested(session_id: str) -> bool:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(MultiAnalysisSession).where(
+                MultiAnalysisSession.session_id == session_id
+            )
+            record = await session.scalar(stmt)
+            return is_multi_session_cancellation_pending(record)
+        except SQLAlchemyError as e:
+            logger.error("Database error reading multi-session cancellation state: %s", e)
+            raise
+
+
+async def touch_multi_session_runtime_heartbeat(session_id: str) -> MultiAnalysisSession | None:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = select(MultiAnalysisSession).where(
+                MultiAnalysisSession.session_id == session_id
+            )
+            record = await session.scalar(stmt)
+            if record is None:
+                return None
+            if record.status not in _TERMINAL_MULTI_SESSION_STATUSES:
+                now = _utcnow()
+                record.runtime_heartbeat_at = now
+                record.updated_at = now
+            await session.commit()
+            await session.refresh(record)
+            return record
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error touching multi-session runtime heartbeat: %s", e)
             raise
 
 

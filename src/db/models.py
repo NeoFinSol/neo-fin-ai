@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from src.db.database import Base
 
 ANALYSIS_STATUSES = ("uploading", "processing", "completed", "failed", "cancelled")
-MULTI_SESSION_STATUSES = ("processing", "completed", "failed")
+MULTI_SESSION_STATUSES = ("processing", "completed", "failed", "cancelled")
 RISK_LEVELS = ("low", "medium", "high", "critical")
 
 
@@ -44,6 +44,9 @@ class Analysis(Base):
     risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
     scanned: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    runtime_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -53,7 +56,7 @@ class MultiAnalysisSession(Base):
     __tablename__ = "multi_analysis_sessions"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('processing', 'completed', 'failed')",
+            "status IN ('processing', 'completed', 'failed', 'cancelled')",
             name="ck_multi_sessions_status_valid",
         ),
         Index("ix_multi_sessions_status_updated_at", "status", "updated_at"),
@@ -69,6 +72,9 @@ class MultiAnalysisSession(Base):
     )
     progress: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    runtime_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

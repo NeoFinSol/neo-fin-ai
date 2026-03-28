@@ -31,6 +31,16 @@ from src.db.crud import (
     AnalysisAlreadyExistsError,
     create_analysis,
     get_analysis,
+    is_analysis_cancel_requested,
+    is_analysis_cancellation_pending,
+    is_multi_session_cancel_requested,
+    is_multi_session_cancellation_pending,
+    mark_analysis_cancelled,
+    mark_multi_session_cancelled,
+    request_analysis_cancel,
+    request_multi_session_cancel,
+    touch_analysis_runtime_heartbeat,
+    touch_multi_session_runtime_heartbeat,
     update_analysis,
     update_multi_session,
 )
@@ -49,27 +59,32 @@ class RuntimePeriodInput:
     file_path: str
 
 
-# ---------------------------------------------------------------------------
-# Cancellation registry — in-memory set of cancelled task IDs
-# ---------------------------------------------------------------------------
-_cancelled_tasks: set[str] = set()
+_CANCELLED_ERROR = "Task cancelled by user"
 
 
-def cancel_task(task_id: str) -> None:
-    """Mark a task as cancelled. process_pdf checks this before each phase."""
-    _cancelled_tasks.add(task_id)
-    revoke_runtime_task(task_id)
-    logger.info("Task %s marked for cancellation", task_id)
+def _cancelled_payload() -> dict[str, str]:
+    return {
+        "error": _CANCELLED_ERROR,
+        "reason_code": "cancelled_by_request",
+    }
 
 
-def is_task_cancelled(task_id: str) -> bool:
-    """Return True if the task has been cancelled."""
-    return task_id in _cancelled_tasks
+async def request_analysis_cancellation(task_id: str):
+    """Persist cancellation request and try to revoke runtime execution."""
+    record = await request_analysis_cancel(task_id)
+    if is_analysis_cancellation_pending(record):
+        revoke_runtime_task(task_id)
+        logger.info("Analysis task %s marked for cancellation", task_id)
+    return record
 
 
-def _clear_cancelled(task_id: str) -> None:
-    """Remove task from cancellation registry after it finishes."""
-    _cancelled_tasks.discard(task_id)
+async def request_multi_session_cancellation(session_id: str):
+    """Persist multi-session cancellation request and try to revoke runtime execution."""
+    record = await request_multi_session_cancel(session_id)
+    if is_multi_session_cancellation_pending(record):
+        revoke_runtime_task(session_id)
+        logger.info("Multi-analysis session %s marked for cancellation", session_id)
+    return record
 
 
 _RAW_THRESHOLD = os.getenv("CONFIDENCE_THRESHOLD", "0.5")
@@ -118,6 +133,26 @@ async def _ensure_analysis_exists(task_id: str) -> bool:
         return False
 
 
+async def _finalize_analysis_cancellation(task_id: str, task_logger: logging.Logger) -> None:
+    payload = _cancelled_payload()
+    await mark_analysis_cancelled(task_id, payload)
+    await broadcast_task_event(task_id, {
+        "type": "status_update",
+        "task_id": task_id,
+        "status": "cancelled",
+        "error": payload["error"],
+    })
+    metrics.record_task_failure()
+    task_logger.info("Analysis task cancelled")
+
+
+async def _maybe_cancel_analysis(task_id: str, task_logger: logging.Logger) -> bool:
+    if not await is_analysis_cancel_requested(task_id):
+        return False
+    await _finalize_analysis_cancellation(task_id, task_logger)
+    return True
+
+
 
 
 
@@ -147,10 +182,9 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             metrics.record_task_failure()
             return
 
-        if is_task_cancelled(task_id):
-            task_logger.info("Task cancelled before extraction")
-            await update_analysis(task_id, "failed", None)
-            _clear_cancelled(task_id)
+        await touch_analysis_runtime_heartbeat(task_id)
+
+        if await _maybe_cancel_analysis(task_id, task_logger):
             return
 
         await broadcast_task_event(task_id, {
@@ -168,10 +202,9 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         scanned = extraction_results["scanned"]
         tables = extraction_results["tables"]
 
-        if is_task_cancelled(task_id):
-            task_logger.info("Task cancelled before scoring")
-            await update_analysis(task_id, "failed", None)
-            _clear_cancelled(task_id)
+        await touch_analysis_runtime_heartbeat(task_id)
+
+        if await _maybe_cancel_analysis(task_id, task_logger):
             return
 
         await broadcast_task_event(task_id, {
@@ -186,10 +219,9 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         ratios_en = scoring_results["ratios_en"]
         score_payload = scoring_results["score_payload"]
 
-        if is_task_cancelled(task_id):
-            task_logger.info("Task cancelled before AI")
-            await update_analysis(task_id, "failed", None)
-            _clear_cancelled(task_id)
+        await touch_analysis_runtime_heartbeat(task_id)
+
+        if await _maybe_cancel_analysis(task_id, task_logger):
             return
 
         await broadcast_task_event(task_id, {
@@ -201,6 +233,11 @@ async def process_pdf(task_id: str, file_path: str) -> None:
 
         # 3. AI Analysis Phase
         nlp_result = await _run_ai_analysis_phase(text, metrics_filtered, ratios_en, task_logger)
+
+        await touch_analysis_runtime_heartbeat(task_id)
+
+        if await _maybe_cancel_analysis(task_id, task_logger):
+            return
 
         # 4. Save & Notify
         total_duration = (time.monotonic() - start_time) * 1000
@@ -221,8 +258,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
                 "extraction_metadata": metadata_payload,
             }
         }
-        
-        _clear_cancelled(task_id)
+
         await _finalize_task(task_id, result_payload, total_duration, task_logger)
         
     except Exception as exc:
@@ -468,6 +504,53 @@ def _normalize_runtime_periods(periods: list) -> list[RuntimePeriodInput]:
     return normalized
 
 
+def _build_multi_cancelled_result(collected: list[dict]) -> dict:
+    payload = _cancelled_payload()
+    if collected:
+        payload["periods"] = sort_periods_chronologically(collected)
+    return payload
+
+
+async def _finalize_multi_analysis_cancellation(
+    session_id: str,
+    progress: dict[str, int],
+    collected: list[dict],
+    session_logger: logging.Logger,
+) -> None:
+    result_payload = _build_multi_cancelled_result(collected)
+    await mark_multi_session_cancelled(
+        session_id,
+        progress=progress,
+        result=result_payload,
+    )
+    await broadcast_task_event(session_id, {
+        "type": "status_update",
+        "session_id": session_id,
+        "status": "cancelled",
+        "progress": progress,
+        "result": result_payload,
+    })
+    metrics.record_task_failure()
+    session_logger.info("Multi-analysis session cancelled")
+
+
+async def _maybe_cancel_multi_analysis(
+    session_id: str,
+    progress: dict[str, int],
+    collected: list[dict],
+    session_logger: logging.Logger,
+) -> bool:
+    if not await is_multi_session_cancel_requested(session_id):
+        return False
+    await _finalize_multi_analysis_cancellation(
+        session_id,
+        progress,
+        collected,
+        session_logger,
+    )
+    return True
+
+
 async def _process_single_period(period_label: str, file_path: str) -> dict:
     """
     Run the full financial analysis pipeline for one period's PDF.
@@ -540,101 +623,130 @@ async def process_multi_analysis(
     session_logger = get_logger(__name__, session_id=session_id)
     session_logger.info("Multi-analysis session started: %d periods", total)
 
-    await update_multi_session(
-        session_id,
-        status="processing",
-        progress={"completed": 0, "total": total},
-    )
-
     collected: list[dict] = []
     failed_count = 0
+    remaining_paths = [period.file_path for period in periods]
 
-    for idx, period in enumerate(periods):
-        if time.monotonic() - start_time > _MULTI_ANALYSIS_TIMEOUT:
-            session_logger.error(
-                "Session exceeded timeout (%ds) after %d/%d periods",
-                _MULTI_ANALYSIS_TIMEOUT, idx, total
-            )
-            await update_multi_session(
-                session_id,
-                status="failed",
-                progress={"completed": idx, "total": total},
-            )
-            metrics.record_task_failure()
-            return
-
-        period_label: str = period.period_label
-        file_path: str = period.file_path
-        
-        period_logger = get_logger(__name__, session_id=session_id, task_id=period_label)
-        period_logger.info("Processing period %d/%d", idx + 1, total)
-
-        result = await _process_single_period(period_label, file_path)
-        cleanup_temp_file(file_path)
-        
-        if "error" in result:
-            failed_count += 1
-            period_logger.warning("Period failed: %s", result['error'])
-        else:
-            period_logger.info("Period completed successfully")
-        
-        collected.append(result)
-
-        progress_payload = {"completed": idx + 1, "total": total}
+    try:
         await update_multi_session(
             session_id,
-            progress=progress_payload,
+            status="processing",
+            progress={"completed": 0, "total": total},
         )
-        
-        # --- Broadcast Multi-Analysis Progress via WebSocket ---
-        # Note: session_id is used as task_id for broadcasting
+        await touch_multi_session_runtime_heartbeat(session_id)
+
+        if await _maybe_cancel_multi_analysis(
+            session_id,
+            {"completed": 0, "total": total},
+            collected,
+            session_logger,
+        ):
+            return
+
+        for idx, period in enumerate(periods):
+            if time.monotonic() - start_time > _MULTI_ANALYSIS_TIMEOUT:
+                session_logger.error(
+                    "Session exceeded timeout (%ds) after %d/%d periods",
+                    _MULTI_ANALYSIS_TIMEOUT, idx, total
+                )
+                await update_multi_session(
+                    session_id,
+                    status="failed",
+                    progress={"completed": idx, "total": total},
+                )
+                metrics.record_task_failure()
+                return
+
+            progress_payload = {"completed": idx, "total": total}
+            if await _maybe_cancel_multi_analysis(
+                session_id,
+                progress_payload,
+                collected,
+                session_logger,
+            ):
+                return
+
+            period_label: str = period.period_label
+            file_path: str = period.file_path
+
+            period_logger = get_logger(__name__, session_id=session_id, task_id=period_label)
+            period_logger.info("Processing period %d/%d", idx + 1, total)
+
+            result = await _process_single_period(period_label, file_path)
+            cleanup_temp_file(file_path)
+            if file_path in remaining_paths:
+                remaining_paths.remove(file_path)
+
+            if "error" in result:
+                failed_count += 1
+                period_logger.warning("Period failed: %s", result["error"])
+            else:
+                period_logger.info("Period completed successfully")
+
+            collected.append(result)
+
+            progress_payload = {"completed": idx + 1, "total": total}
+            await update_multi_session(
+                session_id,
+                progress=progress_payload,
+            )
+            await touch_multi_session_runtime_heartbeat(session_id)
+
+            await broadcast_task_event(session_id, {
+                "type": "progress_update",
+                "session_id": session_id,
+                "status": "processing",
+                "progress": progress_payload
+            })
+
+        if await _maybe_cancel_multi_analysis(
+            session_id,
+            {"completed": total, "total": total},
+            collected,
+            session_logger,
+        ):
+            return
+
+        sorted_results = sort_periods_chronologically(collected)
+        total_duration = (time.monotonic() - start_time) * 1000
+
+        if failed_count == total:
+            final_status = "failed"
+            session_logger.error("Session failed: all %d periods failed", total, extra={"duration_ms": total_duration})
+            metrics.record_task_failure()
+        elif failed_count > 0:
+            final_status = "completed"
+            session_logger.warning(
+                "Session completed with errors: %d/%d periods failed",
+                failed_count, total,
+                extra={"duration_ms": total_duration}
+            )
+            metrics.record_task_success(total_duration)
+        else:
+            final_status = "completed"
+            session_logger.info("Session completed successfully", extra={"duration_ms": total_duration})
+            metrics.record_task_success(total_duration)
+
+        final_payload = {
+            "periods": sorted_results
+        }
+        await update_multi_session(
+            session_id,
+            status=final_status,
+            progress={"completed": total, "total": total},
+            result=final_payload,
+        )
+
         await broadcast_task_event(session_id, {
-            "type": "progress_update",
+            "type": "status_update",
             "session_id": session_id,
-            "status": "processing",
-            "progress": progress_payload
+            "status": final_status,
+            "progress": {"completed": total, "total": total},
+            "result": final_payload
         })
-
-    sorted_results = sort_periods_chronologically(collected)
-    
-    total_duration = (time.monotonic() - start_time) * 1000
-    
-    # Determine final status
-    if failed_count == total:
-        final_status = "failed"
-        session_logger.error("Session failed: all %d periods failed", total, extra={"duration_ms": total_duration})
-        metrics.record_task_failure()
-    elif failed_count > 0:
-        final_status = "completed"
-        session_logger.warning(
-            "Session completed with errors: %d/%d periods failed",
-            failed_count, total,
-            extra={"duration_ms": total_duration}
-        )
-        metrics.record_task_success(total_duration)
-    else:
-        final_status = "completed"
-        session_logger.info("Session completed successfully", extra={"duration_ms": total_duration})
-        metrics.record_task_success(total_duration)
-
-    final_payload = {
-        "periods": sorted_results
-    }
-    await update_multi_session(
-        session_id,
-        status=final_status,
-        progress={"completed": total, "total": total},
-        result=final_payload,
-    )
-    
-    # --- Broadcast Multi-Analysis Final via WebSocket ---
-    await broadcast_task_event(session_id, {
-        "type": "status_update",
-        "session_id": session_id,
-        "status": final_status,
-        "progress": {"completed": total, "total": total},
-        "result": final_payload
-    })
+    finally:
+        for file_path in remaining_paths:
+            cleanup_temp_file(file_path)
 
 
 

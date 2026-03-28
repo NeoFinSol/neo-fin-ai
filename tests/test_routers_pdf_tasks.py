@@ -14,7 +14,7 @@ warnings.filterwarnings(
     category=CryptographyDeprecationWarning,
 )
 
-from src.routers.pdf_tasks import _validate_pdf_file, get_result, upload_pdf
+from src.routers.pdf_tasks import _validate_pdf_file, cancel_analysis, get_result, upload_pdf
 from src.exceptions import DatabaseError, TaskRuntimeError
 
 
@@ -442,6 +442,7 @@ class TestGetResult:
         mock_analysis = MagicMock()
         mock_analysis.status = "processing"
         mock_analysis.result = "some string result"
+        mock_analysis.cancel_requested_at = None
         
         with patch('src.routers.pdf_tasks.get_analysis', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_analysis
@@ -453,6 +454,20 @@ class TestGetResult:
             assert "result" not in result or result.get("result") != "some string result"
 
     @pytest.mark.asyncio
+    async def test_task_found_with_pending_cancellation(self):
+        mock_analysis = MagicMock()
+        mock_analysis.status = "processing"
+        mock_analysis.result = None
+        mock_analysis.cancel_requested_at = object()
+
+        with patch("src.routers.pdf_tasks.get_analysis", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_analysis
+
+            result = await get_result("test-task-id")
+
+            assert result["status"] == "cancelling"
+
+    @pytest.mark.asyncio
     async def test_db_failure_raises_database_error(self):
         """DB lookup failures should become explicit DatabaseError instances."""
         with patch(
@@ -462,3 +477,18 @@ class TestGetResult:
         ):
             with pytest.raises(DatabaseError):
                 await get_result("broken-task-id")
+
+
+class TestCancelAnalysis:
+    @pytest.mark.asyncio
+    async def test_cancel_analysis_requests_cancellation(self):
+        mock_analysis = MagicMock()
+        mock_analysis.status = "processing"
+
+        with patch("src.routers.pdf_tasks.get_analysis", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_analysis
+            with patch("src.routers.pdf_tasks.request_analysis_cancellation", new_callable=AsyncMock) as mock_request:
+                result = await cancel_analysis("task-123")
+
+        assert result == {"status": "cancelling", "task_id": "task-123"}
+        mock_request.assert_awaited_once_with("task-123")

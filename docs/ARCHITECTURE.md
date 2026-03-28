@@ -257,6 +257,11 @@ crud.create_multi_session()
    ▼
 Фоновая задача: process_multi_analysis(session_id, periods)
    │
+   ├── cooperative cancellation:
+   │      cancel_requested_at фиксируется роутером
+   │      worker проверяет флаг между периодами
+   │      transitional user-facing state = "cancelling"
+   │
    ├── [period 1]  _process_single_period()  →  PeriodResult
    │               update_multi_session(progress={completed:1, total:N})
    │
@@ -266,12 +271,17 @@ crud.create_multi_session()
    │
 ├── Защита тайм-аутом: если обработка > 600 сек → status="failed"
    │
+   ├── пользователь отменил задачу
+   │      → status="cancelled", progress сохраняется, непроцессенные temp PDF удаляются
+   │
    └── sort_periods_chronologically(results)
        update_multi_session(status="completed", result={periods:[...]})
 
 GET /multi-analysis/{session_id}
    ├── status="processing"  →  {status, progress: {completed, total}}
+   ├── status="cancelling"  →  {status, progress: {completed, total}}
    ├── status="completed"   →  {status, periods: [PeriodResult, ...]}
+   ├── status="cancelled"   →  {status, progress: {completed, total}}
    └── session не найден    →  HTTP 404
 ```
 
@@ -438,6 +448,9 @@ CREATE TABLE analyses (
     risk_level  VARCHAR(16),
     scanned     BOOLEAN,
     confidence_score DOUBLE PRECISION,
+    cancel_requested_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
+    runtime_heartbeat_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     error_message TEXT,
     result      JSONB,
@@ -505,6 +518,9 @@ ALTER TABLE analyses
 - типизированные сводные колонки синхронно заполняются из того же снимка в `create_analysis()` / `update_analysis()`
 - `/analyses` предпочитает типизированные колонки и откатывается к JSONB только для старых записей, где обратное заполнение ещё не было применено
 - обновление только статуса не должно стирать уже сохранённый снимок: при `result=None` сохраняется предыдущая полезная нагрузка
+- `cancel_requested_at` фиксирует запрос отмены; `cancelling` вычисляется как user-facing transitional state поверх `status in ('uploading', 'processing')`
+- `cancelled_at` выставляется только worker-процессом при финальном безопасном завершении задачи
+- `runtime_heartbeat_at` обновляется на границах фаз и используется как задел под stale recovery wave 2B
 
 ### Таблица `multi_analysis_sessions`
 
@@ -516,6 +532,9 @@ CREATE TABLE multi_analysis_sessions (
     status      VARCHAR(32) NOT NULL DEFAULT 'processing',
     progress    JSONB,
     result      JSONB,
+    cancel_requested_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
+    runtime_heartbeat_at TIMESTAMPTZ,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -526,12 +545,14 @@ CREATE INDEX idx_multi_sessions_status_updated_at
   ON multi_analysis_sessions(status, updated_at);
 ALTER TABLE multi_analysis_sessions
   ADD CONSTRAINT ck_multi_sessions_status_valid
-  CHECK (status IN ('processing', 'completed', 'failed'));
+  CHECK (status IN ('processing', 'completed', 'failed', 'cancelled'));
 ```
 
 - **`progress`**: `{"completed": 2, "total": 3}` — обновляется после каждого обработанного периода
 - **`result`**: `{"periods": [PeriodResult, ...]}` — заполняется при `status="completed"`
 - **`updated_at`**: обновляется ORM-слоем на каждом `update_multi_session()`, а составной индекс ускоряет служебные запросы по состоянию жизненного цикла
+- `cancel_requested_at` и `cancelled_at` дают cooperative cancellation без ложного мгновенного финализирования со стороны роутера
+- `runtime_heartbeat_at` нужен для следующей волны stale recovery и позволяет отличать живую задачу от зависшей
 
 ### Миграции
 
