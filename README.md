@@ -29,6 +29,7 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 - **Real-PDF Smoke Pack**: committed real annual-report fixtures с `sha256` provenance страхуют text-layer extraction без утяжеления default CI
 - **DB Hardening**: async engine применяет pool timeout/recycle, тестовый runtime предпочитает `TEST_DATABASE_URL`, а persistence-boundary больше не маскирует DB failures под `not found`
 - **DB Schema Evolution**: `analyses` хранит typed summary-поля (`filename`, `score`, `risk_level`, `scanned`, `confidence_score`, `completed_at`, `error_message`) рядом с каноническим JSONB snapshot; list/history path читает их с fallback на `result`, а cleanup helpers работают в bounded `dry_run`-friendly режиме
+- **Admin Cleanup Job**: отдельный CLI `scripts/admin_cleanup.py` чистит только stale in-progress rows, по умолчанию работает как `dry-run`, не открывает новый HTTP delete-surface и не удаляет completed business history
 - Вычисляет 13 коэффициентов: ликвидность, рентабельность, финансовая устойчивость, деловая активность
 - Формирует интегральный скоринг 0–100 с оценкой достоверности (**Confidence Score**) и факторами влияния
 
@@ -71,6 +72,7 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 - Router boundary переводит ошибки чтения/записи БД в явный service-level failure вместо тихого `404`
 - `analyses` использует гибридную модель хранения: полный результат остаётся в JSONB, а hot fields для history/cleanup dual-write'ятся в typed summary columns
 - maintenance helpers в `src/db/crud.py` позволяют находить и удалять stale analyses / multi-analysis sessions ограниченными batch'ами с `dry_run=True`
+- `scripts/admin_cleanup.py` использует эти helper’ы только для stale `uploading/processing` rows; completed rows и terminal business history в v1 не удаляются по умолчанию
 
 ### Многопериодный анализ
 
@@ -170,6 +172,16 @@ docker compose up --build
 # Проверяет .env → валидирует docker-compose.prod.yml → собирает образы
 # → применяет миграции → поднимает production stack
 # Доступно на порту 80
+```
+
+**Maintenance cleanup (admin/cron):**
+
+```bash
+# Safe preview: nothing is deleted
+python scripts/admin_cleanup.py --analyses --multi-sessions
+
+# Explicit execute mode for stale in-progress rows only
+python scripts/admin_cleanup.py --analyses --multi-sessions --execute
 ```
 
 ---
@@ -310,6 +322,9 @@ docker-compose -f docker-compose.prod.yml up -d --build
 | `CONFIDENCE_THRESHOLD` | `0.5` | Порог надёжности: показатели ниже исключаются из расчётов |
 | `DB_POOL_TIMEOUT` | `30` | Сколько ждать свободное DB connection из пула |
 | `DB_POOL_RECYCLE` | `3600` | Через сколько секунд пересоздавать stale connections |
+| `CLEANUP_BATCH_LIMIT` | `100` | Максимум строк на один cleanup batch |
+| `ANALYSIS_CLEANUP_STALE_HOURS` | `48` | Через сколько часов analysis в `uploading/processing` считается stale |
+| `MULTI_SESSION_STALE_HOURS` | `24` | Через сколько часов multi-session в `processing` считается stale |
 | `GIGACHAT_CLIENT_ID` | — | Client ID для GigaChat |
 | `GIGACHAT_CLIENT_SECRET` | — | Client Secret для GigaChat |
 | `HF_TOKEN` | — | HuggingFace API токен (DeepSeek) |

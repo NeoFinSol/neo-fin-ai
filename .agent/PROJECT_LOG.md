@@ -1,5 +1,37 @@
 # Project Log
 
+## 2026-03-28 — feat(maintenance): add bounded admin cleanup job
+
+**Изменения:**
+- `src/db/crud.py`:
+  - delete-path для cleanup helper’ов теперь повторно проверяет status/age в самом `DELETE`
+  - это уменьшает race window между candidate selection и actual deletion
+- Добавлены maintenance surfaces:
+  - `src/maintenance/cleanup_jobs.py`
+  - `src/maintenance/admin_cleanup.py`
+  - `scripts/admin_cleanup.py`
+- Cleanup job policy в v1 намеренно ограничена:
+  - только stale `uploading/processing` analyses
+  - только stale `processing` multi-analysis sessions
+  - completed business history не удаляется по умолчанию
+- `src/models/settings.py`:
+  - добавлены defaults для cleanup batch/retention:
+    - `CLEANUP_BATCH_LIMIT`
+    - `ANALYSIS_CLEANUP_STALE_HOURS`
+    - `MULTI_SESSION_STALE_HOURS`
+- Добавлены тесты:
+  - `tests/test_cleanup_jobs.py`
+  - `tests/test_admin_cleanup.py`
+- Документация синхронизирована:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `docs/CONFIGURATION.md`
+  - `.env.example`
+  - `.agent/overview.md`
+
+**Верификация:**
+- `python -m pytest tests/test_cleanup_jobs.py tests/test_admin_cleanup.py tests/test_db_crud.py tests/test_models_settings.py -q`
+
 ## 2026-03-28 — docs(agent): separate project roles from runtime carriers
 
 **Изменения:**

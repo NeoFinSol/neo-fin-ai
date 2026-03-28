@@ -25,6 +25,9 @@ class AppSettings(BaseSettings):
     db_pool_timeout: int = Field(30, alias="DB_POOL_TIMEOUT")
     db_pool_recycle: int = Field(3600, alias="DB_POOL_RECYCLE")
     db_pool_pre_ping: bool = Field(True, alias="DB_POOL_PRE_PING")
+    cleanup_batch_limit: int = Field(100, alias="CLEANUP_BATCH_LIMIT")
+    analysis_cleanup_stale_hours: int = Field(48, alias="ANALYSIS_CLEANUP_STALE_HOURS")
+    multi_session_stale_hours: int = Field(24, alias="MULTI_SESSION_STALE_HOURS")
 
     # Security
     api_key: str | None = Field(
@@ -234,6 +237,32 @@ class AppSettings(BaseSettings):
             )
             return "100/minute"
         return v
+
+    @field_validator(
+        "cleanup_batch_limit",
+        "analysis_cleanup_stale_hours",
+        "multi_session_stale_hours",
+        mode="before",
+    )
+    @classmethod
+    def validate_positive_ints(cls, v: int | str | None, info) -> int:
+        defaults = {
+            "cleanup_batch_limit": 100,
+            "analysis_cleanup_stale_hours": 48,
+            "multi_session_stale_hours": 24,
+        }
+        default = defaults[info.field_name]
+        if v is None:
+            return default
+        try:
+            value = int(v)
+        except (TypeError, ValueError):
+            logging.warning("Invalid %s=%r. Using default %d", info.field_name, v, default)
+            return default
+        if value <= 0:
+            logging.warning("%s=%r must be positive. Using default %d", info.field_name, v, default)
+            return default
+        return value
 
     @field_validator("log_level", mode="before")
     @classmethod

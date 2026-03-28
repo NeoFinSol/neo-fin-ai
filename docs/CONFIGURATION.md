@@ -45,6 +45,19 @@ cp .env.example .env
 - при невалидных значениях применяются безопасные defaults и логируется `WARNING`
 - при `TESTING=1` с заданным `TEST_DATABASE_URL` pool создаётся поверх тестовой БД, а не production/local `DATABASE_URL`
 
+### Maintenance cleanup
+
+| Переменная | Тип | По умолчанию | Обязательная | Описание |
+|---|---|---|:---:|---|
+| `CLEANUP_BATCH_LIMIT` | `int` | `100` | — | Максимальное число строк на один cleanup batch |
+| `ANALYSIS_CLEANUP_STALE_HOURS` | `int` | `48` | — | Через сколько часов `analyses` в `uploading/processing` считаются stale |
+| `MULTI_SESSION_STALE_HOURS` | `int` | `24` | — | Через сколько часов `multi_analysis_sessions` в `processing` считаются stale |
+
+Поведение:
+- используются `scripts/admin_cleanup.py` и maintenance-модулем как defaults
+- должны быть положительными целыми числами; при невалидных значениях применяются безопасные defaults и логируется `WARNING`
+- v1 cleanup job использует только stale in-progress policy и не удаляет completed history по умолчанию
+
 ---
 
 ### AI-провайдеры

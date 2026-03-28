@@ -531,6 +531,24 @@ migrations/versions/
 - Router boundary (`analyses`, `pdf_tasks`, `multi_analysis`) переводит SQLAlchemy read/write failures в явный `DatabaseError`, а не в `None`/ложный `404`.
 - `src/db/crud.py` держит dual-write invariant: typed summary columns выводятся из того же `result` snapshot и не становятся отдельным source of truth.
 - cleanup helpers (`find_analysis_cleanup_candidates`, `cleanup_analyses`, `find_multi_session_cleanup_candidates`, `cleanup_multi_sessions`) работают batch-wise и поддерживают `dry_run`, чтобы maintenance/delete path можно было запускать безопасно и наблюдаемо.
+- v1 cleanup policy intentionally ограничен stale in-progress rows: scheduled/admin path не удаляет completed business history по умолчанию.
+- delete path re-checks status/age inside `DELETE`, чтобы снизить race window между candidate selection и actual deletion.
+
+### Admin cleanup job
+
+Безопасный operational surface для cleanup — отдельный CLI, а не HTTP endpoint и не startup hook.
+
+```
+python scripts/admin_cleanup.py --analyses --multi-sessions
+python scripts/admin_cleanup.py --analyses --multi-sessions --execute
+```
+
+Инварианты v1:
+
+- default mode = `dry_run`
+- нужно явно выбрать target: `--analyses` и/или `--multi-sessions`
+- clean-up идёт только по stale `uploading/processing` analyses и stale `processing` multi-sessions
+- completed rows и terminal business history не удаляются scheduled path по умолчанию
 
 ---
 

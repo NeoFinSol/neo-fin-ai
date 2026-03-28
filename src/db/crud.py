@@ -110,6 +110,44 @@ def _apply_analysis_summary_fields(
     analysis.error_message = summary["error_message"]
 
 
+def _build_analysis_cleanup_filters(
+    *,
+    terminal_before: datetime | None = None,
+    stale_processing_before: datetime | None = None,
+) -> list[object]:
+    filters = []
+    if terminal_before is not None:
+        filters.append(
+            (Analysis.status.in_(_TERMINAL_ANALYSIS_STATUSES))
+            & (Analysis.created_at < terminal_before)
+        )
+    if stale_processing_before is not None:
+        filters.append(
+            (Analysis.status.in_(_PROCESSING_ANALYSIS_STATUSES))
+            & (Analysis.created_at < stale_processing_before)
+        )
+    return filters
+
+
+def _build_multi_session_cleanup_filters(
+    *,
+    terminal_before: datetime | None = None,
+    stale_processing_before: datetime | None = None,
+) -> list[object]:
+    filters = []
+    if terminal_before is not None:
+        filters.append(
+            (MultiAnalysisSession.status.in_(_TERMINAL_MULTI_SESSION_STATUSES))
+            & (MultiAnalysisSession.updated_at < terminal_before)
+        )
+    if stale_processing_before is not None:
+        filters.append(
+            (MultiAnalysisSession.status == "processing")
+            & (MultiAnalysisSession.updated_at < stale_processing_before)
+        )
+    return filters
+
+
 async def create_analysis(task_id: str, status: str, result: dict | None = None) -> Analysis:
     """
     Create a new analysis record.
@@ -355,18 +393,10 @@ async def find_analysis_cleanup_candidates(
     session_maker = get_session_maker()
     async with session_maker() as session:
         try:
-            filters = []
-            if terminal_before is not None:
-                filters.append(
-                    (Analysis.status.in_(_TERMINAL_ANALYSIS_STATUSES))
-                    & (Analysis.created_at < terminal_before)
-                )
-            if stale_processing_before is not None:
-                filters.append(
-                    (Analysis.status.in_(_PROCESSING_ANALYSIS_STATUSES))
-                    & (Analysis.created_at < stale_processing_before)
-                )
-
+            filters = _build_analysis_cleanup_filters(
+                terminal_before=terminal_before,
+                stale_processing_before=stale_processing_before,
+            )
             if not filters:
                 return []
 
@@ -407,7 +437,13 @@ async def cleanup_analyses(
     session_maker = get_session_maker()
     async with session_maker() as session:
         try:
-            stmt = delete(Analysis).where(Analysis.task_id.in_(task_ids))
+            delete_filters = _build_analysis_cleanup_filters(
+                terminal_before=terminal_before,
+                stale_processing_before=stale_processing_before,
+            )
+            stmt = delete(Analysis).where(Analysis.task_id.in_(task_ids)).where(
+                or_(*delete_filters)
+            )
             result = await session.execute(stmt)
             await session.commit()
             deleted_count = result.rowcount or 0
@@ -430,18 +466,10 @@ async def find_multi_session_cleanup_candidates(
     session_maker = get_session_maker()
     async with session_maker() as session:
         try:
-            filters = []
-            if terminal_before is not None:
-                filters.append(
-                    (MultiAnalysisSession.status.in_(_TERMINAL_MULTI_SESSION_STATUSES))
-                    & (MultiAnalysisSession.updated_at < terminal_before)
-                )
-            if stale_processing_before is not None:
-                filters.append(
-                    (MultiAnalysisSession.status == "processing")
-                    & (MultiAnalysisSession.updated_at < stale_processing_before)
-                )
-
+            filters = _build_multi_session_cleanup_filters(
+                terminal_before=terminal_before,
+                stale_processing_before=stale_processing_before,
+            )
             if not filters:
                 return []
 
@@ -480,8 +508,14 @@ async def cleanup_multi_sessions(
     session_maker = get_session_maker()
     async with session_maker() as session:
         try:
+            delete_filters = _build_multi_session_cleanup_filters(
+                terminal_before=terminal_before,
+                stale_processing_before=stale_processing_before,
+            )
             stmt = delete(MultiAnalysisSession).where(
                 MultiAnalysisSession.session_id.in_(session_ids)
+            ).where(
+                or_(*delete_filters)
             )
             result = await session.execute(stmt)
             await session.commit()

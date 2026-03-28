@@ -3,7 +3,7 @@
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
 - **Последний зафиксированный коммит до текущей волны**: `test(pdf): track real-fixture harness`
-- **Последняя сессия**: 2026-03-28 — начат DB schema evolution: `analyses` переведена на hybrid storage model (canonical JSONB + typed summary columns), добавлена миграция `0005_add_analysis_summary_columns.py`, list/history path читает typed поля с fallback на legacy JSONB, а cleanup helpers получили bounded `dry_run` режим.
+- **Последняя сессия**: 2026-03-28 — начат scheduled/admin cleanup job: добавлен bounded CLI `scripts/admin_cleanup.py` поверх cleanup helper’ов, delete-path получил status/age re-checks, а v1 policy ограничена stale in-progress rows без удаления completed history по умолчанию.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -62,6 +62,12 @@
   - `src/routers/analyses.py` предпочитает typed summary columns для `/analyses`, но остаётся совместимым с legacy rows через fallback на `result`
   - добавлены maintenance helpers для bounded cleanup analyses / multi-analysis sessions с `dry_run=True`
   - API shape не менялся: `result` остаётся каноническим источником для detail/history compatibility
+✅ **Audit Wave 3D — Scheduled/Admin Cleanup Job**:
+  - `src/maintenance/cleanup_jobs.py` добавляет bounded orchestration для cleanup job без смешивания maintenance-логики с `tasks.py`
+  - `src/maintenance/admin_cleanup.py` и `scripts/admin_cleanup.py` дают отдельный admin/cron entrypoint с `dry_run` по умолчанию
+  - `src/db/crud.py` re-check'ит status/age прямо в `DELETE`, уменьшая race window между candidate selection и delete
+  - v1 policy чистит только stale `uploading/processing` analyses и stale `processing` multi-sessions
+  - completed business history не удаляется scheduled path по умолчанию
 ✅ **Agent Workflow Hardening**:
   - `AGENTS.md` и `.agent/subagents/README.md` переведены на lean orchestration policy вместо fan-out “запускать всех”
   - стартовый default bundle ужат до `0 или 1` внешнего субагента; второй pass подключается только по явному риску
@@ -103,7 +109,7 @@
 ✅ **Masking** — `src/utils/masking.py`: чистая функция `mask_analysis_data(data, demo_mode)`, применяется во всех трёх эндпоинтах при `DEMO_MODE=1`
 ✅ **AnalysisHistory.tsx** — подключена к реальному API (`GET /analyses`), пагинация Mantine, skeleton/error states
 ✅ **DetailedReport.tsx** — BarChart из реальных `result.ratios`, цветовое кодирование по порогам, WebSocket-синхронизация
-✅ **БД** — PostgreSQL 16, SQLAlchemy async, 5 миграций Alembic; hybrid storage для `analyses` (`result` JSONB + typed summary columns для history/cleanup)
+✅ **БД** — PostgreSQL 16, SQLAlchemy async, 5 миграций Alembic; hybrid storage для `analyses` (`result` JSONB + typed summary columns для history/cleanup) и bounded admin cleanup path для stale in-progress rows
 ✅ **Auth.tsx** — pre-flight `GET /api/analyses` с введённым ключом
 ✅ **CI/CD** — GitHub Actions: lint → test → security → build
 ✅ **Docker** — backend, frontend/nginx, db, db_test, ollama

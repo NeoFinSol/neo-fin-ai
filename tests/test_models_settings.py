@@ -104,6 +104,27 @@ class TestAppSettings:
         assert 'QWEN_API_KEY' in str(model_json) or 'qwen_api_key' in str(model_json)
         assert 'API key' in str(model_json) or 'Qwen' in str(model_json)
 
+    def test_cleanup_settings_defaults(self):
+        """Cleanup settings should expose safe operational defaults."""
+        settings = AppSettings(_env_file=None)
+
+        assert settings.cleanup_batch_limit == 100
+        assert settings.analysis_cleanup_stale_hours == 48
+        assert settings.multi_session_stale_hours == 24
+
+    def test_cleanup_settings_invalid_values_fallback(self):
+        """Invalid cleanup values should fall back to safe defaults."""
+        settings = AppSettings(
+            _env_file=None,
+            CLEANUP_BATCH_LIMIT="bad",
+            ANALYSIS_CLEANUP_STALE_HOURS=0,
+            MULTI_SESSION_STALE_HOURS="-1",
+        )
+
+        assert settings.cleanup_batch_limit == 100
+        assert settings.analysis_cleanup_stale_hours == 48
+        assert settings.multi_session_stale_hours == 24
+
 
 class TestGlobalAppSettings:
     """Tests for global app_settings instance."""
