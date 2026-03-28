@@ -38,9 +38,11 @@
 **Проблема**: Таблицы с 2+ колонками (2022 | 2021) сливаются в одно число
 
 **Решения**:
+- [x] Базовая защита от year-column regressions: `_extract_first_numeric_cell()` пропускает year markers
+- [x] Corpus regression dataset для сложных layouts: note columns, year columns, RSBU line codes, garbled labels, OCR pseudo-tables
 - [ ] Camelot lattice с Ghostscript (уже установлен)
 - [ ] Разделение колонок по ширине символов
-- [ ] Выбор первой колонки (текущий год) по умолчанию
+- [ ] Явный выбор первой колонки (текущий год) по умолчанию для real PDFs с неоднозначной вёрсткой
 - [ ] Явное указание периода в API
 
 **Ожидаемый эффект**: revenue=2.3 трлн вместо 2022

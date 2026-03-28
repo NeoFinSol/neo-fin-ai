@@ -1,0 +1,131 @@
+[
+  {
+    "name": "note_column_then_current_period_value",
+    "tables": [
+      {
+        "flavor": "lattice",
+        "rows": [
+          ["Выручка", "5", "2 300 000", "2 100 000"],
+          ["Чистая прибыль", "6", "150 000", "120 000"]
+        ]
+      }
+    ],
+    "text": "",
+    "expected_values": {
+      "revenue": 2300000.0,
+      "net_profit": 150000.0
+    },
+    "expected_sources": {
+      "revenue": "table_exact",
+      "net_profit": "table_exact"
+    }
+  },
+  {
+    "name": "year_columns_are_skipped_before_values",
+    "tables": [
+      {
+        "flavor": "lattice",
+        "rows": [
+          ["Выручка", "2023", "2 300 000", "2022", "2 100 000"],
+          ["Чистая прибыль", "2023", "150 000", "2022", "120 000"]
+        ]
+      }
+    ],
+    "text": "",
+    "expected_values": {
+      "revenue": 2300000.0,
+      "net_profit": 150000.0
+    },
+    "expected_sources": {
+      "revenue": "table_exact",
+      "net_profit": "table_exact"
+    }
+  },
+  {
+    "name": "rsbu_line_code_layout_with_year_columns",
+    "tables": [
+      {
+        "flavor": "lattice",
+        "rows": [
+          ["2110", "Выручка", "2023", "2 300 000", "2022", "2 100 000"],
+          ["2400", "Чистая прибыль", "2023", "150 000", "2022", "120 000"]
+        ]
+      }
+    ],
+    "text": "",
+    "expected_values": {
+      "revenue": 2300000.0,
+      "net_profit": 150000.0
+    },
+    "expected_sources": {
+      "revenue": "table_exact",
+      "net_profit": "table_exact"
+    }
+  },
+  {
+    "name": "garbled_label_layout_with_note_column",
+    "tables": [
+      {
+        "flavor": "lattice",
+        "rows": [
+          ["т√Ёєўър", "5", "2 300 000", "2 100 000"],
+          ["шёЄр  яЁшс√ы№", "6", "150 000", "120 000"]
+        ]
+      }
+    ],
+    "text": "",
+    "expected_values": {
+      "revenue": 2300000.0,
+      "net_profit": 150000.0
+    },
+    "expected_sources": {
+      "revenue": "table_exact",
+      "net_profit": "table_exact"
+    }
+  },
+  {
+    "name": "ocr_pseudo_table_extracts_multiple_metrics",
+    "tables": [
+      {
+        "flavor": "ocr",
+        "rows": [
+          [
+            "OCR_TEXT",
+            "выручка 2 300 000\nчистая прибыль 150 000\nитого активов 10 000 000"
+          ]
+        ]
+      }
+    ],
+    "text": "",
+    "expected_values": {
+      "revenue": 2300000.0,
+      "net_profit": 150000.0,
+      "total_assets": 10000000.0
+    },
+    "expected_sources": {
+      "revenue": "text_regex",
+      "net_profit": "text_regex",
+      "total_assets": "text_regex"
+    }
+  },
+  {
+    "name": "derived_short_term_liabilities_from_multiline_section_total",
+    "tables": [
+      {
+        "flavor": "lattice",
+        "rows": [
+          ["Итого обязательств", "1 000 000"]
+        ]
+      }
+    ],
+    "text": "итого по разделу iv 361 751\n315",
+    "expected_values": {
+      "liabilities": 1000000.0,
+      "short_term_liabilities": 638249.0
+    },
+    "expected_sources": {
+      "liabilities": "table_exact",
+      "short_term_liabilities": "derived"
+    }
+  }
+]

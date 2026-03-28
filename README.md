@@ -25,6 +25,7 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 - **Smart PDF Detection**: интеллектуальный выбор метода (анализ первых 3 страниц на наличие текста и изображений `/Image`)
 - **OCR Fallback**: автоматическое переключение на Tesseract при обнаружении сканов или невидимых текстовых слоёв
 - **OCR Hardening**: multiline-safe numeric extraction не склеивает соседние строки, а fallback OCR-batch соблюдает `MAX_OCR_PAGES`
+- **Regression Corpus**: сложные table layouts (note columns, year columns, RSBU line codes, garbled labels, OCR pseudo-tables) зафиксированы corpus-driven тестами
 - Вычисляет 13 коэффициентов: ликвидность, рентабельность, финансовая устойчивость, деловая активность
 - Формирует интегральный скоринг 0–100 с оценкой достоверности (**Confidence Score**) и факторами влияния
 
@@ -217,6 +218,7 @@ curl http://localhost/api/multi-analysis/xyz-456 \
 - Mock внешних зависимостей (БД, AI-сервис)
 - **Regex fallback тесты**: извлечение метрик из текста при отсутствии таблиц
 - **LLM budget tests**: compaction, chunk-size invariants, narrative gating и compact JSON recommendation context
+- **PDF regression corpus**: note/year columns, multi-period rows, garbled labels и OCR pseudo-table scenarios
 
 **E2E тесты (9 тестов):**
 - Требуют внешних зависимостей (PostgreSQL, AI-сервис)

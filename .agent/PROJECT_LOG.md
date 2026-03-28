@@ -1,5 +1,27 @@
 # Project Log
 
+## 2026-03-28 — test(pdf): add corpus regression pack for complex table layouts
+
+**Изменения:**
+- `src/analysis/pdf_extractor.py`:
+  - `_extract_first_numeric_cell()` теперь пропускает year markers (`2023`, `2022`) в multi-period rows
+  - garbled-label matching нормализован через `.lower()`, чтобы псевдографические keyword variants реально срабатывали
+- Добавлен corpus dataset:
+  - `tests/data/pdf_regression_corpus.json`
+  - сценарии: note columns, year columns, RSBU line codes, garbled labels, OCR pseudo-tables, derived section totals
+- Добавлен harness:
+  - `tests/test_pdf_regression_corpus.py`
+  - проверяет и значения, и extraction source для каждого corpus-case
+- Обновлены документы:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `docs/ROADMAP.md`
+  - `.agent/overview.md`
+
+**Верификация:**
+- `python -m pytest tests/test_pdf_regression_corpus.py -q` → `7 passed`
+- `python -m pytest tests/test_pdf_extractor.py tests/test_pdf_regression_corpus.py tests/test_scoring.py tests/test_api.py -q` → `28 passed`
+
 ## 2026-03-28 — fix(pdf): harden OCR fallback and multiline numeric extraction
 
 **Изменения:**

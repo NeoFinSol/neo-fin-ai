@@ -750,7 +750,7 @@ def parse_financial_statements_with_metadata(
             if len(row) >= 3:
                 label_cell = str(row[0]).lower() if row[0] else ""
                 for garbled_kw, metric_key in _GARBLED_KEYWORDS.items():
-                    if garbled_kw in label_cell:
+                    if garbled_kw.lower() in label_cell:
                         value = _extract_first_numeric_cell(row[1:])
                         if value is not None and _is_valid_financial_value(value):
                             # Reject suspiciously small values for monetary metrics
@@ -1106,7 +1106,7 @@ def _extract_first_numeric_cell(cells: list) -> float | None:
 
     Skips cells that look like row/line codes in financial statements:
     - Pure digit strings of 1–4 characters (e.g. "66", "110", "2110")
-    - Values < 1 that are likely percentages or ratios stored as row metadata
+    - Year markers like 2023/2022 in multi-period tables
     """
     for cell in cells:
         if cell is None:
@@ -1120,7 +1120,7 @@ def _extract_first_numeric_cell(cells: list) -> float | None:
         if digits_only.isdigit() and len(digits_only) <= 3:
             continue
         value = _normalize_number(cell_str)
-        if value is not None:
+        if value is not None and not _is_year(value):
             return value
     return None
 

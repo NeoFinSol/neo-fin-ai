@@ -94,6 +94,32 @@ if not single_page_batch and len(images) > MAX_OCR_PAGES:
 - `python -m pytest tests/test_pdf_extractor.py -q`
 - `python -m pytest tests/test_scoring.py tests/test_pdf_extractor.py tests/test_api.py -q`
 
+### Complex table layouts могли подставлять год вместо значения и не матчить garbled labels
+**Статус**: Решено ✅
+**Дата решения**: 2026-03-28
+**Корневая причина**:
+1. После допуска 4-значных financial values helper `_extract_first_numeric_cell()` мог выбрать `2023`/`2022` как первое число строки в multi-period tables.
+2. Ветка `_GARBLED_KEYWORDS` сравнивала lower-cased `label_cell` с частично не-lower-cased garbled variants.
+
+**Решение**:
+```python
+# src/analysis/pdf_extractor.py
+if value is not None and not _is_year(value):
+    return value
+
+if garbled_kw.lower() in label_cell:
+    ...
+```
+
+**Где смотреть**:
+- `src/analysis/pdf_extractor.py`
+- `tests/data/pdf_regression_corpus.json`
+- `tests/test_pdf_regression_corpus.py`
+
+**Проверка**:
+- `python -m pytest tests/test_pdf_regression_corpus.py -q`
+- `python -m pytest tests/test_pdf_extractor.py tests/test_pdf_regression_corpus.py tests/test_scoring.py tests/test_api.py -q`
+
 ### Сбой shell-команд в sandbox Codex сессии
 **Дата**: 2026-03-28
 **Проблема**: В этой сессии базовые команды PowerShell в sandbox возвращали `Exit code: 1` без вывода.
