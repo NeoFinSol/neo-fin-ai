@@ -401,7 +401,7 @@ ai_service.invoke(prompt)
 
 ## 9. Хранение данных
 
-Реляционные поля хранят идентификаторы и статусы (`task_id`, `status`, `created_at`). Результаты анализа хранятся в JSONB — это позволяет расширять структуру ответа без изменения схемы таблиц. При этом критичные lifecycle-инварианты теперь дополнительно закреплены check constraints и operational indexes на уровне БД.
+Хранение стало гибридным. Полный результат анализа по-прежнему остаётся в JSONB как канонический snapshot, а наиболее горячие поля (`filename`, `score`, `risk_level`, `scanned`, `confidence_score`, `completed_at`, `error_message`) дополнительно вынесены в typed summary columns. Это даёт быстрый history/list path и основу для bounded cleanup jobs, не ломая внешний API и не отказываясь от гибкости JSONB.
 
 ### Таблица `analyses`
 
@@ -410,6 +410,13 @@ CREATE TABLE analyses (
     id          SERIAL PRIMARY KEY,
     task_id     VARCHAR(64) UNIQUE NOT NULL,
     status      VARCHAR(32) NOT NULL DEFAULT 'processing',
+    filename    VARCHAR(255),
+    score       DOUBLE PRECISION,
+    risk_level  VARCHAR(16),
+    scanned     BOOLEAN,
+    confidence_score DOUBLE PRECISION,
+    completed_at TIMESTAMPTZ,
+    error_message TEXT,
     result      JSONB,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -419,6 +426,15 @@ CREATE INDEX idx_analyses_created_at ON analyses(created_at DESC);
 ALTER TABLE analyses
   ADD CONSTRAINT ck_analyses_status_valid
   CHECK (status IN ('uploading', 'processing', 'completed', 'failed', 'cancelled'));
+ALTER TABLE analyses
+  ADD CONSTRAINT ck_analyses_risk_level_valid
+  CHECK (risk_level IS NULL OR risk_level IN ('low', 'medium', 'high', 'critical'));
+ALTER TABLE analyses
+  ADD CONSTRAINT ck_analyses_score_range
+  CHECK (score IS NULL OR (score >= 0 AND score <= 100));
+ALTER TABLE analyses
+  ADD CONSTRAINT ck_analyses_confidence_score_range
+  CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1));
 ```
 
 **Структура `result` (JSONB):**
@@ -460,6 +476,13 @@ ALTER TABLE analyses
 }
 ```
 
+**Принцип хранения `analyses`:**
+
+- `result` остаётся canonical snapshot для detail API и будущих расширений payload shape
+- typed summary columns dual-write'ятся из того же snapshot в `create_analysis()` / `update_analysis()`
+- `/analyses` предпочитает typed columns и откатывается к JSONB только для legacy rows, где бэкфилл ещё не был применён
+- status-only update не должен стирать уже сохранённый snapshot: при `result=None` сохраняется предыдущий payload
+
 ### Таблица `multi_analysis_sessions`
 
 ```sql
@@ -496,7 +519,8 @@ migrations/versions/
 ├── 0001_create_analyses.py                       — таблица analyses
 ├── 0002_add_status_created_at_indexes.py         — индексы analyses
 ├── 0003_add_multi_analysis_sessions.py           — таблица multi_analysis_sessions
-└── 0004_harden_db_status_constraints.py          — status constraints + lifecycle index
+├── 0004_harden_db_status_constraints.py          — status constraints + lifecycle index
+└── 0005_add_analysis_summary_columns.py          — typed summary columns + JSONB backfill
 ```
 
 ### Runtime notes for persistence
@@ -505,6 +529,8 @@ migrations/versions/
 - При `TESTING=1` engine предпочитает `TEST_DATABASE_URL`, чтобы не смешивать test traffic с основной БД.
 - FastAPI lifespan вызывает `dispose_engine()` на shutdown, чтобы не оставлять stale pooled connections при restart/test teardown.
 - Router boundary (`analyses`, `pdf_tasks`, `multi_analysis`) переводит SQLAlchemy read/write failures в явный `DatabaseError`, а не в `None`/ложный `404`.
+- `src/db/crud.py` держит dual-write invariant: typed summary columns выводятся из того же `result` snapshot и не становятся отдельным source of truth.
+- cleanup helpers (`find_analysis_cleanup_candidates`, `cleanup_analyses`, `find_multi_session_cleanup_candidates`, `cleanup_multi_sessions`) работают batch-wise и поддерживают `dry_run`, чтобы maintenance/delete path можно было запускать безопасно и наблюдаемо.
 
 ---
 

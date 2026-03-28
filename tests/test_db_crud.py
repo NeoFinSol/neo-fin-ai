@@ -1,12 +1,17 @@
 """Tests for database CRUD operations."""
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from src.db.crud import (
+    cleanup_analyses,
+    cleanup_multi_sessions,
     create_analysis,
     create_multi_session,
+    find_analysis_cleanup_candidates,
+    find_multi_session_cleanup_candidates,
     get_analysis,
     get_multi_session,
     update_analysis,
@@ -58,7 +63,14 @@ class TestCreateAnalysis:
         mock_session.refresh = AsyncMock()
         
         mock_analysis = MagicMock()
-        result_data = {"score": 85.5, "metrics": {"revenue": 100}}
+        result_data = {
+            "filename": "report.pdf",
+            "data": {
+                "scanned": False,
+                "score": {"score": 85.5, "risk_level": "low", "confidence_score": 0.9},
+                "metrics": {"revenue": 100},
+            },
+        }
         
         mock_session_maker = MagicMock()
         mock_context_manager = AsyncMock()
@@ -74,6 +86,8 @@ class TestCreateAnalysis:
             analysis_obj = call_args[0][0]
             assert analysis_obj.status == "completed"
             assert analysis_obj.result == result_data
+            assert analysis_obj.score == 85.5
+            assert analysis_obj.filename == "report.pdf"
 
     @pytest.mark.asyncio
     async def test_sqlalchemy_error_handling(self):
@@ -125,8 +139,116 @@ class TestUpdateAnalysis:
             assert result is not None
             assert result.status == "completed"
             assert result.result == {"data": "result"}
+            assert result.score is None
             mock_session.commit.assert_called_once()
             mock_session.refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_update_derives_summary_columns_from_result(self):
+        """Summary columns should be dual-written from the same JSON snapshot."""
+        mock_existing = MagicMock()
+        mock_existing.task_id = "test-123"
+        mock_existing.status = "processing"
+        mock_existing.result = None
+
+        payload = {
+            "filename": "report.pdf",
+            "data": {
+                "scanned": True,
+                "score": {
+                    "score": 72.5,
+                    "risk_level": "medium",
+                    "confidence_score": 0.8,
+                },
+            },
+        }
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_existing)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch('src.db.crud.get_session_maker', return_value=mock_session_maker):
+            result = await update_analysis("test-123", "completed", payload)
+
+            assert result.filename == "report.pdf"
+            assert result.score == 72.5
+            assert result.risk_level == "medium"
+            assert result.scanned is True
+            assert result.confidence_score == 0.8
+            assert result.completed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_update_failure_payload_sets_error_message(self):
+        """Failed rows should preserve error_message as typed summary data."""
+        mock_existing = MagicMock()
+        mock_existing.task_id = "test-123"
+        mock_existing.status = "processing"
+        mock_existing.result = None
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_existing)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch('src.db.crud.get_session_maker', return_value=mock_session_maker):
+            result = await update_analysis("test-123", "failed", {"error": "boom"})
+
+            assert result.error_message == "boom"
+            assert result.completed_at is None
+
+    @pytest.mark.asyncio
+    async def test_update_without_result_preserves_existing_snapshot(self):
+        """Status-only updates should not erase previously stored result/summary."""
+        existing_payload = {
+            "filename": "report.pdf",
+            "data": {
+                "scanned": False,
+                "score": {
+                    "score": 66.0,
+                    "risk_level": "high",
+                    "confidence_score": 0.7,
+                },
+            },
+        }
+        mock_existing = MagicMock()
+        mock_existing.task_id = "test-123"
+        mock_existing.status = "processing"
+        mock_existing.result = existing_payload
+
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(return_value=mock_existing)
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch('src.db.crud.get_session_maker', return_value=mock_session_maker):
+            result = await update_analysis("test-123", "failed", None)
+
+            assert result.result == existing_payload
+            assert result.filename == "report.pdf"
+            assert result.score == 66.0
+            assert result.risk_level == "high"
+            assert result.scanned is False
+            assert result.confidence_score == 0.7
+            assert result.completed_at is None
 
     @pytest.mark.asyncio
     async def test_update_nonexistent_returns_none(self):
@@ -148,7 +270,7 @@ class TestUpdateAnalysis:
 
     @pytest.mark.asyncio
     async def test_update_only_status(self):
-        """Test updating only status field."""
+        """Test status-only update preserves the existing snapshot."""
         mock_existing = MagicMock()
         mock_existing.task_id = "test-123"
         mock_existing.status = "processing"
@@ -169,7 +291,7 @@ class TestUpdateAnalysis:
             await update_analysis("test-123", "failed", None)
             
             assert mock_existing.status == "failed"
-            assert mock_existing.result is None  # Result also updated to None
+            assert mock_existing.result == {"partial": "data"}
 
     @pytest.mark.asyncio
     async def test_update_sqlalchemy_error(self):
@@ -290,3 +412,90 @@ class TestMultiSessionCrud:
         with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
             with pytest.raises(SQLAlchemyError):
                 await get_multi_session("session-123")
+
+
+class TestCleanupCrud:
+    """Tests for maintenance cleanup helpers."""
+
+    @pytest.mark.asyncio
+    async def test_find_analysis_cleanup_candidates_uses_expected_filters(self):
+        mock_row = MagicMock(task_id="old-task")
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_row]
+
+        mock_session = AsyncMock()
+        mock_session.scalars = AsyncMock(return_value=mock_scalars)
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            rows = await find_analysis_cleanup_candidates(
+                terminal_before=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                stale_processing_before=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                limit=10,
+            )
+
+            assert rows == [mock_row]
+            mock_session.scalars.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_analyses_dry_run_does_not_delete(self):
+        with patch(
+            "src.db.crud.find_analysis_cleanup_candidates",
+            new_callable=AsyncMock,
+            return_value=[MagicMock(task_id="a"), MagicMock(task_id="b")],
+        ):
+            result = await cleanup_analyses(dry_run=True)
+
+            assert result == {"count": 2, "task_ids": ["a", "b"], "deleted": False}
+
+    @pytest.mark.asyncio
+    async def test_cleanup_analyses_skips_processing_logic_when_no_candidates(self):
+        with patch(
+            "src.db.crud.find_analysis_cleanup_candidates",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await cleanup_analyses(dry_run=False)
+
+            assert result == {"count": 0, "task_ids": [], "deleted": False}
+
+    @pytest.mark.asyncio
+    async def test_cleanup_multi_sessions_dry_run_does_not_delete(self):
+        with patch(
+            "src.db.crud.find_multi_session_cleanup_candidates",
+            new_callable=AsyncMock,
+            return_value=[MagicMock(session_id="s1")],
+        ):
+            result = await cleanup_multi_sessions(dry_run=True)
+
+            assert result == {"count": 1, "session_ids": ["s1"], "deleted": False}
+
+    @pytest.mark.asyncio
+    async def test_find_multi_session_cleanup_candidates_uses_scalars(self):
+        mock_row = MagicMock(session_id="old-session")
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_row]
+
+        mock_session = AsyncMock()
+        mock_session.scalars = AsyncMock(return_value=mock_scalars)
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            rows = await find_multi_session_cleanup_candidates(
+                terminal_before=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                stale_processing_before=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                limit=10,
+            )
+
+            assert rows == [mock_row]
+            mock_session.scalars.assert_called_once()

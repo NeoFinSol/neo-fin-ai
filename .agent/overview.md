@@ -2,8 +2,8 @@
 
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
-- **Последний зафиксированный коммит до текущей волны**: `fix(db): harden persistence runtime and schema guards`
-- **Последняя сессия**: 2026-03-28 — начат real-PDF fixture pack: добавлен committed smoke corpus из реальных annual reports, manifest-driven expectations и `sha256` provenance без утяжеления default CI full-table extraction.
+- **Последний зафиксированный коммит до текущей волны**: `test(pdf): track real-fixture harness`
+- **Последняя сессия**: 2026-03-28 — начат DB schema evolution: `analyses` переведена на hybrid storage model (canonical JSONB + typed summary columns), добавлена миграция `0005_add_analysis_summary_columns.py`, list/history path читает typed поля с fallback на legacy JSONB, а cleanup helpers получили bounded `dry_run` режим.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -56,6 +56,12 @@
   - `src/db/crud.py` больше не маскирует read failures БД под `None`
   - router boundary (`analyses`, `pdf_tasks`, `multi_analysis`) переводит SQLAlchemy failures в явный `DatabaseError`
   - `src/utils/error_handler.py` регистрирует catch-all handler последним, чтобы специализированные DB handlers не деградировали в generic 500
+✅ **Audit Wave 3C — DB schema evolution**:
+  - `src/db/models.py` и миграция `0005_add_analysis_summary_columns.py` добавляют typed summary columns для `analyses`: `filename`, `score`, `risk_level`, `scanned`, `confidence_score`, `completed_at`, `error_message`
+  - `src/db/crud.py` держит dual-write invariant: summary-поля выводятся из того же JSONB snapshot, а status-only update не стирает уже сохранённый payload
+  - `src/routers/analyses.py` предпочитает typed summary columns для `/analyses`, но остаётся совместимым с legacy rows через fallback на `result`
+  - добавлены maintenance helpers для bounded cleanup analyses / multi-analysis sessions с `dry_run=True`
+  - API shape не менялся: `result` остаётся каноническим источником для detail/history compatibility
 ✅ **Agent Workflow Hardening**:
   - `AGENTS.md` и `.agent/subagents/README.md` переведены на lean orchestration policy вместо fan-out “запускать всех”
   - стартовый default bundle ужат до `0 или 1` внешнего субагента; второй pass подключается только по явному риску
@@ -92,7 +98,7 @@
 ✅ **Masking** — `src/utils/masking.py`: чистая функция `mask_analysis_data(data, demo_mode)`, применяется во всех трёх эндпоинтах при `DEMO_MODE=1`
 ✅ **AnalysisHistory.tsx** — подключена к реальному API (`GET /analyses`), пагинация Mantine, skeleton/error states
 ✅ **DetailedReport.tsx** — BarChart из реальных `result.ratios`, цветовое кодирование по порогам, WebSocket-синхронизация
-✅ **БД** — PostgreSQL 16, SQLAlchemy async, 4 миграции Alembic (`analyses`, индексы, `multi_analysis_sessions`, DB hardening constraints/indexes)
+✅ **БД** — PostgreSQL 16, SQLAlchemy async, 5 миграций Alembic; hybrid storage для `analyses` (`result` JSONB + typed summary columns для history/cleanup)
 ✅ **Auth.tsx** — pre-flight `GET /api/analyses` с введённым ключом
 ✅ **CI/CD** — GitHub Actions: lint → test → security → build
 ✅ **Docker** — backend, frontend/nginx, db, db_test, ollama

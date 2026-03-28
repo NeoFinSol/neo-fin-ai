@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analyses", tags=["analyses"])
 
 
+def _prefer_scalar(value, fallback):
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return fallback
+
+
 def _is_demo_mode() -> bool:
     return os.getenv("DEMO_MODE") == "1"
 
@@ -49,15 +55,21 @@ async def list_analyses(
         masked = mask_analysis_data(result, demo)
         data = masked.get("data") or {}
         score_block = data.get("score") or {}
+        score = _prefer_scalar(getattr(a, "score", None), score_block.get("score"))
+        risk_level = _prefer_scalar(
+            getattr(a, "risk_level", None),
+            score_block.get("risk_level"),
+        )
+        filename = _prefer_scalar(getattr(a, "filename", None), masked.get("filename"))
 
         summary_items.append(
             AnalysisSummaryResponse(
                 task_id=a.task_id,
                 status=a.status,
                 created_at=a.created_at,
-                score=score_block.get("score"),
-                risk_level=score_block.get("risk_level"),
-                filename=masked.get("filename"),
+                score=score,
+                risk_level=risk_level,
+                filename=filename,
             )
         )
 

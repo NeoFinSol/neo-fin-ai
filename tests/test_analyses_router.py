@@ -30,6 +30,9 @@ def _mock_analysis(task_id: str = "abc-123") -> MagicMock:
     obj.task_id = task_id
     obj.status = "completed"
     obj.created_at = datetime(2024, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    obj.score = None
+    obj.risk_level = None
+    obj.filename = None
     obj.result = {
         "filename": "report.pdf",
         "data": {
@@ -107,6 +110,35 @@ class TestAnalysesDetail:
         ):
             with pytest.raises(DatabaseError):
                 await get_analysis_detail("broken-task-id", _api_key=VALID_API_KEY)
+
+
+class TestAnalysesTypedSummaryFallback:
+    """Typed DB summary columns should be used when available."""
+
+    def test_list_prefers_typed_summary_columns(self):
+        analysis = _mock_analysis()
+        analysis.score = 88.0
+        analysis.risk_level = "low"
+        analysis.filename = "typed.pdf"
+        analysis.result = {"filename": "old.pdf", "data": {"score": {"score": 11.0, "risk_level": "high"}}}
+
+        app.dependency_overrides[get_api_key] = _auth_ok
+        try:
+            with patch(
+                "src.routers.analyses.get_analyses_list",
+                new_callable=AsyncMock,
+                return_value=([analysis], 1),
+            ):
+                client = TestClient(app)
+                response = client.get("/analyses?page=1&page_size=20")
+        finally:
+            app.dependency_overrides.pop(get_api_key, None)
+
+        assert response.status_code == 200
+        item = response.json()["items"][0]
+        assert item["score"] == 88.0
+        assert item["risk_level"] == "low"
+        assert item["filename"] == "typed.pdf"
 
 
 # ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 - **Regression Corpus**: сложные table layouts (note columns, year columns, RSBU line codes, garbled labels, OCR pseudo-tables) зафиксированы corpus-driven тестами
 - **Real-PDF Smoke Pack**: committed real annual-report fixtures с `sha256` provenance страхуют text-layer extraction без утяжеления default CI
 - **DB Hardening**: async engine применяет pool timeout/recycle, тестовый runtime предпочитает `TEST_DATABASE_URL`, а persistence-boundary больше не маскирует DB failures под `not found`
+- **DB Schema Evolution**: `analyses` хранит typed summary-поля (`filename`, `score`, `risk_level`, `scanned`, `confidence_score`, `completed_at`, `error_message`) рядом с каноническим JSONB snapshot; list/history path читает их с fallback на `result`, а cleanup helpers работают в bounded `dry_run`-friendly режиме
 - Вычисляет 13 коэффициентов: ликвидность, рентабельность, финансовая устойчивость, деловая активность
 - Формирует интегральный скоринг 0–100 с оценкой достоверности (**Confidence Score**) и факторами влияния
 
@@ -68,6 +69,8 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 - `analyses` и `multi_analysis_sessions` защищены status constraints на уровне схемы; для lifecycle multi-session добавлен индекс `(status, updated_at)`
 - FastAPI lifespan теперь гарантированно вызывает `dispose_engine()` на shutdown, чтобы не оставлять висящие DB connections
 - Router boundary переводит ошибки чтения/записи БД в явный service-level failure вместо тихого `404`
+- `analyses` использует гибридную модель хранения: полный результат остаётся в JSONB, а hot fields для history/cleanup dual-write'ятся в typed summary columns
+- maintenance helpers в `src/db/crud.py` позволяют находить и удалять stale analyses / multi-analysis sessions ограниченными batch'ами с `dry_run=True`
 
 ### Многопериодный анализ
 
@@ -112,7 +115,7 @@ PDF → Extractor → ExtractionMetadata {value, confidence, source}
   WebSocket Broadcast (Real-time update)
        │
        ▼
-  PostgreSQL (JSONB) → React / Mantine UI
+  PostgreSQL (JSONB + typed summaries) → React / Mantine UI
 ```
 
 **Выбор AI-провайдера:** определяется один раз при старте приложения по наличию переменных окружения. Нет runtime-переключения между провайдерами.
@@ -335,7 +338,7 @@ docker-compose -f docker-compose.prod.yml up -d --build
 |---|---|
 | Backend | Python 3.11, FastAPI, SQLAlchemy async, Alembic, Pydantic v2 |
 | Frontend | React 18, TypeScript, Mantine UI, Recharts, Vite |
-| База данных | PostgreSQL 16, JSONB для результатов анализа |
+| База данных | PostgreSQL 16, JSONB для полного результата + typed summary columns для history/cleanup |
 | AI | GigaChat, DeepSeek (HuggingFace), Ollama (offline) |
 | Инфраструктура | Docker, Docker Compose, Nginx, multi-stage builds |
 | Тестирование | pytest, Hypothesis, vitest, fast-check |

@@ -1,5 +1,39 @@
 # Project Log
 
+## 2026-03-28 — feat(db): evolve analysis schema with typed summaries and cleanup helpers
+
+**Изменения:**
+- `src/db/models.py`:
+  - `analyses` получила typed summary columns:
+    - `filename`
+    - `score`
+    - `risk_level`
+    - `scanned`
+    - `confidence_score`
+    - `completed_at`
+    - `error_message`
+  - добавлены check constraints для `risk_level`, `score`, `confidence_score`
+- `migrations/versions/0005_add_analysis_summary_columns.py`:
+  - additive migration без ломки внешнего payload shape
+  - backfill typed summary columns из существующего `result` JSONB
+- `src/db/crud.py`:
+  - реализован dual-write summary fields из canonical JSONB snapshot
+  - добавлены bounded cleanup helpers для `analyses` и `multi_analysis_sessions`
+  - status-only update больше не стирает уже сохранённый snapshot при `result=None`
+- `src/routers/analyses.py`:
+  - `/analyses` предпочитает typed summary columns и откатывается к JSONB для legacy rows
+- Обновлены тесты:
+  - `tests/test_db_crud.py`
+  - `tests/test_analyses_router.py`
+- Документация синхронизирована:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `.agent/overview.md`
+
+**Верификация:**
+- `python -m pytest tests/test_db_crud.py tests/test_analyses_router.py -q`
+- `python -m pytest tests/test_db_database.py -q`
+
 ## 2026-03-28 — test(pdf): add real-PDF smoke fixture pack
 
 **Изменения:**
