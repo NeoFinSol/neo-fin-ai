@@ -764,6 +764,8 @@ Internet
 - `GET /analyses/{task_id}` возвращает внутреннюю полезную нагрузку `result.data`, а не целиком JSONB-объект результата.
 - `tasks.py` шлёт промежуточные WebSocket-статусы `extracting`, `scoring`, `analyzing` до финального `completed|failed`.
 - `process_multi_analysis()` нормализует частично успешные сессии к статусу `completed`, а ошибки отдельных периодов остаются внутри `periods[].error`.
+- cooperative cancellation использует persisted флаги `cancel_requested_at` / `cancelled_at`; роутер отвечает `cancelling`, а финальный `cancelled` ставит worker.
+- для stale runtime есть отдельный bounded maintenance path `scripts/runtime_recover.py`; в первой версии он переводит зависшие задачи в `failed` с `reason_code=runtime_stale_timeout`, не делая auto-requeue.
 
 ---
 

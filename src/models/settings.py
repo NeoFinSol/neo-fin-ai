@@ -28,6 +28,9 @@ class AppSettings(BaseSettings):
     cleanup_batch_limit: int = Field(100, alias="CLEANUP_BATCH_LIMIT")
     analysis_cleanup_stale_hours: int = Field(48, alias="ANALYSIS_CLEANUP_STALE_HOURS")
     multi_session_stale_hours: int = Field(24, alias="MULTI_SESSION_STALE_HOURS")
+    runtime_recovery_batch_limit: int = Field(100, alias="RUNTIME_RECOVERY_BATCH_LIMIT")
+    analysis_runtime_stale_minutes: int = Field(60, alias="ANALYSIS_RUNTIME_STALE_MINUTES")
+    multi_session_runtime_stale_minutes: int = Field(90, alias="MULTI_SESSION_RUNTIME_STALE_MINUTES")
     task_runtime: str = Field("background", alias="TASK_RUNTIME")
     task_queue_broker_url: str | None = Field(None, alias="TASK_QUEUE_BROKER_URL")
     task_queue_result_backend: str | None = Field(None, alias="TASK_QUEUE_RESULT_BACKEND")
@@ -273,6 +276,9 @@ class AppSettings(BaseSettings):
         "cleanup_batch_limit",
         "analysis_cleanup_stale_hours",
         "multi_session_stale_hours",
+        "runtime_recovery_batch_limit",
+        "analysis_runtime_stale_minutes",
+        "multi_session_runtime_stale_minutes",
         mode="before",
     )
     @classmethod
@@ -281,6 +287,9 @@ class AppSettings(BaseSettings):
             "cleanup_batch_limit": 100,
             "analysis_cleanup_stale_hours": 48,
             "multi_session_stale_hours": 24,
+            "runtime_recovery_batch_limit": 100,
+            "analysis_runtime_stale_minutes": 60,
+            "multi_session_runtime_stale_minutes": 90,
         }
         default = defaults[info.field_name]
         if v is None:

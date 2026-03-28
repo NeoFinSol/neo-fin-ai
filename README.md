@@ -300,6 +300,9 @@ docker compose -f docker-compose.prod.yml run --rm backend-migrate
 | `CLEANUP_BATCH_LIMIT` | `100` | Максимум строк за один проход очистки |
 | `ANALYSIS_CLEANUP_STALE_HOURS` | `48` | Через сколько часов анализ в `uploading/processing` считается зависшим |
 | `MULTI_SESSION_STALE_HOURS` | `24` | Через сколько часов многопериодная сессия в `processing` считается зависшей |
+| `RUNTIME_RECOVERY_BATCH_LIMIT` | `100` | Максимум строк за один проход recovery job |
+| `ANALYSIS_RUNTIME_STALE_MINUTES` | `60` | Через сколько минут без heartbeat одиночный runtime считается зависшим |
+| `MULTI_SESSION_RUNTIME_STALE_MINUTES` | `90` | Через сколько минут без heartbeat многопериодный runtime считается зависшим |
 | `TASK_RUNTIME` | `background` | Режим выполнения задач: локальный встроенный или персистентный через очередь |
 | `TASK_QUEUE_BROKER_URL` | — | Адрес Redis-брокера очереди задач для процесса-исполнителя |
 | `TASK_EVENTS_REDIS_URL` | — | Адрес Redis-канала для переноса событий статуса в WebSocket |
@@ -310,6 +313,10 @@ docker compose -f docker-compose.prod.yml run --rm backend-migrate
 | `DEMO_MODE` | `0` | Маскировать числовые данные в ответах API |
 
 Полное описание всех переменных, включая ИИ-провайдеров, SSL и ограничение частоты запросов, — в [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
+
+Для обслуживания персистентного runtime доступны два служебных сценария:
+- `python scripts/admin_cleanup.py --analyses --multi-sessions` — безопасный просмотр кандидатов на очистку
+- `python scripts/runtime_recover.py --analyses --multi-sessions` — безопасный просмотр stale runtime-кандидатов на перевод в `failed`
 
 ---
 

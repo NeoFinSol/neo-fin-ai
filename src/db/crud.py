@@ -177,6 +177,20 @@ def _build_multi_session_cleanup_filters(
     return filters
 
 
+def _build_analysis_runtime_stale_filter(stale_before: datetime) -> object:
+    return (
+        Analysis.status.in_(_PROCESSING_ANALYSIS_STATUSES)
+        & (func.coalesce(Analysis.runtime_heartbeat_at, Analysis.created_at) < stale_before)
+    )
+
+
+def _build_multi_session_runtime_stale_filter(stale_before: datetime) -> object:
+    return (
+        MultiAnalysisSession.status.in_(_PROCESSING_MULTI_SESSION_STATUSES)
+        & (func.coalesce(MultiAnalysisSession.runtime_heartbeat_at, MultiAnalysisSession.updated_at) < stale_before)
+    )
+
+
 async def create_analysis(task_id: str, status: str, result: dict | None = None) -> Analysis:
     """
     Create a new analysis record.
@@ -582,6 +596,143 @@ async def touch_multi_session_runtime_heartbeat(session_id: str) -> MultiAnalysi
         except SQLAlchemyError as e:
             await session.rollback()
             logger.error("Database error touching multi-session runtime heartbeat: %s", e)
+            raise
+
+
+async def find_stale_analysis_runtime_candidates(
+    *,
+    stale_before: datetime,
+    limit: int = 100,
+) -> list[Analysis]:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = (
+                select(Analysis)
+                .where(_build_analysis_runtime_stale_filter(stale_before))
+                .order_by(func.coalesce(Analysis.runtime_heartbeat_at, Analysis.created_at).asc())
+                .limit(limit)
+            )
+            result = await session.scalars(stmt)
+            return list(result.all())
+        except SQLAlchemyError as e:
+            logger.error("Database error finding stale analysis runtime candidates: %s", e)
+            raise
+
+
+async def mark_stale_analyses_failed(
+    *,
+    stale_before: datetime,
+    limit: int = 100,
+    dry_run: bool = True,
+) -> dict[str, object]:
+    candidates = await find_stale_analysis_runtime_candidates(
+        stale_before=stale_before,
+        limit=limit,
+    )
+    task_ids = [row.task_id for row in candidates]
+    if dry_run or not task_ids:
+        return {"count": len(task_ids), "task_ids": task_ids, "updated": False}
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = (
+                select(Analysis)
+                .where(Analysis.task_id.in_(task_ids))
+                .where(_build_analysis_runtime_stale_filter(stale_before))
+            )
+            rows = list((await session.scalars(stmt)).all())
+            if not rows:
+                return {"count": 0, "task_ids": [], "updated": False}
+
+            recovered_at = _utcnow().isoformat()
+            for row in rows:
+                next_result = _merge_result_payload(
+                    row.result,
+                    {
+                        "error": "Task runtime heartbeat expired",
+                        "reason_code": "runtime_stale_timeout",
+                        "recovered_at": recovered_at,
+                    },
+                )
+                _apply_analysis_summary_fields(row, "failed", next_result)
+                row.runtime_heartbeat_at = _utcnow()
+
+            await session.commit()
+            return {"count": len(rows), "task_ids": [row.task_id for row in rows], "updated": True}
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error marking stale analyses failed: %s", e)
+            raise
+
+
+async def find_stale_multi_session_runtime_candidates(
+    *,
+    stale_before: datetime,
+    limit: int = 100,
+) -> list[MultiAnalysisSession]:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = (
+                select(MultiAnalysisSession)
+                .where(_build_multi_session_runtime_stale_filter(stale_before))
+                .order_by(func.coalesce(MultiAnalysisSession.runtime_heartbeat_at, MultiAnalysisSession.updated_at).asc())
+                .limit(limit)
+            )
+            result = await session.scalars(stmt)
+            return list(result.all())
+        except SQLAlchemyError as e:
+            logger.error("Database error finding stale multi-session runtime candidates: %s", e)
+            raise
+
+
+async def mark_stale_multi_sessions_failed(
+    *,
+    stale_before: datetime,
+    limit: int = 100,
+    dry_run: bool = True,
+) -> dict[str, object]:
+    candidates = await find_stale_multi_session_runtime_candidates(
+        stale_before=stale_before,
+        limit=limit,
+    )
+    session_ids = [row.session_id for row in candidates]
+    if dry_run or not session_ids:
+        return {"count": len(session_ids), "session_ids": session_ids, "updated": False}
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            stmt = (
+                select(MultiAnalysisSession)
+                .where(MultiAnalysisSession.session_id.in_(session_ids))
+                .where(_build_multi_session_runtime_stale_filter(stale_before))
+            )
+            rows = list((await session.scalars(stmt)).all())
+            if not rows:
+                return {"count": 0, "session_ids": [], "updated": False}
+
+            recovered_at = _utcnow().isoformat()
+            for row in rows:
+                row.status = "failed"
+                row.result = _merge_result_payload(
+                    row.result,
+                    {
+                        "error": "Multi-analysis runtime heartbeat expired",
+                        "reason_code": "runtime_stale_timeout",
+                        "recovered_at": recovered_at,
+                    },
+                )
+                row.runtime_heartbeat_at = _utcnow()
+                row.updated_at = _utcnow()
+
+            await session.commit()
+            return {"count": len(rows), "session_ids": [row.session_id for row in rows], "updated": True}
+        except SQLAlchemyError as e:
+            await session.rollback()
+            logger.error("Database error marking stale multi-sessions failed: %s", e)
             raise
 
 

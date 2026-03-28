@@ -111,6 +111,9 @@ class TestAppSettings:
         assert settings.cleanup_batch_limit == 100
         assert settings.analysis_cleanup_stale_hours == 48
         assert settings.multi_session_stale_hours == 24
+        assert settings.runtime_recovery_batch_limit == 100
+        assert settings.analysis_runtime_stale_minutes == 60
+        assert settings.multi_session_runtime_stale_minutes == 90
 
     def test_cleanup_settings_invalid_values_fallback(self):
         """Invalid cleanup values should fall back to safe defaults."""
@@ -119,11 +122,17 @@ class TestAppSettings:
             CLEANUP_BATCH_LIMIT="bad",
             ANALYSIS_CLEANUP_STALE_HOURS=0,
             MULTI_SESSION_STALE_HOURS="-1",
+            RUNTIME_RECOVERY_BATCH_LIMIT="bad",
+            ANALYSIS_RUNTIME_STALE_MINUTES=0,
+            MULTI_SESSION_RUNTIME_STALE_MINUTES="-1",
         )
 
         assert settings.cleanup_batch_limit == 100
         assert settings.analysis_cleanup_stale_hours == 48
         assert settings.multi_session_stale_hours == 24
+        assert settings.runtime_recovery_batch_limit == 100
+        assert settings.analysis_runtime_stale_minutes == 60
+        assert settings.multi_session_runtime_stale_minutes == 90
 
     def test_task_runtime_settings_defaults(self):
         """Persistent runtime settings should keep safe local defaults."""

@@ -60,6 +60,22 @@ cp .env.example .env
 
 ---
 
+### Runtime recovery для зависших worker-задач
+
+| Переменная | Тип | По умолчанию | Обязательная | Описание |
+|---|---|---|:---:|---|
+| `RUNTIME_RECOVERY_BATCH_LIMIT` | `int` | `100` | — | Максимум строк за один проход recovery job |
+| `ANALYSIS_RUNTIME_STALE_MINUTES` | `int` | `60` | — | Через сколько минут без heartbeat одиночный анализ считается зависшим |
+| `MULTI_SESSION_RUNTIME_STALE_MINUTES` | `int` | `90` | — | Через сколько минут без heartbeat многопериодная сессия считается зависшей |
+
+Поведение:
+- используются `scripts/runtime_recover.py` и recovery-модулем как значения по умолчанию
+- recovery job по умолчанию работает в `dry_run`
+- текущая безопасная политика не делает auto-requeue: stale runtime строки переводятся в `failed` с `reason_code=runtime_stale_timeout`
+- heartbeat берётся из `runtime_heartbeat_at`, а если он ещё не выставлен — из `created_at`/`updated_at`
+
+---
+
 ### Персистентный контур выполнения задач
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
@@ -78,6 +94,8 @@ cp .env.example .env
 - при недоступности инфраструктуры диспетчер поднимает `TaskRuntimeError`, который роутеры переводят в канонический ответ `503`
 - события статуса в персистентном режиме публикуются через Redis-канал и затем транслируются в WebSocket из процесса FastAPI
 - в Docker-окружении для `backend`, `worker` и `backend-migrate` следует явно задавать `TESTING=0`, чтобы локальный `.env` не переключал runtime на `TEST_DATABASE_URL`
+- cooperative cancellation использует persisted поля `cancel_requested_at` / `cancelled_at`, а `cancelling` вычисляется как transitional user-facing state
+- stale recovery опирается на `runtime_heartbeat_at` и отдельный maintenance job, а не на принудительный auto-requeue
 
 ---
 

@@ -12,10 +12,14 @@ from src.db.crud import (
     create_multi_session,
     find_analysis_cleanup_candidates,
     find_multi_session_cleanup_candidates,
+    find_stale_analysis_runtime_candidates,
+    find_stale_multi_session_runtime_candidates,
     get_analysis,
     get_multi_session,
     is_analysis_cancel_requested,
     is_multi_session_cancel_requested,
+    mark_stale_analyses_failed,
+    mark_stale_multi_sessions_failed,
     mark_analysis_cancelled,
     mark_multi_session_cancelled,
     request_analysis_cancel,
@@ -697,3 +701,117 @@ class TestCleanupCrud:
 
             assert rows == [mock_row]
             mock_session.scalars.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_find_stale_analysis_runtime_candidates_uses_scalars(self):
+        mock_row = MagicMock(task_id="stale-task")
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_row]
+
+        mock_session = AsyncMock()
+        mock_session.scalars = AsyncMock(return_value=mock_scalars)
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            rows = await find_stale_analysis_runtime_candidates(
+                stale_before=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                limit=10,
+            )
+
+        assert rows == [mock_row]
+        mock_session.scalars.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_mark_stale_analyses_failed_merges_diagnostic_payload(self):
+        stale_row = MagicMock()
+        stale_row.task_id = "task-1"
+        stale_row.status = "processing"
+        stale_row.result = {"filename": "report.pdf"}
+        stale_row.runtime_heartbeat_at = None
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [stale_row]
+
+        mock_session = AsyncMock()
+        mock_session.scalars = AsyncMock(return_value=mock_scalars)
+        mock_session.commit = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.find_stale_analysis_runtime_candidates", new_callable=AsyncMock, return_value=[stale_row]):
+            with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+                result = await mark_stale_analyses_failed(
+                    stale_before=datetime.now(timezone.utc),
+                    dry_run=False,
+                )
+
+        assert result["updated"] is True
+        assert stale_row.status == "failed"
+        assert stale_row.result["filename"] == "report.pdf"
+        assert stale_row.result["reason_code"] == "runtime_stale_timeout"
+
+    @pytest.mark.asyncio
+    async def test_find_stale_multi_session_runtime_candidates_uses_scalars(self):
+        mock_row = MagicMock(session_id="stale-session")
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [mock_row]
+
+        mock_session = AsyncMock()
+        mock_session.scalars = AsyncMock(return_value=mock_scalars)
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            rows = await find_stale_multi_session_runtime_candidates(
+                stale_before=datetime(2024, 2, 1, tzinfo=timezone.utc),
+                limit=10,
+            )
+
+        assert rows == [mock_row]
+        mock_session.scalars.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_mark_stale_multi_sessions_failed_merges_diagnostic_payload(self):
+        stale_row = MagicMock()
+        stale_row.session_id = "session-1"
+        stale_row.status = "processing"
+        stale_row.result = {"periods": [{"period_label": "2023"}]}
+        stale_row.runtime_heartbeat_at = None
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [stale_row]
+
+        mock_session = AsyncMock()
+        mock_session.scalars = AsyncMock(return_value=mock_scalars)
+        mock_session.commit = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.find_stale_multi_session_runtime_candidates", new_callable=AsyncMock, return_value=[stale_row]):
+            with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+                result = await mark_stale_multi_sessions_failed(
+                    stale_before=datetime.now(timezone.utc),
+                    dry_run=False,
+                )
+
+        assert result["updated"] is True
+        assert stale_row.status == "failed"
+        assert stale_row.result["periods"] == [{"period_label": "2023"}]
+        assert stale_row.result["reason_code"] == "runtime_stale_timeout"

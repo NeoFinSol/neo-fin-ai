@@ -551,7 +551,7 @@ async def _maybe_cancel_multi_analysis(
     return True
 
 
-async def _process_single_period(period_label: str, file_path: str) -> dict:
+async def _process_single_period(period_label: str, file_path: str, session_id: str | None = None) -> dict:
     """
     Run the full financial analysis pipeline for one period's PDF.
 
@@ -574,11 +574,15 @@ async def _process_single_period(period_label: str, file_path: str) -> dict:
             text = await asyncio.to_thread(pdf_extractor.extract_text, file_path)
 
         tables = await asyncio.to_thread(pdf_extractor.extract_tables, file_path)
+        if session_id is not None:
+            await touch_multi_session_runtime_heartbeat(session_id)
         metadata = await asyncio.to_thread(
             pdf_extractor.parse_financial_statements_with_metadata, tables, text
         )
         metrics, extraction_metadata_payload = apply_confidence_filter(metadata)
         ratios_ru = await asyncio.to_thread(calculate_ratios, metrics)
+        if session_id is not None:
+            await touch_multi_session_runtime_heartbeat(session_id)
         raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
 
         ratios_en = translate_ratios(ratios_ru)
@@ -672,7 +676,7 @@ async def process_multi_analysis(
             period_logger = get_logger(__name__, session_id=session_id, task_id=period_label)
             period_logger.info("Processing period %d/%d", idx + 1, total)
 
-            result = await _process_single_period(period_label, file_path)
+            result = await _process_single_period(period_label, file_path, session_id)
             cleanup_temp_file(file_path)
             if file_path in remaining_paths:
                 remaining_paths.remove(file_path)
