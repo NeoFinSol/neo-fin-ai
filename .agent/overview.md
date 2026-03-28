@@ -2,8 +2,8 @@
 
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
-- **Последний коммит**: `chore(devops): harden production compose path`
-- **Последняя сессия**: 2026-03-28 — выполнена третья волна product-аудита: LLM/NLP pipeline переведён на budget-aware compaction, recommendation prompt ужат до compact JSON context, root `README.md` синхронизирован с фактическим product/deploy contract.
+- **Последний коммит**: `refactor(llm): compact prompts and harden tests`
+- **Последняя сессия**: 2026-03-28 — продолжена третья волна product-аудита: после LLM/NLP compaction выполнен PDF/OCR hardening, чтобы multiline extraction не склеивал числа между строками, а fallback OCR path не обходил `MAX_OCR_PAGES`.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -44,11 +44,15 @@
   - `src/analysis/nlp_analysis.py` формирует компактный narrative excerpt до вызова `ai_service`
   - `src/analysis/recommendations.py` переведён на compact JSON prompt context
   - `tests/test_nlp_analysis.py` и связанные LLM tests синхронизированы с актуальным `ai_service` contract
+  - `src/analysis/pdf_extractor.py` теперь использует newline-safe keyword-window extraction для section totals и nearby numbers
+  - OCR TypeError fallback больше не может молча обойти `MAX_OCR_PAGES`
+  - `tests/test_pdf_extractor.py` покрывает anti-merge и fallback page-cap regressions
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
 ✅ **WebSocket Updates** — real-time уведомления о статусе задач через `/ws/{id}`; внедрён `ConnectionManager` (Singleton)
 ✅ **PDF extraction** — PyPDF2 (текст), camelot/pdfplumber (таблицы), pytesseract (OCR для сканов); улучшена детекция сканов через проверку `/Image` объектов
+✅ **OCR Regression Guard** — multiline-safe numeric helpers и page-cap enforcement в fallback path защищают от silent giant-number regressions
 ✅ **Financial ratios** — 13 коэффициентов (4 группы: ликвидность, рентабельность, устойчивость, активность); RU-ключи → EN через `translate_ratios()`
 ✅ **Integral scoring** — скоринг 0–100, risk_level (пороги 75/55/35, уровни: low/medium/high/critical), factors, normalized_scores; добавлено поле `confidence_score` для оценки полноты данных
 ✅ **Scoring factors** — осмысленные описания факторов с ссылками на бенчмарки (вместо просто "Значение: 1.23")
@@ -70,6 +74,7 @@
   - `tests/test_scoring.py`, `tests/test_pdf_extractor.py`, `tests/test_api.py` → 18 passed
   - `tests/test_analyses_router.py`, `tests/test_tasks.py` → 27 passed
   - `tests/test_llm_extractor.py`, `tests/test_llm_extractor_properties.py`, `tests/test_nlp_analysis.py`, `tests/test_nlp_analysis_coverage.py`, `tests/test_recommendations.py` → 128 passed
+  - после PDF hardening: `tests/test_pdf_extractor.py` → 8 passed; `tests/test_scoring.py tests/test_pdf_extractor.py tests/test_api.py` → 21 passed
   - legacy `tests/test_tasks_coverage.py` остаётся устаревшим compatibility-suite и не отражает текущий product contract
 ✅ **Production Docker** — `Dockerfile.backend` (multi-stage), `Dockerfile.frontend` (multi-stage), `docker-compose.prod.yml`, `nginx.conf`, `scripts/deploy-prod.sh`
 ✅ **Production Frontend Image** — compose собирает frontend/Nginx образ сам, без внешнего `frontend/dist`

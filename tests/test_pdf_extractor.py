@@ -75,6 +75,24 @@ def test_extract_text_from_scanned(monkeypatch):
     assert text == "page1\npage2"
 
 
+def test_extract_text_from_scanned_typeerror_fallback_respects_page_limit(monkeypatch):
+    monkeypatch.setattr(pdf_extractor, "MAX_OCR_PAGES", 2)
+
+    def fake_convert(path):
+        assert path == "dummy.pdf"
+        return ["img1", "img2", "img3"]
+
+    def fake_ocr(image, lang=None):
+        return f"text-{image}"
+
+    monkeypatch.setattr(pdf_extractor, "convert_from_path", fake_convert)
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_string", fake_ocr)
+
+    text = pdf_extractor.extract_text_from_scanned("dummy.pdf")
+
+    assert text == "text-img1\ntext-img2"
+
+
 def test_extract_tables(monkeypatch):
     class FakeValues:
         def __init__(self, rows):
@@ -123,3 +141,26 @@ def test_parse_financial_statements():
     assert metrics["net_profit"] == 50.0
     assert metrics["short_term_liabilities"] == 200.0
     assert metrics["equity"] is None
+
+
+def test_extract_number_near_keywords_does_not_merge_multiline_numbers():
+    text = "итого обязательств 123 456\n789 012"
+
+    value = pdf_extractor._extract_number_near_keywords(
+        text,
+        ["итого обязательств"],
+    )
+
+    assert value == 123456.0
+
+
+def test_extract_section_total_uses_safe_keyword_window():
+    text = "итого по разделу iv 361 751\n315"
+
+    value = pdf_extractor._extract_section_total(
+        [],
+        text,
+        ["итого по разделу iv"],
+    )
+
+    assert value == 361751.0

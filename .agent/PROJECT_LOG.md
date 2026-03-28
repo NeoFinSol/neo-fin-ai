@@ -1,5 +1,24 @@
 # Project Log
 
+## 2026-03-28 — fix(pdf): harden OCR fallback and multiline numeric extraction
+
+**Изменения:**
+- `src/analysis/pdf_extractor.py`:
+  - TypeError fallback в `extract_text_from_scanned()` теперь тоже соблюдает `MAX_OCR_PAGES`
+  - `_extract_section_total()` переведён на безопасный keyword-window extraction
+  - `_extract_number_near_keywords()` больше не использует newline-unsafe numeric regex
+- Добавлены targeted regression tests:
+  - `tests/test_pdf_extractor.py` проверяет, что fallback OCR batch не обходит page cap
+  - `tests/test_pdf_extractor.py` проверяет, что multiline numbers рядом с keyword не склеиваются в один артефакт
+- Обновлены документы:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `.agent/overview.md`
+
+**Верификация:**
+- `python -m pytest tests/test_pdf_extractor.py -q` → `8 passed`
+- `python -m pytest tests/test_scoring.py tests/test_pdf_extractor.py tests/test_api.py -q` → `21 passed`
+
 ## 2026-03-28 — perf(llm): compact prompts and harden NLP/LLM tests
 
 **Изменения:**

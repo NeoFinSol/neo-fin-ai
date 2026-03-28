@@ -371,6 +371,14 @@ def extract_text_from_scanned(pdf_path: str) -> str:
         if not images:
             break
 
+        if not single_page_batch and len(images) > MAX_OCR_PAGES:
+            logger.warning(
+                "OCR fallback batch exceeded page limit (%d > %d), truncating",
+                len(images),
+                MAX_OCR_PAGES,
+            )
+            images = images[:MAX_OCR_PAGES]
+
         for offset, image in enumerate(images):
             current_page = page_num + offset
             try:
@@ -1127,14 +1135,7 @@ def _extract_section_total(tables: list, text_lower: str, keywords: list[str]) -
                 val = _extract_first_numeric_cell(row[1:])
                 if val is not None:
                     return val
-    for kw in keywords:
-        pattern = re.compile(rf"{re.escape(kw)}[^0-9\-]{{0,40}}([-]?\(?\d[\d\s.,]*\d\)?)")
-        m = pattern.search(text_lower)
-        if m:
-            val = _normalize_number(m.group(1))
-            if val is not None:
-                return val
-    return None
+    return _extract_number_near_keywords(text_lower, keywords)
 
 
 def _table_to_rows(table: Any) -> list[list[Any]]:
@@ -1174,12 +1175,19 @@ def _extract_number_from_text(text: str) -> float | None:
 
 def _extract_number_near_keywords(text: str, keywords: list[str]) -> float | None:
     for keyword in keywords:
-        pattern = re.compile(
-            rf"{re.escape(keyword)}[^0-9\-]{{0,40}}([-]?\(?\d[\d\s.,]*\d\)?)"
-        )
-        match = pattern.search(text)
-        if match:
-            return _normalize_number(match.group(1))
+        start = 0
+        while True:
+            index = text.find(keyword, start)
+            if index == -1:
+                break
+
+            window_start = index + len(keyword)
+            window = text[window_start: window_start + 60]
+            match = _NUMBER_PATTERN.search(window)
+            if match:
+                return _normalize_number(match.group(0))
+
+            start = index + len(keyword)
     return None
 
 

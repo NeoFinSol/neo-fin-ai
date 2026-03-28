@@ -69,6 +69,31 @@
 
 ## Решённые проблемы
 
+### OCR helper мог склеивать числа через переносы строк и обходить page cap в fallback path
+**Статус**: Решено ✅
+**Дата решения**: 2026-03-28
+**Корневая причина**:
+1. Вспомогательные helper-ы `_extract_section_total()` и `_extract_number_near_keywords()` всё ещё использовали старый regex с `\s`, который мог захватывать числа через `\n`.
+2. В `extract_text_from_scanned()` mock-friendly `TypeError` fallback вызывал `convert_from_path(pdf_path)` без ограничения batch size.
+
+**Решение**:
+```python
+# src/analysis/pdf_extractor.py
+# keyword-window extraction через _NUMBER_PATTERN.search(...)
+# вместо regex с [\\d\\s.,]* across newlines
+
+if not single_page_batch and len(images) > MAX_OCR_PAGES:
+    images = images[:MAX_OCR_PAGES]
+```
+
+**Где смотреть**:
+- `src/analysis/pdf_extractor.py`
+- `tests/test_pdf_extractor.py`
+
+**Проверка**:
+- `python -m pytest tests/test_pdf_extractor.py -q`
+- `python -m pytest tests/test_scoring.py tests/test_pdf_extractor.py tests/test_api.py -q`
+
 ### Сбой shell-команд в sandbox Codex сессии
 **Дата**: 2026-03-28
 **Проблема**: В этой сессии базовые команды PowerShell в sandbox возвращали `Exit code: 1` без вывода.
