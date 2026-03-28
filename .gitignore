@@ -79,6 +79,8 @@ run_final.bat
 run_ocr.bat
 
 # IDE and tool directories
+.agent/
+.kiro/
 .qwen/
 .grok/
 .lingma/
@@ -86,6 +88,7 @@ run_ocr.bat
 .hypothesis/
 .pytest_cache/
 .ruff_cache/
+PDFforTests/
 
 # Coverage artifacts
 coverage.json
@@ -106,3 +109,4 @@ env2/
 backend.log
 error.txt
 *.traineddata
+Dockerfile.optimized

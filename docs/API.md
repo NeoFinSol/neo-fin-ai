@@ -283,7 +283,7 @@ X-API-Key: <ключ>
 | `data.metrics` | object | Извлечённые финансовые показатели (значение `null` — не найдено) |
 | `data.ratios` | object | 13 рассчитанных коэффициентов (значение `null` — нехватка данных) |
 | `data.score.score` | float \[0–100\] | Интегральный скоринг |
-| `data.score.risk_level` | `low` \| `medium` \| `high` | Уровень риска (low ≥ 75, medium ≥ 50, high < 50) |
+| `data.score.risk_level` | `low` \| `medium` \| `high` \| `critical` | Уровень риска (low ≥ 75, medium 55–74, high 35–54, critical < 35) |
 | `data.score.confidence_score` | float \[0.0–1.0\] | Достоверность отчёта (сумма весов найденных данных) |
 | `data.score.factors` | array | Факторы с полем `impact`: `positive` \| `neutral` \| `negative` |
 | `data.score.normalized_scores` | object | Нормализованные значения \[0.0–1.0\] по каждому коэффициенту |
@@ -548,7 +548,7 @@ X-API-Key: <ключ>
 | `periods[].period_label` | string | Метка периода |
 | `periods[].ratios` | object | Коэффициенты (значение `null` — нехватка данных) |
 | `periods[].score` | float \| null | Интегральный скоринг периода |
-| `periods[].risk_level` | `low` \| `medium` \| `high` \| null | Уровень риска |
+| `periods[].risk_level` | `low` \| `medium` \| `high` \| `critical` \| null | Уровень риска |
 | `periods[].extraction_metadata` | object | Confidence Score и источник по каждому показателю |
 
 **Сортировка:** периоды возвращаются в хронологическом порядке независимо от порядка передачи. Форматы меток: `YYYY` сортируется как `(год, 0)`, `Q{N}/YYYY` — как `(год, квартал)`. Нераспознанные метки помещаются в конец.
@@ -714,6 +714,7 @@ curl http://localhost:8000/system/ready
 | `table_exact` | 0.9 | Точное совпадение ключевого слова в таблице |
 | `table_partial` | 0.7 | Частичное совпадение в таблице |
 | `text_regex` | 0.5 | Извлечение через regex из текста |
+| `ocr` | 0.5 | Распознано через Tesseract OCR |
 | `derived` | 0.3 | Производный расчёт (например, обязательства = активы − капитал) |
 
 При `confidence = 0.0` показатель не найден в документе.

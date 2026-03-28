@@ -344,7 +344,6 @@ docker-compose -f docker-compose.prod.yml up -d --build
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Все переменные окружения с типами и значениями по умолчанию |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Актуальный execution plan: cleanup operationalization, test hygiene, heavy/OCR real-PDF tier, persistent runtime и production hardening |
 | [`AGENTS.md`](AGENTS.md) | Правила работы агента, orchestration policy и update ritual |
-| [`.agent/subagents/README.md`](.agent/subagents/README.md) | Human-readable система субагентов, invocation budget, hard invocation protocol, deep synthesis ladder и separation между project-role и runtime carrier |
 
 ---
 
