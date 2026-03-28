@@ -141,6 +141,7 @@ class TestProcessPdf:
 
         with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock) as mock_create, \
+             patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None), \
              patch("src.tasks.is_scanned_pdf", return_value=False), \
              patch("src.tasks.extract_text", return_value="Extracted text"), \
              patch("src.tasks.extract_tables", return_value=[]), \
@@ -166,6 +167,7 @@ class TestProcessPdf:
 
         with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock) as mock_create, \
+             patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None), \
              patch("src.tasks.is_scanned_pdf", return_value=False), \
              patch("src.tasks.extract_text", return_value="Text"), \
              patch("src.tasks.extract_tables", return_value=[]), \
@@ -182,14 +184,16 @@ class TestProcessPdf:
             await process_pdf(task_id, file_path)
 
             mock_update.assert_called()
+            assert mock_update.call_args_list[-1][0][1] == "completed"
 
     @pytest.mark.asyncio
     async def test_scanned_pdf_processing(self):
         task_id = "scanned-task"
         file_path = "/tmp/scanned.pdf"
 
-        with patch("src.tasks.update_analysis", new_callable=AsyncMock), \
+        with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock), \
+             patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None), \
              patch("src.tasks.is_scanned_pdf", return_value=True), \
              patch("src.tasks.extract_text_from_scanned", return_value="OCR text"), \
              patch("src.tasks.extract_tables", return_value=[]), \
@@ -202,6 +206,7 @@ class TestProcessPdf:
              patch("src.tasks.cleanup_temp_file"):
 
             await process_pdf(task_id, file_path)
+            assert mock_update.call_args_list[-1][0][1] == "completed"
 
     @pytest.mark.asyncio
     async def test_processing_failure(self, caplog):
@@ -231,8 +236,9 @@ class TestProcessPdf:
         task_id = "cleanup-task"
         file_path = "/tmp/cleanup.pdf"
 
-        with patch("src.tasks.update_analysis", new_callable=AsyncMock), \
+        with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock), \
+             patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None), \
              patch("src.tasks.is_scanned_pdf", return_value=False), \
              patch("src.tasks.extract_text", return_value="Text"), \
              patch("src.tasks.extract_tables", return_value=[]), \
@@ -246,6 +252,7 @@ class TestProcessPdf:
 
             await process_pdf(task_id, file_path)
 
+            assert mock_update.call_args_list[-1][0][1] == "completed"
             mock_cleanup.assert_called_once_with(file_path)
 
     @pytest.mark.asyncio
