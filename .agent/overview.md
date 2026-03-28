@@ -3,7 +3,7 @@
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
 - **Последний коммит**: `refactor(core): decompose tasks.py and centralize mapping/utilities`
-- **Последняя сессия**: 2026-03-28 — roadmap Autopilot пересобран: Sprint 1 зафиксирован как execution-contract foundation, а reviewer loop, retry controller, memory/state layer, execution graph и mode policy `cheap/full/safe` вынесены в следующие спринты.
+- **Последняя сессия**: 2026-03-28 — Sprint 1 / Task 1.3 завершён: full subagent execution path переведён на strict structured contract v1 с local validation; `SubagentExecutionResult` теперь содержит `final_output`, сохраняя raw `output`. Тесты: `49/49` зелёные.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -33,6 +33,13 @@
   - `exec_smoke_test_runtime()` и `mini_subagent_exec_test()`
     используют один one-shot execution flow
   - покрыты stdout fallback и missing output scenarios
+✅ **Sprint 1 / Task 1.3 complete** — в [autopilot.py](E:/neo-fin-ai/.agent/autopilot.py) добавлен full subagent output contract:
+  - `SubagentFinalOutput`
+  - strict schema builder и local validator для contract v1
+  - full execution path помечается через `output_contract=subagent_final_v1`
+  - `SubprocessRuntimeAdapter` заполняет `SubagentExecutionResult.final_output`
+    при успешной contract validation
+  - legacy raw `output` сохранён для обратной совместимости
 ✅ **Autopilot roadmap refresh** — в [README.md](E:/neo-fin-ai/docs_autopilot/README.md), [SPRINTS.md](E:/neo-fin-ai/docs_autopilot/SPRINTS.md), [VERSIONS.md](E:/neo-fin-ai/docs_autopilot/VERSIONS.md), [SPRINT_1_BACKLOG.md](E:/neo-fin-ai/docs_autopilot/SPRINT_1_BACKLOG.md) и [TASKS_SPRINT_1.md](E:/neo-fin-ai/docs_autopilot/TASKS_SPRINT_1.md) пересобран план развития:
   - Sprint 1 ограничен execution contract foundation
   - Sprint 2 выделен под state + execution graph
@@ -40,7 +47,7 @@
   - Sprint 4 выделен под `cheap` / `full` / `safe` modes
   - Sprint 5 выделен под observability, performance и reliability polish
 ✅ **Config-driven model chooser** — `.agent/choose_model_for_subagent.py` теперь использует `.codex/config.toml` как источник model settings и per-subagent overrides, а `.codex/agents/*.toml` как source of truth для профилей субагентов.
-✅ **Autopilot tests** — обновлены `tests/test_agent_autopilot.py` и `tests/test_choose_model_for_subagent.py`: покрытие config loading, `.codex` registry loading, registry validation, classification trace, execution plan, explainability, Codex subprocess adapter, zero-cost smoke-test, real-exec smoke-test, mini subagent exec test, execution backend, stdout fallback, missing output и helper-level contract validation. 41/41 тест зелёный.
+✅ **Autopilot tests** — обновлены `tests/test_agent_autopilot.py` и `tests/test_choose_model_for_subagent.py`: покрытие config loading, `.codex` registry loading, registry validation, classification trace, execution plan, explainability, Codex subprocess adapter, zero-cost smoke-test, real-exec smoke-test, mini subagent exec test, full structured contract, stdout fallback, missing output и helper-level contract validation. 49/49 тест зелёный.
 
 ✅ **Qwen Regression Fixes 2** — исправлены все 10 багов: `_normalize_number` (Unicode-минус), `_extract_first_numeric_cell` (4-значные ячейки), `analyze_narrative` (пустой текст в LLM), `extract_text_from_scanned` (MAX_OCR_PAGES=50), `translate_ratios` (утечка ключей), `_format_metric_value` (отрицательные числа), `_parse_recommendations_response` (дедупликация + f-строки), `generate_recommendations` (timeout=90), `_log_missing_data` (f-строки). 20/20 тестов зелёные.
 

@@ -1,5 +1,43 @@
 # Project Log
 
+## 2026-03-28 — Sprint 1 / Task 1.3: full subagent output contract
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - добавлен `SubagentFinalOutput`
+  - `SubagentExecutionResult` расширен полем `final_output`
+  - добавлены strict schema builder и local validator
+    для full structured contract v1:
+    - `subagent`
+    - `status`
+    - `summary`
+    - `findings`
+    - `risks`
+    - `files_to_change`
+  - `prepare_execution_requests()` теперь помечает full execution path
+    через `output_contract=subagent_final_v1`
+  - `SubprocessRuntimeAdapter` использует `--output-schema` и `-o`
+    для opt-in full execution contract и валидирует результат локально
+  - legacy raw `output` сохранён для обратной совместимости
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` получил проверки
+    full structured success path, invalid JSON, schema strictness,
+    wrong keys, wrong field types, wrong subagent и extra keys
+- Обновлена документация:
+  - `docs_autopilot/SPRINT_1_BACKLOG.md`
+  - `docs_autopilot/TASKS_SPRINT_1.md`
+  - `.agent/overview.md`
+
+**Верификация:**
+- contract coverage:
+  - valid structured output
+  - wrong keys
+  - wrong field types
+  - wrong subagent name
+  - extra keys
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 49 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+
 ## 2026-03-28 — Autopilot roadmap refresh: reviewer/state/graph/modes
 
 **Изменения:**

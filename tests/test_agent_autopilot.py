@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_DIR = ROOT / ".agent"
@@ -136,6 +138,10 @@ def test_prepare_execution_requests_builds_runtime_payloads():
     assert requests[0].model
     assert requests[0].timeout_ms == 120000
     assert requests[0].metadata["workflow"] == plan.workflow
+    assert (
+        requests[0].metadata["output_contract"]
+        == autopilot.SUBAGENT_FINAL_OUTPUT_CONTRACT
+    )
 
 
 def test_codex_cli_adapter_builds_subprocess_invocation():
@@ -159,6 +165,7 @@ def test_codex_cli_adapter_builds_subprocess_invocation():
     assert invocation.command[-1] == "-"
     assert invocation.input_text == request.prompt
     assert invocation.timeout_ms == request.timeout_ms
+    assert invocation.output_contract == autopilot.SUBAGENT_FINAL_OUTPUT_CONTRACT
 
 
 @patch("tests.agent_autopilot.subprocess.run")
@@ -213,6 +220,79 @@ def test_codex_cli_adapter_maps_nonzero_exit_to_failed_result(mock_run):
     assert result.error == "boom"
     assert result.failure is not None
     assert result.failure.code == autopilot.FailureCode.RUNTIME_EXIT_NONZERO
+
+
+@patch("tests.agent_autopilot.subprocess.run")
+def test_codex_cli_adapter_executes_structured_output_contract(mock_run):
+    def run_side_effect(command, **kwargs):
+        output_path = command[command.index("-o") + 1]
+        Path(output_path).write_text(
+            json.dumps(
+                {
+                    "subagent": "test_planner",
+                    "status": "ok",
+                    "summary": "Structured contract is valid",
+                    "findings": ["One bounded finding"],
+                    "risks": ["Low regression risk"],
+                    "files_to_change": ["src/tasks.py"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = run_side_effect
+    adapter = autopilot.CodexCliAdapter(binary_name="C:\\fake\\codex.exe")
+    request = autopilot.SubagentExecutionRequest(
+        subagent_name="test_planner",
+        prompt="hello",
+        model="gpt-5.4-mini",
+        reasoning_effort="medium",
+        sandbox_mode="read-only",
+        timeout_ms=1000,
+        depth=1,
+        metadata={"output_contract": autopilot.SUBAGENT_FINAL_OUTPUT_CONTRACT},
+    )
+
+    result = adapter.execute([request])[0]
+
+    assert result.status == "completed"
+    assert result.final_output is not None
+    assert result.final_output.summary == "Structured contract is valid"
+    assert result.final_output.files_to_change == ["src/tasks.py"]
+    assert result.output is not None
+    assert result.failure is None
+    assert result.metadata is not None
+    assert result.metadata["output_contract"] == autopilot.SUBAGENT_FINAL_OUTPUT_CONTRACT
+
+
+@patch("tests.agent_autopilot.subprocess.run")
+def test_codex_cli_adapter_maps_invalid_structured_json_to_failure(mock_run):
+    def run_side_effect(command, **kwargs):
+        output_path = command[command.index("-o") + 1]
+        Path(output_path).write_text("{bad json", encoding="utf-8")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = run_side_effect
+    adapter = autopilot.CodexCliAdapter(binary_name="C:\\fake\\codex.exe")
+    request = autopilot.SubagentExecutionRequest(
+        subagent_name="test_planner",
+        prompt="hello",
+        model="gpt-5.4-mini",
+        reasoning_effort="medium",
+        sandbox_mode="read-only",
+        timeout_ms=1000,
+        depth=1,
+        metadata={"output_contract": autopilot.SUBAGENT_FINAL_OUTPUT_CONTRACT},
+    )
+
+    result = adapter.execute([request])[0]
+
+    assert result.status == "failed"
+    assert result.error == "invalid json output"
+    assert result.failure is not None
+    assert result.failure.code == autopilot.FailureCode.INVALID_JSON
+    assert result.final_output is None
 
 
 @patch("tests.agent_autopilot.subprocess.run")
@@ -661,6 +741,107 @@ def test_build_mini_subagent_exec_result_accepts_valid_json_payload():
         "summary": "Structured output",
     }
     assert result.failure is None
+
+
+def test_build_subagent_final_output_schema_payload_is_strict():
+    schema = autopilot._build_subagent_final_output_schema_payload(
+        subagent_name="api_contracts"
+    )
+
+    assert schema["additionalProperties"] is False
+    assert tuple(schema["required"]) == autopilot.SUBAGENT_FINAL_OUTPUT_FIELDS
+    assert schema["properties"]["subagent"]["const"] == "api_contracts"
+
+
+def test_parse_subagent_final_output_accepts_valid_payload():
+    parsed, validation_error, error = autopilot._parse_subagent_final_output(
+        json.dumps(
+            {
+                "subagent": "api_contracts",
+                "status": "ok",
+                "summary": "Contract looks healthy",
+                "findings": ["One issue"],
+                "risks": ["Migration drift"],
+                "files_to_change": ["src/tasks.py"],
+            }
+        ),
+        expected_subagent="api_contracts",
+    )
+
+    assert error is None
+    assert validation_error is None
+    assert parsed is not None
+    assert parsed.summary == "Contract looks healthy"
+    assert parsed.findings == ["One issue"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_validation_error"),
+    [
+        (
+            {
+                "subagent": "api_contracts",
+                "status": "ok",
+                "summary": "x",
+                "findings": [],
+                "risks": [],
+            },
+            (
+                "json output must contain exactly subagent, status, summary, "
+                "findings, risks, files_to_change"
+            ),
+        ),
+        (
+            {
+                "subagent": "api_contracts",
+                "status": "ok",
+                "summary": "x",
+                "findings": "bad",
+                "risks": [],
+                "files_to_change": [],
+            },
+            "findings must be a list of non-empty strings",
+        ),
+        (
+            {
+                "subagent": "wrong_agent",
+                "status": "ok",
+                "summary": "x",
+                "findings": [],
+                "risks": [],
+                "files_to_change": [],
+            },
+            "json output subagent mismatch",
+        ),
+        (
+            {
+                "subagent": "api_contracts",
+                "status": "ok",
+                "summary": "x",
+                "findings": [],
+                "risks": [],
+                "files_to_change": [],
+                "extra": "boom",
+            },
+            (
+                "json output must contain exactly subagent, status, summary, "
+                "findings, risks, files_to_change"
+            ),
+        ),
+    ],
+)
+def test_parse_subagent_final_output_rejects_invalid_payloads(
+    payload,
+    expected_validation_error,
+):
+    parsed, validation_error, error = autopilot._parse_subagent_final_output(
+        json.dumps(payload),
+        expected_subagent="api_contracts",
+    )
+
+    assert parsed is None
+    assert validation_error == expected_validation_error
+    assert error == "subagent output validation failed"
 
 
 @patch("tests.agent_autopilot.subprocess.run")

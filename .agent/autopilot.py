@@ -77,6 +77,17 @@ REAL_EXEC_SMOKE_MAX_OUTPUT_CHARS = 64
 REAL_EXEC_SMOKE_TIMEOUT_MS = 15000
 MINI_SUBAGENT_EXEC_TIMEOUT_MS = 20000
 MINI_SUBAGENT_SUMMARY_MAX_CHARS = 120
+SUBAGENT_FINAL_OUTPUT_CONTRACT = "subagent_final_v1"
+SUBAGENT_FINAL_OUTPUT_STATUS = "ok"
+SUBAGENT_FINAL_SUMMARY_MAX_CHARS = 400
+SUBAGENT_FINAL_OUTPUT_FIELDS = (
+    "subagent",
+    "status",
+    "summary",
+    "findings",
+    "risks",
+    "files_to_change",
+)
 
 
 @dataclass(frozen=True)
@@ -271,10 +282,24 @@ class SubagentExecutionRequest:
 
 
 @dataclass(frozen=True)
+class SubagentFinalOutput:
+    subagent: str
+    status: str
+    summary: str
+    findings: list[str]
+    risks: list[str]
+    files_to_change: list[str]
+
+    def as_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class SubagentExecutionResult:
     subagent_name: str
     status: str
     output: str | None = None
+    final_output: SubagentFinalOutput | None = None
     error: str | None = None
     duration_ms: int | None = None
     metadata: dict[str, object] | None = None
@@ -282,6 +307,9 @@ class SubagentExecutionResult:
 
     def as_dict(self) -> dict[str, object]:
         payload = asdict(self)
+        payload["final_output"] = (
+            self.final_output.as_dict() if self.final_output else None
+        )
         payload["failure"] = (
             self.failure.as_dict() if self.failure else None
         )
@@ -311,6 +339,7 @@ class SubprocessInvocation:
     env: dict[str, str]
     input_text: str
     timeout_ms: int
+    output_contract: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -1020,11 +1049,16 @@ def build_subagent_prompt(
         "Safe path:",
         plan.synthesis.safe_path,
         "Expected output:",
-        "- findings",
-        "- affected files",
-        "- invariants",
-        "- risks",
-        "- recommended minimal safe path",
+        "Return exactly one JSON object and nothing else.",
+        "The JSON must contain exactly these fields:",
+        f'- "subagent": "{subagent.name}"',
+        f'- "status": "{SUBAGENT_FINAL_OUTPUT_STATUS}"',
+        '- "summary": non-empty string',
+        '- "findings": list of strings',
+        '- "risks": list of strings',
+        '- "files_to_change": list of strings',
+        "Do not wrap the JSON in markdown fences.",
+        "Do not add extra keys.",
     ]
 
     if spec.developer_instructions:
@@ -1070,6 +1104,7 @@ def prepare_execution_requests(
             "labels": plan.classification.labels,
             "priority": subagent.priority,
             "developer_instructions": spec.developer_instructions,
+            "output_contract": SUBAGENT_FINAL_OUTPUT_CONTRACT,
         }
         requests.append(
             SubagentExecutionRequest(
@@ -1175,50 +1210,63 @@ class SubprocessRuntimeAdapter(RuntimeAdapter):
     ) -> SubprocessInvocation:
         raise NotImplementedError
 
+    def supports_output_contract(self) -> bool:
+        return False
+
     def _execute_one(
         self,
         request: SubagentExecutionRequest,
     ) -> SubagentExecutionResult:
         invocation = self.build_invocation(request)
+        command = list(invocation.command)
+        output_contract = invocation.output_contract
+        output_text: str | None = None
         started = time.perf_counter()
         try:
-            completed = subprocess.run(
-                invocation.command,
-                input=invocation.input_text,
-                text=True,
-                capture_output=True,
-                cwd=invocation.cwd,
-                env=invocation.env,
-                timeout=max(invocation.timeout_ms / 1000, 1),
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            failure = _failure_from_exception(
-                exc,
-                stage=FailureStage.EXECUTE_PROCESS,
-                mode=ExecutionMode.SUBPROCESS_BACKEND,
-                details={"subagent_name": request.subagent_name},
-            )
-            return SubagentExecutionResult(
-                subagent_name=request.subagent_name,
-                status="failed",
-                error=failure.message,
-                failure=failure,
-            )
-        except FileNotFoundError as exc:
-            failure = _failure_from_exception(
-                exc,
-                stage=FailureStage.EXECUTE_PROCESS,
-                mode=ExecutionMode.SUBPROCESS_BACKEND,
-                details={"subagent_name": request.subagent_name},
-            )
-            return SubagentExecutionResult(
-                subagent_name=request.subagent_name,
-                status="failed",
-                error=failure.message,
-                failure=failure,
-            )
-        except PermissionError as exc:
+            if (
+                output_contract == SUBAGENT_FINAL_OUTPUT_CONTRACT
+                and self.supports_output_contract()
+            ):
+                with tempfile.TemporaryDirectory(prefix="codex-subagent-output-") as temp_dir:
+                    schema_path = Path(temp_dir) / "output_schema.json"
+                    output_path = Path(temp_dir) / "last_message.json"
+                    _build_subagent_final_output_schema_file(
+                        schema_path,
+                        subagent_name=request.subagent_name,
+                    )
+                    command = _append_output_contract_args(
+                        command,
+                        schema_file=str(schema_path),
+                        output_file=str(output_path),
+                    )
+                    completed = subprocess.run(
+                        command,
+                        input=invocation.input_text,
+                        text=True,
+                        capture_output=True,
+                        cwd=invocation.cwd,
+                        env=invocation.env,
+                        timeout=max(invocation.timeout_ms / 1000, 1),
+                        check=False,
+                    )
+                    output_text = _read_output_text(output_path)
+            else:
+                completed = subprocess.run(
+                    command,
+                    input=invocation.input_text,
+                    text=True,
+                    capture_output=True,
+                    cwd=invocation.cwd,
+                    env=invocation.env,
+                    timeout=max(invocation.timeout_ms / 1000, 1),
+                    check=False,
+                )
+        except (
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            PermissionError,
+            OSError,
+        ) as exc:
             failure = _failure_from_exception(
                 exc,
                 stage=FailureStage.EXECUTE_PROCESS,
@@ -1233,42 +1281,88 @@ class SubprocessRuntimeAdapter(RuntimeAdapter):
             )
 
         duration_ms = int((time.perf_counter() - started) * 1000)
-        stdout = completed.stdout.strip()
-        stderr = completed.stderr.strip()
+        stdout = _normalize_process_stream(completed.stdout)
+        stderr = _normalize_process_stream(completed.stderr)
 
         if completed.returncode != 0:
             failure = _failure_from_returncode(
                 returncode=completed.returncode,
-                stderr=stderr or None,
+                stderr=stderr,
                 stage=FailureStage.EXECUTE_PROCESS,
                 mode=ExecutionMode.SUBPROCESS_BACKEND,
                 details={
                     "subagent_name": request.subagent_name,
-                    "command": invocation.command,
+                    "command": command,
                 },
             )
             return SubagentExecutionResult(
                 subagent_name=request.subagent_name,
                 status="failed",
-                output=stdout or None,
+                output=stdout,
                 error=failure.message,
                 duration_ms=duration_ms,
                 metadata={
                     "returncode": completed.returncode,
-                    "command": invocation.command,
+                    "command": command,
                 },
                 failure=failure,
+            )
+
+        if output_contract == SUBAGENT_FINAL_OUTPUT_CONTRACT:
+            final_output, validation_error, error = _parse_subagent_final_output(
+                output_text or stdout,
+                expected_subagent=request.subagent_name,
+            )
+            if error:
+                return SubagentExecutionResult(
+                    subagent_name=request.subagent_name,
+                    status="failed",
+                    output=output_text or stdout,
+                    error=error,
+                    duration_ms=duration_ms,
+                    metadata={
+                        "returncode": completed.returncode,
+                        "command": command,
+                        "output_contract": output_contract,
+                    },
+                    failure=_build_one_shot_exec_failure(
+                        mode=ExecutionMode.SUBPROCESS_BACKEND,
+                        error=error,
+                        returncode=completed.returncode,
+                        validation_error=validation_error,
+                        default_validation_code=FailureCode.OUTPUT_SCHEMA_MISMATCH,
+                        details={
+                            "subagent_name": request.subagent_name,
+                            "returncode": completed.returncode,
+                            "command": command,
+                        },
+                    ),
+                )
+
+            return SubagentExecutionResult(
+                subagent_name=request.subagent_name,
+                status="completed",
+                output=output_text or stdout,
+                final_output=final_output,
+                error=stderr,
+                duration_ms=duration_ms,
+                metadata={
+                    "returncode": completed.returncode,
+                    "command": command,
+                    "output_contract": output_contract,
+                },
+                failure=None,
             )
 
         return SubagentExecutionResult(
             subagent_name=request.subagent_name,
             status="completed",
             output=stdout,
-            error=stderr or None,
+            error=stderr,
             duration_ms=duration_ms,
             metadata={
                 "returncode": completed.returncode,
-                "command": invocation.command,
+                "command": command,
             },
             failure=None,
         )
@@ -1335,6 +1429,9 @@ class CodexCliAdapter(SubprocessRuntimeAdapter):
         )
         self.resolved_binary = resolved_binary
 
+    def supports_output_contract(self) -> bool:
+        return True
+
     def availability_error(self) -> str | None:
         if not self.resolved_binary:
             return (
@@ -1384,6 +1481,11 @@ class CodexCliAdapter(SubprocessRuntimeAdapter):
             env=env,
             input_text=request.prompt,
             timeout_ms=request.timeout_ms,
+            output_contract=(
+                str(request.metadata.get("output_contract"))
+                if request.metadata.get("output_contract")
+                else None
+            ),
         )
 
 
@@ -1466,6 +1568,156 @@ def _serialize_invocation_preview(
         "input_text": invocation.input_text,
         "timeout_ms": invocation.timeout_ms,
     }
+
+
+def _build_subagent_final_output_schema_payload(
+    *,
+    subagent_name: str,
+) -> dict[str, object]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": list(SUBAGENT_FINAL_OUTPUT_FIELDS),
+        "properties": {
+            "subagent": {
+                "type": "string",
+                "const": subagent_name,
+            },
+            "status": {
+                "type": "string",
+                "const": SUBAGENT_FINAL_OUTPUT_STATUS,
+            },
+            "summary": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": SUBAGENT_FINAL_SUMMARY_MAX_CHARS,
+            },
+            "findings": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "minLength": 1,
+                },
+            },
+            "risks": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "minLength": 1,
+                },
+            },
+            "files_to_change": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "minLength": 1,
+                },
+            },
+        },
+    }
+
+
+def _build_subagent_final_output_schema_file(
+    path: Path,
+    *,
+    subagent_name: str,
+) -> None:
+    _write_json_file(
+        path,
+        _build_subagent_final_output_schema_payload(subagent_name=subagent_name),
+    )
+
+
+def _validate_string_list(
+    payload: object,
+    *,
+    field_name: str,
+) -> tuple[list[str] | None, str | None]:
+    if not isinstance(payload, list):
+        return None, f"{field_name} must be a list of non-empty strings"
+
+    normalized: list[str] = []
+    for item in payload:
+        if not isinstance(item, str) or not item.strip():
+            return None, f"{field_name} must be a list of non-empty strings"
+        normalized.append(item.strip())
+    return normalized, None
+
+
+def _validate_subagent_final_output(
+    payload: object,
+    *,
+    expected_subagent: str,
+) -> str | None:
+    if not isinstance(payload, dict):
+        return "output must be a json object"
+
+    if set(payload.keys()) != set(SUBAGENT_FINAL_OUTPUT_FIELDS):
+        return (
+            "json output must contain exactly "
+            "subagent, status, summary, findings, risks, files_to_change"
+        )
+
+    if payload.get("subagent") != expected_subagent:
+        return "json output subagent mismatch"
+
+    if payload.get("status") != SUBAGENT_FINAL_OUTPUT_STATUS:
+        return "json output status must be ok"
+
+    summary = payload.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        return "json output summary must be a non-empty string"
+
+    if len(summary.strip()) > SUBAGENT_FINAL_SUMMARY_MAX_CHARS:
+        return "json output summary is too long"
+
+    for field_name in ("findings", "risks", "files_to_change"):
+        _, error = _validate_string_list(payload.get(field_name), field_name=field_name)
+        if error:
+            return error
+
+    return None
+
+
+def _parse_subagent_final_output(
+    output_text: str | None,
+    *,
+    expected_subagent: str,
+) -> tuple[SubagentFinalOutput | None, str | None, str | None]:
+    normalized = _normalize_json_candidate(output_text)
+    if not normalized:
+        return None, "missing json output", "missing json output"
+
+    try:
+        parsed = json.loads(normalized)
+    except json.JSONDecodeError as exc:
+        return None, f"invalid json: {exc.msg}", "invalid json output"
+
+    validation_error = _validate_subagent_final_output(
+        parsed,
+        expected_subagent=expected_subagent,
+    )
+    if validation_error:
+        return None, validation_error, "subagent output validation failed"
+
+    findings, _ = _validate_string_list(parsed["findings"], field_name="findings")
+    risks, _ = _validate_string_list(parsed["risks"], field_name="risks")
+    files_to_change, _ = _validate_string_list(
+        parsed["files_to_change"],
+        field_name="files_to_change",
+    )
+    return (
+        SubagentFinalOutput(
+            subagent=str(parsed["subagent"]),
+            status=str(parsed["status"]),
+            summary=str(parsed["summary"]).strip(),
+            findings=findings or [],
+            risks=risks or [],
+            files_to_change=files_to_change or [],
+        ),
+        None,
+        None,
+    )
 
 
 def _real_exec_smoke_prompt() -> str:
@@ -1727,6 +1979,19 @@ def _build_one_shot_codex_exec_command(
         ]
     )
     return command
+
+
+def _append_output_contract_args(
+    command: Sequence[str],
+    *,
+    schema_file: str,
+    output_file: str,
+) -> list[str]:
+    updated = list(command)
+    contract_args = ["--output-schema", schema_file, "-o", output_file]
+    if updated and updated[-1] == "-":
+        return updated[:-1] + contract_args + ["-"]
+    return updated + contract_args
 
 
 def _build_real_exec_smoke_command(

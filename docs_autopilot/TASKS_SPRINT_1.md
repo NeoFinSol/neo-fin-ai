@@ -121,6 +121,10 @@
 
 ## Task 1.3 — Full Subagent Output Contract
 
+### Статус
+
+Выполнено
+
 ### Цель
 
 Подготовить contract-driven и review-ready path для реального subagent execution.
@@ -151,6 +155,33 @@
 
 - full subagent execution имеет стабильный машинно-валидируемый контракт
 - contract совместим с будущим reviewer/state/graph layer
+
+### Фактический результат
+
+- добавлен `SubagentFinalOutput`
+- full structured contract v1 зафиксирован как:
+  - `subagent`
+  - `status`
+  - `summary`
+  - `findings`
+  - `risks`
+  - `files_to_change`
+- `prepare_execution_requests()` теперь помечает full execution path
+  через `output_contract=subagent_final_v1`
+- `SubprocessRuntimeAdapter` валидирует structured output локально
+  и заполняет `SubagentExecutionResult.final_output`
+- legacy `SubagentExecutionResult.output` сохранён как raw payload
+  для обратной совместимости и диагностики
+
+### Верификация
+
+- valid structured output
+- wrong keys
+- wrong field types
+- wrong subagent name
+- extra keys
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → `49 passed`
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
 
 ## Task 1.4 — Full Diagnostic Exec Mode
 
