@@ -18,6 +18,7 @@ import src.routers.analyses as analyses_router
 import src.routers.multi_analysis as multi_analysis_router
 import src.routers.websocket as websocket_router
 from src.core.ai_service import ai_service
+from src.core.runtime_events import runtime_event_bridge
 from src.db.database import dispose_engine
 from src.utils.logging_config import setup_logging, get_logger
 from src.utils.error_handler import register_exception_handlers
@@ -97,10 +98,11 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("No AI service configured. NLP features will be disabled.")
 
-    logger.info("Application startup complete")
+    async with runtime_event_bridge():
+        logger.info("Application startup complete")
+        yield
 
-    yield
-
+    await ai_service.close()
     await dispose_engine()
     logger.info("Application shutdown complete")
 

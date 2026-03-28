@@ -28,6 +28,12 @@ class AppSettings(BaseSettings):
     cleanup_batch_limit: int = Field(100, alias="CLEANUP_BATCH_LIMIT")
     analysis_cleanup_stale_hours: int = Field(48, alias="ANALYSIS_CLEANUP_STALE_HOURS")
     multi_session_stale_hours: int = Field(24, alias="MULTI_SESSION_STALE_HOURS")
+    task_runtime: str = Field("background", alias="TASK_RUNTIME")
+    task_queue_broker_url: str | None = Field(None, alias="TASK_QUEUE_BROKER_URL")
+    task_queue_result_backend: str | None = Field(None, alias="TASK_QUEUE_RESULT_BACKEND")
+    task_events_redis_url: str | None = Field(None, alias="TASK_EVENTS_REDIS_URL")
+    task_queue_name: str = Field("neofin", alias="TASK_QUEUE_NAME")
+    task_queue_eager: bool = Field(False, alias="TASK_QUEUE_EAGER")
 
     # Security
     api_key: str | None = Field(
@@ -135,16 +141,29 @@ class AppSettings(BaseSettings):
         "gigachat_auth_url",
         "gigachat_chat_url",
         "llm_url",
+        "task_queue_broker_url",
+        "task_queue_result_backend",
+        "task_events_redis_url",
         mode="before",
     )
     @classmethod
-    def validate_urls(cls, v: str | None) -> str | None:
+    def validate_urls(cls, v: str | None, info) -> str | None:
         """Validate URLs if provided."""
         if v is None:
             return None
         if not isinstance(v, str):
             raise ValueError("URL must be a string")
-        if not (v.startswith("http://") or v.startswith("https://")):
+        redis_fields = {
+            "task_queue_broker_url",
+            "task_queue_result_backend",
+            "task_events_redis_url",
+        }
+        if info.field_name in redis_fields:
+            if not v.startswith(("redis://", "rediss://")):
+                raise ValueError("Runtime queue URL must start with redis:// or rediss://")
+            return v
+
+        if not v.startswith(("http://", "https://")):
             raise ValueError("URL must start with http:// or https://")
         return v
 
@@ -237,6 +256,18 @@ class AppSettings(BaseSettings):
             )
             return "100/minute"
         return v
+
+    @field_validator("task_runtime", mode="before")
+    @classmethod
+    def validate_task_runtime(cls, v: str | None) -> str:
+        """Validate task runtime mode."""
+        if v is None:
+            return "background"
+        value = str(v).strip().lower()
+        if value not in {"background", "celery"}:
+            logging.warning("Invalid TASK_RUNTIME=%r. Using default 'background'", v)
+            return "background"
+        return value
 
     @field_validator(
         "cleanup_batch_limit",

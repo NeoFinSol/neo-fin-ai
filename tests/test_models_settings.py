@@ -125,6 +125,35 @@ class TestAppSettings:
         assert settings.analysis_cleanup_stale_hours == 48
         assert settings.multi_session_stale_hours == 24
 
+    def test_task_runtime_settings_defaults(self):
+        """Persistent runtime settings should keep safe local defaults."""
+        settings = AppSettings(_env_file=None)
+
+        assert settings.task_runtime == "background"
+        assert settings.task_queue_broker_url is None
+        assert settings.task_queue_result_backend is None
+        assert settings.task_events_redis_url is None
+        assert settings.task_queue_name == "neofin"
+        assert settings.task_queue_eager is False
+
+    def test_task_runtime_invalid_value_falls_back_to_background(self):
+        """Invalid runtime values should not break local development."""
+        settings = AppSettings(_env_file=None, TASK_RUNTIME="invalid-runtime")
+        assert settings.task_runtime == "background"
+
+    def test_task_runtime_urls_validate(self):
+        """Redis/Celery URLs should use the same http(s)/redis URL validator path."""
+        settings = AppSettings(
+            _env_file=None,
+            TASK_QUEUE_BROKER_URL="redis://localhost:6379/0",
+            TASK_QUEUE_RESULT_BACKEND="redis://localhost:6379/1",
+            TASK_EVENTS_REDIS_URL="redis://localhost:6379/2",
+        )
+
+        assert settings.task_queue_broker_url == "redis://localhost:6379/0"
+        assert settings.task_queue_result_backend == "redis://localhost:6379/1"
+        assert settings.task_events_redis_url == "redis://localhost:6379/2"
+
 
 class TestGlobalAppSettings:
     """Tests for global app_settings instance."""

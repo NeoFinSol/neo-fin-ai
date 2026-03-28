@@ -15,8 +15,9 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.auth import get_api_key
-from src.db.crud import create_multi_session, get_multi_session
-from src.exceptions import DatabaseError
+from src.core.task_queue import dispatch_multi_analysis_task
+from src.db.crud import create_multi_session, get_multi_session, update_multi_session
+from src.exceptions import DatabaseError, TaskRuntimeError
 from src.models.schemas import (
     MultiAnalysisAcceptedResponse,
     MultiAnalysisCompletedResponse,
@@ -75,7 +76,13 @@ async def start_multi_analysis(
 
         session_id = str(uuid4())
         await create_multi_session(session_id)
-        background_tasks.add_task(process_multi_analysis, session_id, period_inputs)
+        periods_payload = [period.model_dump() for period in period_inputs]
+        await dispatch_multi_analysis_task(
+            background_tasks,
+            session_id=session_id,
+            periods_payload=periods_payload,
+            background_callable=process_multi_analysis,
+        )
         handed_off = True
         return MultiAnalysisAcceptedResponse(session_id=session_id, status="processing")
     except ValidationError as exc:
@@ -87,6 +94,15 @@ async def start_multi_analysis(
     except SQLAlchemyError as exc:
         logger.error("Failed to create multi-analysis session %s: %s", session_id, exc)
         raise DatabaseError("Database operation failed") from exc
+    except TaskRuntimeError:
+        if session_id:
+            await update_multi_session(
+                session_id,
+                status="failed",
+                progress={"completed": 0, "total": len(period_inputs)},
+                result={"error": "Task dispatch failed"},
+            )
+        raise
     finally:
         if not handed_off:
             _cleanup_temp_files(temp_paths)

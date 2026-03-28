@@ -15,7 +15,7 @@ warnings.filterwarnings(
 )
 
 from src.routers.pdf_tasks import _validate_pdf_file, get_result, upload_pdf
-from src.exceptions import DatabaseError
+from src.exceptions import DatabaseError, TaskRuntimeError
 
 
 class TestValidatePdfFile:
@@ -136,6 +136,65 @@ class TestUploadPdf:
                 
                 # Should schedule background task
                 mock_background.add_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_successful_upload_dispatches_to_celery_runtime_when_configured(self):
+        """Persistent runtime should dispatch via Celery instead of in-process background tasks."""
+        mock_background = MagicMock(spec=BackgroundTasks)
+        mock_file = MagicMock(spec=UploadFile)
+        mock_file.content_type = "application/pdf"
+        mock_file.filename = "test.pdf"
+        mock_file.file = MagicMock()
+        mock_file.file.read.side_effect = [b"%PDF-", b"1.4 test content", b""]
+
+        with patch("src.routers.pdf_tasks.create_analysis", new_callable=AsyncMock):
+            with patch("src.routers.pdf_tasks.tempfile.NamedTemporaryFile") as mock_temp:
+                mock_temp_instance = MagicMock()
+                mock_temp_instance.name = "/tmp/test.pdf"
+                mock_temp.return_value = mock_temp_instance
+                with patch("src.core.task_queue.celery_app", MagicMock()):
+                    with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
+                        with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
+                            with patch("src.core.task_queue.run_pdf_task.apply_async") as mock_apply_async:
+                                result = await upload_pdf(mock_file, mock_background)
+
+        assert isinstance(result["task_id"], str)
+        mock_background.add_task.assert_not_called()
+        mock_apply_async.assert_called_once()
+        assert mock_apply_async.call_args.kwargs["task_id"] == result["task_id"]
+
+    @pytest.mark.asyncio
+    async def test_dispatch_failure_marks_analysis_failed_and_cleans_temp_file(self):
+        """Dispatch failures should fail the analysis record and remove the temp file."""
+        mock_background = MagicMock(spec=BackgroundTasks)
+        mock_file = MagicMock(spec=UploadFile)
+        mock_file.content_type = "application/pdf"
+        mock_file.filename = "test.pdf"
+        mock_file.file = MagicMock()
+        mock_file.file.read.side_effect = [b"%PDF-", b"1.4 test content", b""]
+
+        with patch("src.routers.pdf_tasks.create_analysis", new_callable=AsyncMock):
+            with patch("src.routers.pdf_tasks.update_analysis", new_callable=AsyncMock) as mock_update:
+                with patch("src.routers.pdf_tasks._cleanup_temp_file", new_callable=AsyncMock) as mock_cleanup:
+                    with patch("src.routers.pdf_tasks.tempfile.NamedTemporaryFile") as mock_temp:
+                        mock_temp_instance = MagicMock()
+                        mock_temp_instance.name = "/tmp/test.pdf"
+                        mock_temp.return_value = mock_temp_instance
+                        with patch("src.core.task_queue.celery_app", MagicMock()):
+                            with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
+                                with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
+                                    with patch(
+                                        "src.core.task_queue.run_pdf_task.apply_async",
+                                        side_effect=RuntimeError("broker down"),
+                                    ):
+                                        with pytest.raises(TaskRuntimeError):
+                                            await upload_pdf(mock_file, mock_background)
+
+        mock_cleanup.assert_awaited_once_with("/tmp/test.pdf")
+        mock_update.assert_awaited_once()
+        assert mock_update.await_args.args[0] is not None
+        assert mock_update.await_args.args[1] == "failed"
+        assert mock_update.await_args.args[2] == {"error": "Task dispatch failed"}
 
     @pytest.mark.asyncio
     async def test_file_too_large(self):

@@ -80,8 +80,14 @@ services:
       CONFIDENCE_THRESHOLD: ${CONFIDENCE_THRESHOLD:-0.5}
       RATE_LIMIT: ${RATE_LIMIT:-100/minute}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TASK_RUNTIME: celery
+      TASK_QUEUE_BROKER_URL: ${TASK_QUEUE_BROKER_URL:-redis://redis:6379/0}
+      TASK_QUEUE_RESULT_BACKEND: ${TASK_QUEUE_RESULT_BACKEND:-redis://redis:6379/1}
+      TASK_EVENTS_REDIS_URL: ${TASK_EVENTS_REDIS_URL:-redis://redis:6379/2}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       backend-migrate:
         condition: service_completed_successfully
@@ -115,6 +121,45 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - neofin-internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: neofin-redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - neofin-internal
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: neofin-worker
+    restart: always
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      TASK_RUNTIME: celery
+      TASK_QUEUE_BROKER_URL: ${TASK_QUEUE_BROKER_URL:-redis://redis:6379/0}
+      TASK_QUEUE_RESULT_BACKEND: ${TASK_QUEUE_RESULT_BACKEND:-redis://redis:6379/1}
+      TASK_EVENTS_REDIS_URL: ${TASK_EVENTS_REDIS_URL:-redis://redis:6379/2}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: ["./venv/bin/celery", "-A", "src.core.task_queue:celery_app", "worker", "--loglevel=INFO", "-Q", "neofin"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend-migrate:
+        condition: service_completed_successfully
     networks:
       - neofin-internal
 

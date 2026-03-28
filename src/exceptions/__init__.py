@@ -134,6 +134,19 @@ class DatabaseError(BaseAppError):
         )
 
 
+class TaskRuntimeError(BaseAppError):
+    """
+    Raised when task dispatch/runtime infrastructure is unavailable.
+    """
+
+    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+        super().__init__(
+            message=message,
+            code="TASK_RUNTIME_ERROR",
+            details=details,
+        )
+
+
 class CircuitBreakerOpenError(BaseAppError):
     """
     Raised when circuit breaker is open (service temporarily disabled).

@@ -4,11 +4,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import warnings
 
 import pytest
+from fastapi import BackgroundTasks
 from cryptography.utils import CryptographyDeprecationWarning
 
 from src.analysis.pdf_extractor import extract_text
 from src.analysis.ratios import translate_ratios
 from src.analysis.scoring import build_score_payload
+from src.core.task_queue import (
+    _run_worker_coroutine,
+    dispatch_multi_analysis_task,
+    dispatch_pdf_task,
+    revoke_runtime_task,
+)
+from src.exceptions import TaskRuntimeError
 from src.tasks import process_pdf
 
 warnings.filterwarnings(
@@ -164,7 +172,7 @@ class TestProcessPdf:
              patch("src.tasks.apply_confidence_filter", return_value=({}, {})), \
              patch("src.tasks.calculate_ratios", return_value={}), \
              patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE), \
-             patch("src.tasks.ws_manager.broadcast", new_callable=AsyncMock) as mock_ws, \
+             patch("src.tasks.broadcast_task_event", new_callable=AsyncMock) as mock_ws, \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
              patch("src.tasks.cleanup_temp_file"):
 
@@ -189,7 +197,7 @@ class TestProcessPdf:
              patch("src.tasks.apply_confidence_filter", return_value=({}, {})), \
              patch("src.tasks.calculate_ratios", return_value={}), \
              patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE), \
-             patch("src.tasks.ws_manager.broadcast", new_callable=AsyncMock), \
+             patch("src.tasks.broadcast_task_event", new_callable=AsyncMock), \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
              patch("src.tasks.cleanup_temp_file"):
 
@@ -215,7 +223,7 @@ class TestProcessPdf:
              patch("src.tasks.apply_confidence_filter", return_value=({}, {})), \
              patch("src.tasks.calculate_ratios", return_value={}), \
              patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE), \
-             patch("src.tasks.ws_manager.broadcast", new_callable=AsyncMock), \
+             patch("src.tasks.broadcast_task_event", new_callable=AsyncMock), \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
             patch("src.tasks.cleanup_temp_file"):
 
@@ -230,7 +238,7 @@ class TestProcessPdf:
         with patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update, \
              patch("src.tasks.create_analysis", new_callable=AsyncMock), \
              patch("src.tasks.is_scanned_pdf", side_effect=Exception("PDF corrupted")), \
-             patch("src.tasks.ws_manager.broadcast", new_callable=AsyncMock) as mock_ws, \
+             patch("src.tasks.broadcast_task_event", new_callable=AsyncMock) as mock_ws, \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
              patch("src.tasks.cleanup_temp_file"):
 
@@ -260,7 +268,7 @@ class TestProcessPdf:
              patch("src.tasks.apply_confidence_filter", return_value=({}, {})), \
              patch("src.tasks.calculate_ratios", return_value={}), \
              patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE), \
-             patch("src.tasks.ws_manager.broadcast", new_callable=AsyncMock), \
+             patch("src.tasks.broadcast_task_event", new_callable=AsyncMock), \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
             patch("src.tasks.cleanup_temp_file") as mock_cleanup:
 
@@ -278,7 +286,7 @@ class TestProcessPdf:
         with patch("src.tasks.update_analysis", new_callable=AsyncMock), \
              patch("src.tasks.create_analysis", new_callable=AsyncMock), \
              patch("src.tasks.is_scanned_pdf", side_effect=Exception("Error")), \
-             patch("src.tasks.ws_manager.broadcast", new_callable=AsyncMock), \
+            patch("src.tasks.broadcast_task_event", new_callable=AsyncMock), \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
              patch("src.tasks.cleanup_temp_file") as mock_cleanup:
 
@@ -304,3 +312,102 @@ class TestProcessPdf:
             # but before that we return. Wait, 'finally' is ALWAYS called.
             # Let's check src/tasks.py:108
             mock_cleanup.assert_called_once_with(file_path)
+
+
+class TestTaskQueueDispatch:
+    """Tests for persistent runtime dispatch helpers."""
+
+    @pytest.mark.asyncio
+    async def test_dispatch_pdf_task_uses_background_runtime_by_default(self):
+        background_tasks = MagicMock(spec=BackgroundTasks)
+        background_callable = MagicMock()
+
+        with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "background"):
+            await dispatch_pdf_task(
+                background_tasks,
+                task_id="task-123",
+                file_path="/tmp/test.pdf",
+                background_callable=background_callable,
+            )
+
+        background_tasks.add_task.assert_called_once_with(background_callable, "task-123", "/tmp/test.pdf")
+
+    @pytest.mark.asyncio
+    async def test_dispatch_pdf_task_uses_celery_runtime_when_enabled(self):
+        background_tasks = MagicMock(spec=BackgroundTasks)
+        background_callable = MagicMock()
+
+        with patch("src.core.task_queue.celery_app", MagicMock()):
+            with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
+                with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
+                    with patch("src.core.task_queue.run_pdf_task.apply_async") as mock_apply_async:
+                        await dispatch_pdf_task(
+                            background_tasks,
+                            task_id="task-123",
+                            file_path="/tmp/test.pdf",
+                            background_callable=background_callable,
+                        )
+
+        background_tasks.add_task.assert_not_called()
+        mock_apply_async.assert_called_once_with(
+            args=["task-123", "/tmp/test.pdf"],
+            task_id="task-123",
+            queue="neofin",
+        )
+
+    @pytest.mark.asyncio
+    async def test_dispatch_multi_analysis_task_raises_runtime_error_on_broker_failure(self):
+        background_tasks = MagicMock(spec=BackgroundTasks)
+
+        with patch("src.core.task_queue.celery_app", MagicMock()):
+            with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
+                with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
+                    with patch(
+                        "src.core.task_queue.run_multi_analysis_task.apply_async",
+                        side_effect=RuntimeError("broker down"),
+                    ):
+                        with pytest.raises(TaskRuntimeError):
+                            await dispatch_multi_analysis_task(
+                                background_tasks,
+                                session_id="session-1",
+                                periods_payload=[{"period_label": "2023", "file_path": "/tmp/2023.pdf"}],
+                                background_callable=MagicMock(),
+                            )
+
+    def test_revoke_runtime_task_returns_false_in_background_mode(self):
+        with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "background"):
+            assert revoke_runtime_task("task-123") is False
+
+    def test_revoke_runtime_task_revokes_celery_task(self):
+        mock_celery_app = MagicMock()
+
+        with patch("src.core.task_queue.celery_app", mock_celery_app):
+            with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
+                with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
+                    assert revoke_runtime_task("task-123") is True
+
+        mock_celery_app.control.revoke.assert_called_once_with("task-123")
+
+    @pytest.mark.asyncio
+    async def test_run_worker_coroutine_closes_ai_service_on_success(self):
+        marker = {"ran": False}
+
+        async def sample_coro():
+            marker["ran"] = True
+
+        with patch("src.core.ai_service.ai_service.close", new_callable=AsyncMock) as mock_close:
+            await _run_worker_coroutine(sample_coro())
+
+        assert marker["ran"] is True
+        mock_close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_run_worker_coroutine_closes_ai_service_on_failure(self):
+        async def failing_coro():
+            raise RuntimeError("boom")
+
+        with patch("src.core.ai_service.ai_service.close", new_callable=AsyncMock) as mock_close:
+            with pytest.raises(RuntimeError, match="boom"):
+                await _run_worker_coroutine(failing_coro())
+
+        mock_close.assert_awaited_once()

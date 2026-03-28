@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import time
+from dataclasses import dataclass
 
 from src.analysis import pdf_extractor
 from src.analysis.nlp_analysis import analyze_narrative
@@ -24,7 +25,8 @@ from src.analysis.scoring import (
     calculate_integral_score, 
     build_score_payload
 )
-from src.core.ws_manager import ws_manager
+from src.core.runtime_events import broadcast_task_event
+from src.core.task_queue import revoke_runtime_task
 from src.db.crud import (
     AnalysisAlreadyExistsError,
     create_analysis,
@@ -39,6 +41,14 @@ from src.utils.logging_config import get_logger, metrics
 from src.utils.file_utils import cleanup_temp_file
 from sqlalchemy.exc import SQLAlchemyError
 logger = get_logger(__name__)
+
+
+@dataclass(slots=True)
+class RuntimePeriodInput:
+    period_label: str
+    file_path: str
+
+
 # ---------------------------------------------------------------------------
 # Cancellation registry — in-memory set of cancelled task IDs
 # ---------------------------------------------------------------------------
@@ -48,6 +58,7 @@ _cancelled_tasks: set[str] = set()
 def cancel_task(task_id: str) -> None:
     """Mark a task as cancelled. process_pdf checks this before each phase."""
     _cancelled_tasks.add(task_id)
+    revoke_runtime_task(task_id)
     logger.info("Task %s marked for cancellation", task_id)
 
 
@@ -142,7 +153,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             _clear_cancelled(task_id)
             return
 
-        await ws_manager.broadcast(task_id, {
+        await broadcast_task_event(task_id, {
             "type": "status_update",
             "task_id": task_id,
             "status": "extracting",
@@ -163,7 +174,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             _clear_cancelled(task_id)
             return
 
-        await ws_manager.broadcast(task_id, {
+        await broadcast_task_event(task_id, {
             "type": "status_update",
             "task_id": task_id,
             "status": "scoring",
@@ -181,7 +192,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             _clear_cancelled(task_id)
             return
 
-        await ws_manager.broadcast(task_id, {
+        await broadcast_task_event(task_id, {
             "type": "status_update",
             "task_id": task_id,
             "status": "analyzing",
@@ -373,7 +384,7 @@ async def _run_ai_analysis_phase(text: str, extracted_metrics: dict, ratios: dic
 async def _finalize_task(task_id: str, payload: dict, duration: float, logger: logging.Logger) -> None:
     """Update DB and broadcast success."""
     await update_analysis(task_id, "completed", payload)
-    await ws_manager.broadcast(task_id, {
+    await broadcast_task_event(task_id, {
         "type": "status_update",
         "task_id": task_id,
         "status": "completed",
@@ -393,7 +404,7 @@ async def _handle_task_failure(task_id: str, exc: Exception, start_time: float, 
     try:
         error_msg = str(exc)
         await update_analysis(task_id, "failed", {"error": error_msg})
-        await ws_manager.broadcast(task_id, {
+        await broadcast_task_event(task_id, {
             "type": "status_update",
             "task_id": task_id,
             "status": "failed",
@@ -434,6 +445,27 @@ def parse_period_label(label: str) -> tuple[int, int]:
 def sort_periods_chronologically(periods: list[dict]) -> list[dict]:
     """Sort period result dicts by parse_period_label on 'period_label' key."""
     return sorted(periods, key=lambda p: parse_period_label(p.get("period_label", "")))
+
+
+def _normalize_runtime_periods(periods: list) -> list[RuntimePeriodInput]:
+    normalized: list[RuntimePeriodInput] = []
+    for period in periods:
+        if isinstance(period, dict):
+            normalized.append(
+                RuntimePeriodInput(
+                    period_label=str(period["period_label"]),
+                    file_path=str(period["file_path"]),
+                )
+            )
+            continue
+
+        normalized.append(
+            RuntimePeriodInput(
+                period_label=str(period.period_label),
+                file_path=str(period.file_path),
+            )
+        )
+    return normalized
 
 
 async def _process_single_period(period_label: str, file_path: str) -> dict:
@@ -501,6 +533,7 @@ async def process_multi_analysis(
         periods: List of PeriodInput objects with .period_label and .file_path attributes
     """
     start_time = time.monotonic()
+    periods = _normalize_runtime_periods(periods)
     total = len(periods)
     
     # Create logger with session context
@@ -555,7 +588,7 @@ async def process_multi_analysis(
         
         # --- Broadcast Multi-Analysis Progress via WebSocket ---
         # Note: session_id is used as task_id for broadcasting
-        await ws_manager.broadcast(session_id, {
+        await broadcast_task_event(session_id, {
             "type": "progress_update",
             "session_id": session_id,
             "status": "processing",
@@ -595,7 +628,7 @@ async def process_multi_analysis(
     )
     
     # --- Broadcast Multi-Analysis Final via WebSocket ---
-    await ws_manager.broadcast(session_id, {
+    await broadcast_task_event(session_id, {
         "type": "status_update",
         "session_id": session_id,
         "status": final_status,

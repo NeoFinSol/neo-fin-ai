@@ -29,6 +29,8 @@ python-multipart~=0.0.9  # Form data parsing
 # -----------------------------------------------------------------------------
 requests~=2.31.0  # Sync HTTP client
 aiohttp~=3.9.0    # Async HTTP client
+celery[redis]~=5.4.0
+redis~=5.2.0
 
 # -----------------------------------------------------------------------------
 # Database (Async) - PRODUCTION

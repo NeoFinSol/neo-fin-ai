@@ -41,6 +41,7 @@ class TestLifespanCoverage:
         mock_app = MagicMock()
         with patch("src.app.ai_service") as mock_ai:
             mock_ai.is_configured = False
+            mock_ai.close = AsyncMock()
             async with lifespan(mock_app):
                 pass
 
@@ -55,6 +56,70 @@ class TestLifespanCoverage:
                 pass
 
         mock_dispose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_lifespan_closes_ai_service_on_shutdown(self):
+        """Shared AI runtime resources should be closed during application shutdown."""
+        from src.app import lifespan
+
+        mock_app = MagicMock()
+        with patch("src.app.ai_service.close", new_callable=AsyncMock) as mock_close:
+            async with lifespan(mock_app):
+                pass
+
+        mock_close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_lifespan_enters_runtime_event_bridge(self):
+        """Persistent runtime bridge should be entered during app lifespan."""
+        from contextlib import asynccontextmanager
+        from src.app import lifespan
+
+        entered = False
+
+        @asynccontextmanager
+        async def fake_bridge():
+            nonlocal entered
+            entered = True
+            yield
+
+        mock_app = MagicMock()
+        with patch("src.app.runtime_event_bridge", side_effect=fake_bridge):
+            async with lifespan(mock_app):
+                pass
+
+        assert entered is True
+
+
+class TestRuntimeEventBridge:
+    """Tests for runtime event routing."""
+
+    @pytest.mark.asyncio
+    async def test_broadcast_task_event_uses_local_ws_when_bridge_disabled(self):
+        from src.core.runtime_events import broadcast_task_event
+
+        with patch("src.core.runtime_events._use_redis_event_bridge", return_value=False):
+            with patch("src.core.runtime_events.ws_manager.broadcast", new_callable=AsyncMock) as mock_broadcast:
+                await broadcast_task_event("task-1", {"status": "processing"})
+
+        mock_broadcast.assert_awaited_once_with("task-1", {"status": "processing"})
+
+    @pytest.mark.asyncio
+    async def test_broadcast_task_event_publishes_to_redis_when_bridge_enabled(self):
+        from src.core.runtime_events import broadcast_task_event
+
+        mock_client = MagicMock()
+        mock_client.publish = AsyncMock()
+        mock_client.aclose = AsyncMock()
+
+        with patch("src.core.runtime_events._use_redis_event_bridge", return_value=True):
+            with patch("src.core.runtime_events._events_redis_url", return_value="redis://broker"):
+                with patch("src.core.runtime_events.Redis") as mock_redis:
+                    mock_redis.from_url.return_value = mock_client
+                    await broadcast_task_event("task-1", {"status": "processing"})
+
+        mock_client.publish.assert_awaited_once()
+        mock_client.aclose.assert_awaited_once()
 
 
 class TestCorsConfigFallback:

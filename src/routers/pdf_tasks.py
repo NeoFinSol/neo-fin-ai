@@ -9,9 +9,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.auth import get_api_key
+from src.core.task_queue import dispatch_pdf_task
 from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
-from src.db.crud import create_analysis, get_analysis
-from src.exceptions import DatabaseError
+from src.db.crud import create_analysis, get_analysis, update_analysis
+from src.exceptions import DatabaseError, TaskRuntimeError
 from src.tasks import process_pdf, cancel_task
 from src.utils.masking import mask_analysis_data
 
@@ -140,8 +141,17 @@ async def upload_pdf(
         await _cleanup_temp_file(tmp_path)
         raise HTTPException(status_code=500, detail="Failed to create analysis record")
 
-    # Pass file path to background task for processing and cleanup
-    background_tasks.add_task(process_pdf, task_id, tmp_path)
+    try:
+        await dispatch_pdf_task(
+            background_tasks,
+            task_id=task_id,
+            file_path=tmp_path,
+            background_callable=process_pdf,
+        )
+    except TaskRuntimeError:
+        await _cleanup_temp_file(tmp_path)
+        await update_analysis(task_id, "failed", {"error": "Task dispatch failed"})
+        raise
     return {"task_id": task_id}
 
 

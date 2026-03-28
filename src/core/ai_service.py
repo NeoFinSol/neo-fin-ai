@@ -110,6 +110,17 @@ class AIService:
         """Get AI circuit breaker status."""
         return ai_circuit_breaker.get_status()
 
+    async def close(self) -> None:
+        """Close provider-specific runtime resources such as shared HTTP sessions."""
+        if self._agent is None:
+            return
+
+        close_method = getattr(self._agent, "close", None)
+        if close_method is None:
+            return
+
+        await close_method()
+
     async def invoke(
         self,
         input: dict,

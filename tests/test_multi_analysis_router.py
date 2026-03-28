@@ -14,6 +14,7 @@ Run: pytest tests/test_multi_analysis_router.py -v
 import io
 import warnings
 from contextlib import contextmanager
+from types import SimpleNamespace
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
@@ -229,6 +230,63 @@ class TestPostMultiAnalysis:
         mock_remove.assert_any_call("/tmp/period-a.pdf")
         mock_remove.assert_any_call("/tmp/period-b.pdf")
 
+    def test_post_multi_analysis_dispatches_to_celery_runtime(self, client):
+        files, data = self._make_multipart(["2022", "2023"])
+
+        with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
+            with patch("src.core.task_queue.celery_app", MagicMock()):
+                with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
+                    with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
+                        with patch("src.core.task_queue.run_multi_analysis_task.apply_async") as mock_apply_async:
+                            with patch("src.routers.multi_analysis.uuid4", return_value="celery-session"):
+                                response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 202
+        assert response.json() == {"session_id": "celery-session", "status": "processing"}
+        mock_apply_async.assert_called_once()
+        assert mock_apply_async.call_args.kwargs["task_id"] == "celery-session"
+
+    def test_post_multi_analysis_dispatch_failure_returns_503_and_marks_session_failed(self):
+        files, data = self._make_multipart(["2022", "2023"])
+        temp_a = SimpleNamespace(name="/tmp/period-a.pdf", write=lambda *_: None, close=lambda: None)
+        temp_b = SimpleNamespace(name="/tmp/period-b.pdf", write=lambda *_: None, close=lambda: None)
+
+        with patch("src.core.auth.app_settings") as mock_settings:
+            mock_settings.dev_mode = True
+            mock_settings.api_key = None
+            with TestClient(app) as client:
+                with patch("src.routers.multi_analysis.tempfile.NamedTemporaryFile", side_effect=[temp_a, temp_b]):
+                    with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
+                        with patch("src.routers.multi_analysis.update_multi_session", new_callable=AsyncMock) as mock_update:
+                            with patch("src.routers.multi_analysis.os.remove") as mock_remove:
+                                with patch("src.core.task_queue.celery_app", MagicMock()):
+                                    with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
+                                        with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
+                                            with patch(
+                                                "src.core.task_queue.run_multi_analysis_task.apply_async",
+                                                side_effect=RuntimeError("broker down"),
+                                            ):
+                                                with patch("src.routers.multi_analysis.uuid4", return_value="failed-session"):
+                                                    response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "status": "failed",
+            "error": {
+                "code": "TASK_RUNTIME_ERROR",
+                "message": "Failed to dispatch multi-analysis task",
+            },
+        }
+        mock_update.assert_awaited_once_with(
+            "failed-session",
+            status="failed",
+            progress={"completed": 0, "total": 2},
+            result={"error": "Task dispatch failed"},
+        )
+        assert mock_remove.call_count == 2
+        mock_remove.assert_any_call("/tmp/period-a.pdf")
+        mock_remove.assert_any_call("/tmp/period-b.pdf")
+
 
 # =============================================================================
 # Unit Tests: GET /multi-analysis/{session_id}
@@ -347,7 +405,9 @@ class TestPropertyValidation:
         # Skip rate limiting by testing Pydantic validation directly
         from src.models.schemas import PeriodInput
         
-        if len(label_text.strip()) == 0 or len(label_text) > 20:
+        normalized = label_text.strip()
+
+        if len(normalized) == 0 or len(normalized) > 20:
             # Should fail validation
             with pytest.raises(Exception):  # ValidationError
                 PeriodInput(period_label=label_text, file_path="/tmp/test.pdf")

@@ -50,6 +50,7 @@ from src.exceptions import (
     ExtractionError,
     AIServiceError,
     DatabaseError,
+    TaskRuntimeError,
 )
 from src.utils.logging_config import get_logger
 
@@ -265,6 +266,32 @@ async def database_error_handler(
     )
 
 
+async def task_runtime_error_handler(
+    request: Request,
+    exc: TaskRuntimeError,
+) -> JSONResponse:
+    """
+    Handle task runtime / dispatch errors.
+    """
+    logger.error(
+        f"Task runtime error: {exc.message}",
+        exc_info=True,
+        extra={
+            "extra_data": {
+                "method": request.method,
+                "path": request.url.path,
+            }
+        },
+    )
+
+    return create_error_response(
+        error_code=exc.code,
+        message=exc.message,
+        details=exc.details if DEV_MODE else None,
+        status_code=503,
+    )
+
+
 async def sqlalchemy_error_handler(
     request: Request,
     exc: SQLAlchemyError,
@@ -340,6 +367,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ExtractionError, extraction_error_handler)
     app.add_exception_handler(AIServiceError, ai_service_error_handler)
     app.add_exception_handler(DatabaseError, database_error_handler)
+    app.add_exception_handler(TaskRuntimeError, task_runtime_error_handler)
     
     # SQLAlchemy errors
     app.add_exception_handler(SQLAlchemyError, sqlalchemy_error_handler)

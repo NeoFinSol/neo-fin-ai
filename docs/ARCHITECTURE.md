@@ -78,7 +78,19 @@
 Полный цикл от загрузки PDF до сохранения результата и уведомления через WebSocket:
 
 ```
-POST /upload  →  фоновая задача запущена, клиент получает task_id немедленно
+POST /upload  →  задача поставлена в выполнение, клиент получает task_id немедленно
+   │
+   ▼
+┌──────────────────────────────────────────────────────┐
+│  [0] Диспетчер выполнения                            │
+│                                                      │
+│  • TASK_RUNTIME=background → встроенный фоновый путь │
+│  • TASK_RUNTIME=celery     → Redis broker + worker   │
+│  • ошибки постановки → канонический HTTP 503         │
+│                                                      │
+│  WebSocket-события в persistent path идут через      │
+│  Redis pub/sub bridge и затем транслируются в UI     │
+└──────────────────────────────────────────────────────┘
    │
    ▼
 ┌──────────────────────────────────────────────────────┐
@@ -92,7 +104,7 @@ POST /upload  →  фоновая задача запущена, клиент п
 │  • Скан           →  pytesseract  →  OCR text        │
 │  • Таблицы        →  camelot      →  структурированные данные │
 │                                                      │
-│  ws_manager.broadcast(task_id, status="extracting")  │
+│  broadcast_task_event(task_id, status="extracting")  │
 └──────────────────────────────────────────────────────┘
    │
    ▼
@@ -104,7 +116,7 @@ POST /upload  →  фоновая задача запущена, клиент п
 │  • Интегральный скоринг 0–100                        │
 │  • Расчёт confidence_score (полнота данных)          │
 │                                                      │
-│  ws_manager.broadcast(task_id, status="scoring")     │
+│  broadcast_task_event(task_id, status="scoring")     │
 └──────────────────────────────────────────────────────┘
    │
    ▼
@@ -114,7 +126,7 @@ POST /upload  →  фоновая задача запущена, клиент п
 │  • nlp_analysis: риски и факторы (LLM)               │
 │  • recommendations: 3–5 советов (LLM)                │
 │                                                      │
-│  ws_manager.broadcast(task_id, status="analyzing")   │
+│  broadcast_task_event(task_id, status="analyzing")   │
 └──────────────────────────────────────────────────────┘
    │
    ▼
@@ -122,11 +134,11 @@ POST /upload  →  фоновая задача запущена, клиент п
 │  [4] Завершение обработки  (_finalize_task)          │
 │                                                      │
 │  • crud.update_analysis(status="completed")          │
-│  • ws_manager.broadcast(status="completed", result)  │
+│  • broadcast_task_event(status="completed", result)  │
 │  • finally: cleanup_temp_file(file_path)             │
 └──────────────────────────────────────────────────────┘
 
-Клиентская часть: useAnalysisSocket.ts (WebSocket) ↔ ws_manager.py
+Клиентская часть: useAnalysisSocket.ts (WebSocket) ↔ ws_manager.py / Redis event bridge
 ```
 
 ---
@@ -741,9 +753,9 @@ Internet
 
 ### Масштабируемость
 
-- **Независимые экземпляры FastAPI**: горизонтальное масштабирование без изменений кода
+- **Независимые экземпляры FastAPI**: горизонтальное масштабирование HTTP-слоя без изменения аналитического конвейера
 - **JSONB в PostgreSQL**: расширение структуры результатов без новых миграций схемы
-- **Фоновые задачи через asyncio**: HTTP-слой не блокируется во время обработки PDF
+- **Конфигурируемый runtime задач**: локально можно использовать встроенный фоновый путь, а для устойчивого контура — Redis + worker
 - **Раздельная загрузка маршрутов в Vite**: клиентская часть подгружается частями, уменьшая стартовый объём
 
 ### Тестируемость
