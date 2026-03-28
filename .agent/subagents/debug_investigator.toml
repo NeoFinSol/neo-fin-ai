@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4"
 reasoning_effort = "high"
 phase = "pre-implementation"
+invocation_policy = "core-auto"
 auto_triggers = [
   "bug root cause is unclear",
   "flaky or nondeterministic behaviour",
@@ -16,6 +17,7 @@ auto_triggers = [
 skip_triggers = [
   "bug location is already proven and fix is obvious",
   "pure design task with no failure to investigate",
+  "repro, failing layer, and safe fix are already known",
 ]
 prompt = """
 Ты — debug_investigator для NeoFin AI.

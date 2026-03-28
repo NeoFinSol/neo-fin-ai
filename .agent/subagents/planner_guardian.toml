@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4-mini"
 reasoning_effort = "medium"
 phase = "pre-implementation"
+invocation_policy = "manual-explicit"
 auto_triggers = [
   "user explicitly asks for plan, roadmap, sequencing, or sprint slicing",
   "task spans multiple logical units or expected multiple commits",
@@ -15,6 +16,7 @@ auto_triggers = [
 skip_triggers = [
   "single clear task with obvious next step",
   "implementation should start immediately",
+  "user did not ask for planning and the task fits one logical unit",
 ]
 prompt = """
 Ты — planner_guardian для NeoFin AI.

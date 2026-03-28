@@ -1,5 +1,25 @@
 # Project Log
 
+## 2026-03-28 — docs(agent): tighten subagent invocation budget
+
+**Изменения:**
+- `AGENTS.md` дополнительно ужат под экономию лимитов:
+  - `orchestration mode` отделён от обязательного внешнего fan-out
+  - добавлено правило, что `0 external subagents` допустимы для non-local задачи, если external pass не добавляет новой информации
+  - зафиксирована матрица `MUST / SHOULD / MAY / NEVER auto-invoke`
+- `.agent/subagents/README.md` обновлён:
+  - добавлен invocation budget по четырём классам: `core-auto`, `domain-auto`, `phase-gated`, `manual-explicit`
+  - фазовые и manual-only роли вынесены из default auto-bundle
+  - уточнены anti-rules против паразитного fan-out
+- `README.md` обновлён:
+  - описание `.agent/subagents/README.md` теперь явно фиксирует invocation budget и manual-only guards
+- `.agent/overview.md` обновлён:
+  - зафиксирован новый лимитный режим оркестрации
+
+**Верификация:**
+- manual consistency check: `AGENTS.md`, `.agent/subagents/README.md`, `README.md`, `.agent/overview.md` и `.agent/PROJECT_LOG.md` согласованы по invocation budget
+- структурная TOML-проверка пройдена: все manifests успешно парсятся, классы `core-auto/domain-auto/phase-gated/manual-explicit` расставлены консистентно
+
 ## 2026-03-28 — docs(agent): add lean subagent manifests and orchestration policy
 
 **Изменения:**

@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4-mini"
 reasoning_effort = "medium"
 phase = "pre-implementation"
+invocation_policy = "manual-explicit"
 auto_triggers = [
   "task adds or changes feature flags, staged rollout, or kill-switch logic",
   "need to separate dark-launch path from default behaviour",

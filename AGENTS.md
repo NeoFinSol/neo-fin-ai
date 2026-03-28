@@ -219,6 +219,10 @@
 
 Если задача НЕ `local-low-risk`, агент ОБЯЗАН перейти в orchestration mode.
 
+> Важно: `orchestration mode` не означает автоматический вызов субагентов.
+> Для части задач orchestration может завершиться локальным synthesis без делегации,
+> если риск понятен, контракт не меняется и safe path очевиден.
+
 ---
 
 ### 🔁 Правила orchestration mode
@@ -226,29 +230,62 @@
 В orchestration mode агент ОБЯЗАН:
 
 1. Выбрать подходящий workflow из `.agent/subagents/README.md`
-2. Определить **минимально достаточный** набор релевантных субагентов
-3. Запустить нужных субагентов как read-only investigation pass
-4. Дождаться результатов всех субагентов
-5. Выполнить synthesis:
+2. Определить, нужна ли делегация вообще, или достаточно локального lightweight synthesis
+3. Если делегация нужна — определить **минимально достаточный** набор релевантных субагентов
+4. Запустить нужных субагентов как read-only investigation pass
+5. Дождаться результатов всех субагентов
+6. Выполнить synthesis:
 
    * какие файлы менять
    * какие инварианты сохранить
    * какие риски
    * какой минимальный safe path
-6. Только после synthesis приступать к реализации
+7. Только после synthesis приступать к реализации
 
 ### 🎛️ Lean orchestration policy
 
 По умолчанию оркестратор НЕ должен раздувать fan-out.
 
-- стартовый default: `1 primary` субагент
-- обычный upper bound для старта: `2` субагента
+- orchestration mode = classify + synthesize discipline; это НЕ означает обязательный внешний fan-out
+- `0 external subagents` допустимы, если задача не `local-low-risk`, но surface узкий, путь очевиден и независимый read-only pass не даст новой информации
+- стартовый default: `0 или 1` внешний субагент
+- обычный upper bound для старта: `1` внешний субагент
+- `2` субагента допустимы, только если нужен второй независимый domain pass
 - `3` субагента допустимы только если после первого investigation pass остаётся неразрешённый риск
 - `4` — жёсткий максимум и только для реального release/security boundary
 
 #### Primary выбор:
 - `solution_designer` — если главная неопределённость в выборе safe implementation path
 - `debug_investigator` — если главная неопределённость в root cause бага
+
+#### MUST auto-invoke при явном trigger:
+- `debug_investigator` — root cause неясен, баг flaky, есть mismatch между слоями
+- `contracts_guardian` — меняется публичный API payload / WebSocket flow / status semantics / frontend-consumed fields
+- `data_integrity_guardian` — меняется schema / migration / backfill / stored-data invariants / history compatibility
+- `security_guardian` — меняется auth / upload / secrets / public boundary / exposed config
+- `devops_release` — меняется Docker / nginx / compose / deploy path / migration ordering / production runtime path
+
+#### SHOULD auto-invoke:
+- `solution_designer` — если есть 2+ реалистичных пути и выбор safest path неочевиден
+- `integration_guardian` — если меняется внешний provider/API/webhook boundary
+- `dependency_guardian` — если реально меняются packages / images / provider deps
+- `performance_guardian` — только если perf, latency, memory, token-cost или large-input behaviour являются частью задачи
+
+#### MAY invoke по узкому scope:
+- `planner_guardian` — если пользователь явно просит план или работа распадается на несколько коммитных фаз
+- `runtime_guardian` — если меняются startup/shutdown/health/lifecycle semantics
+- `error_monitoring_guardian` — если меняется exception taxonomy, alerting или failure visibility
+
+#### Stop rule:
+- если после первого pass safe path выбран, инварианты ясны и validation plan очевиден, новых субагентов больше не добавлять
+
+#### NEVER auto-invoke:
+- `code_review` — до появления diff
+- `docs_keeper` — в начале задачи
+- `policy_guardian` и `compliance_guardian` — без явного policy/regulatory scope
+- `api_versioning_guardian` — без breaking compatibility или migration window
+- `audit_guardian`, `backup_guardian`, `feature_flag_guardian`, `usability_guardian` — если их surface не является прямой частью задачи
+- одновременно `solution_designer` и `debug_investigator` — "на всякий случай"
 
 #### Phase-based вызовы:
 - `test_planner`, `code_review`, `docs_keeper` не являются стартовым bundle и обычно вызываются после реализации или на closure stage
@@ -260,6 +297,8 @@
 
 #### Запрещённый анти-паттерн:
 - “задача high-risk, значит запускаем всех субагентов”
+- “задача cross-module, значит нужен хотя бы один субагент”
+- “задача cross-layer, значит на старте нужны два субагента”
 
 ---
 
@@ -346,9 +385,13 @@
 
 Дополнительно:
 
-* не начинай с более чем 2 субагентов без явной причины
+* `cross-module` сам по себе не является trigger на делегацию
+* не начинай с более чем 1 субагента без явной причины
 * не подключай phase-based субагентов (`test_planner`, `code_review`, `docs_keeper`) в стартовый bundle
 * если есть выбор между `solution_designer` и `debug_investigator`, по умолчанию бери одного, а не обоих
+* не зови `contracts_guardian`, если внешний контракт не меняется
+* governance/release guard-ы без явного scope (`policy_guardian`, `compliance_guardian`, `audit_guardian`, `backup_guardian`, `api_versioning_guardian`) считаются explicit opt-in, а не default helpers
+* если orchestration mode уже покрыт локальным synthesis и external read-only pass не даёт новой информации, не зови субагента формально "для галочки"
 
 ---
 

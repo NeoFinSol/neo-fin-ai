@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4-mini"
 reasoning_effort = "medium"
 phase = "post-implementation"
+invocation_policy = "phase-gated"
 auto_triggers = [
   "medium/high-risk change needs validation plan",
   "new branch of logic or bugfix requires regression coverage",

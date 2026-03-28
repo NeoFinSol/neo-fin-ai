@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4-mini"
 reasoning_effort = "medium"
 phase = "pre-release"
+invocation_policy = "phase-gated"
 auto_triggers = [
   "task changes exception handling, alerting, or failure classification",
   "need to distinguish user errors, system errors, and provider/runtime errors",
@@ -15,6 +16,7 @@ auto_triggers = [
 skip_triggers = [
   "task has no error-handling or monitoring implication",
   "pure docs or cosmetic UI work",
+  "existing exception taxonomy and alerting semantics stay unchanged",
 ]
 prompt = """
 Ты — error_monitoring_guardian для NeoFin AI.

@@ -3,7 +3,7 @@
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
 - **Последний зафиксированный коммит до текущей волны**: `fix(db): harden persistence runtime and schema guards`
-- **Последняя сессия**: 2026-03-28 — после DB hardening оформлена lean multi-agent orchestration policy: добавлены human-readable `.toml` manifests для субагентов, модели, prompt-ы, auto-triggers и ограничения fan-out.
+- **Последняя сессия**: 2026-03-28 — orchestration policy дополнительно ужата под экономию лимитов: `orchestration mode` отделён от обязательного внешнего fan-out, введены `core-auto` / `domain-auto` / `phase-gated` / `manual-explicit` правила вызова.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -58,10 +58,15 @@
   - `src/utils/error_handler.py` регистрирует catch-all handler последним, чтобы специализированные DB handlers не деградировали в generic 500
 ✅ **Agent Workflow Hardening**:
   - `AGENTS.md` и `.agent/subagents/README.md` переведены на lean orchestration policy вместо fan-out “запускать всех”
-  - стартовый default bundle ограничен `1 primary + 1 optional` domain specialist
+  - стартовый default bundle ужат до `0 или 1` внешнего субагента; второй pass подключается только по явному риску
   - `test_planner`, `code_review`, `docs_keeper` переведены в phase-based late-stage agents
   - добавлены `.agent/subagents/*.toml` manifests с preferred model, prompt, auto-triggers и anti-triggers
   - система разделена на core orchestration, product-domain specialists и rare governance/release guards
+✅ **Agent Workflow Hardening 2**:
+  - `orchestration mode` больше не трактуется как обязательный внешний вызов субагента; `0 external subagents` допустимы, если independent pass не даёт новой информации
+  - введён invocation budget: `core-auto`, `domain-auto`, `phase-gated`, `manual-explicit`
+  - `policy_guardian`, `compliance_guardian`, `api_versioning_guardian`, `audit_guardian`, `backup_guardian`, `feature_flag_guardian` закреплены как non-default/manual-explicit guards
+  - `devops_release`, `runtime_guardian`, `deployment_guardian`, `error_monitoring_guardian`, `usability_guardian` закреплены как phase-gated, а не стартовые агенты
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`

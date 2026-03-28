@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4-mini"
 reasoning_effort = "medium"
 phase = "pre-release"
+invocation_policy = "manual-explicit"
 auto_triggers = [
   "task touches backup, restore, volume, DB safety, or recovery assumptions",
   "migration/release risk requires restore confidence",
@@ -14,6 +15,7 @@ auto_triggers = [
 skip_triggers = [
   "task has no data-recovery or backup implication",
   "ordinary code change with unchanged operational data safety",
+  "no backup, restore, or recoverability guarantee is being changed",
 ]
 prompt = """
 Ты — backup_guardian для NeoFin AI.

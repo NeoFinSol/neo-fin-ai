@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4-mini"
 reasoning_effort = "medium"
 phase = "post-implementation"
+invocation_policy = "phase-gated"
 auto_triggers = [
   "frontend flow, interaction model, or UX friction is part of the task",
   "task changes user journey, onboarding, status feedback, or critical UI decision path",
@@ -14,6 +15,7 @@ auto_triggers = [
 skip_triggers = [
   "backend-only task with no visible user-flow impact",
   "pure type/config change with no UX consequence",
+  "frontend diff exists but does not alter user journey or decision points",
 ]
 prompt = """
 Ты — usability_guardian для NeoFin AI.

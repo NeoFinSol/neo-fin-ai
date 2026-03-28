@@ -14,22 +14,79 @@
 
 1. Сначала классифицируй задачу.
 2. Если задача `local-low-risk`, не зови субагентов.
-3. Если задача не `local-low-risk`, сначала выбери **одного primary** субагента:
+3. Если задача не `local-low-risk`, сначала реши, нужен ли вообще внешний read-only pass:
+   - если path очевиден и риск узкий, достаточно internal orchestration + synthesis без внешних субагентов
+   - если нужен независимый investigation pass, тогда выбирай субагента
+4. Если нужен внешний pass, сначала выбери **одного primary** субагента:
    - `solution_designer` — если главная проблема в выборе safe path
    - `debug_investigator` — если главная проблема в root cause
-4. Затем при необходимости добавь **одного** доменного субагента.
-5. Дождись результатов, сделай synthesis, и только потом переходи к коду.
-6. Phase-based субагенты (`test_planner`, `code_review`, `docs_keeper`) подключай позже, а не в стартовый fan-out.
+5. Затем при необходимости добавь **одного** доменного субагента.
+6. Дождись результатов, сделай synthesis, и только потом переходи к коду.
+7. Phase-based субагенты (`test_planner`, `code_review`, `docs_keeper`) подключай позже, а не в стартовый fan-out.
 
 ## Ограничение fan-out
 
 - `0` субагентов для `local-low-risk`
-- `1` primary для большинства `cross-module` / `contract-sensitive` / `bug-investigation`
-- `2` субагента — нормальный стартовый bundle для `cross-layer` или средне-рисковой задачи
+- `0` внешних субагентов также допустимы для non-local задачи, если external pass не добавляет новой информации
+- `1` внешний субагент — нормальный старт для большинства `cross-module` / `contract-sensitive` / `bug-investigation`
+- `2` субагента — только если нужен второй независимый domain pass
 - `3` субагента — только если после первого pass остаётся неразрешённый риск
 - `4` — жёсткий верхний предел и только для реального release/security boundary
 
 > Анти-паттерн: “задача сложная, значит запускаем всех”.
+
+## Invocation budget
+
+### 1. Core-auto
+
+Автоматически допустимые кандидаты, но только по явному trigger.
+
+| Субагент | Вызывать когда |
+|---|---|
+| `debug_investigator` | root cause бага неясен или есть flaky / cross-layer mismatch |
+| `solution_designer` | есть 2+ реалистичных safe path и нужен выбор |
+| `contracts_guardian` | меняется публичный HTTP/WS/status/payload surface |
+
+### 2. Domain-auto
+
+Авто-кандидаты только по узкому техническому surface.
+
+| Субагент | Вызывать когда |
+|---|---|
+| `data_integrity_guardian` | schema/migration/backfill/history/invariants |
+| `security_guardian` | auth/upload/secrets/public boundary |
+| `integration_guardian` | внешние APIs/providers/webhooks |
+| `dependency_guardian` | packages/images/provider deps реально меняются |
+| `performance_guardian` | perf/memory/token-cost/large-input behaviour — часть задачи |
+
+### 3. Phase-gated
+
+Не стартовые агенты. Подключаются только после diff или ближе к closure/release.
+
+| Субагент | Вызывать когда |
+|---|---|
+| `test_planner` | после medium/high-risk diff |
+| `code_review` | когда уже есть реализация |
+| `docs_keeper` | при закрытии логической единицы |
+| `devops_release` | когда реально меняется release/deploy/runtime path |
+| `deployment_guardian` | когда меняется deploy automation / rollback |
+| `runtime_guardian` | когда меняется lifecycle/health semantics |
+| `error_monitoring_guardian` | когда меняется error taxonomy / alerting |
+| `usability_guardian` | когда меняется user journey, а не просто frontend код |
+
+### 4. Manual-explicit
+
+Не auto-invoke. Только по прямому scope или явному запросу.
+
+| Субагент | Когда допустим |
+|---|---|
+| `planner_guardian` | пользователь явно просит план / roadmap / sequencing |
+| `policy_guardian` | нужен разбор внутренних policy/process constraints |
+| `compliance_guardian` | задача прямо затрагивает regulatory/legal требования |
+| `api_versioning_guardian` | есть breaking compatibility или migration window |
+| `audit_guardian` | требуется auditability / traceability как цель задачи |
+| `backup_guardian` | затрагиваются backup/restore/recovery guarantees |
+| `feature_flag_guardian` | задача реально меняет rollout flags / kill-switches |
 
 ## Категории субагентов
 
@@ -86,12 +143,12 @@
 
 | Ситуация | Стартовый bundle | Не делать |
 |---|---|---|
-| Новый cross-layer feature | `solution_designer` + 1 доменный агент | не добавлять `code_review`/`docs_keeper` в начале |
-| Неочевидный баг | `debug_investigator` + 1 доменный агент | не звать `solution_designer` одновременно без причины |
-| API / WS / payload / status change | `contracts_guardian` + `frontend_scout` только при реальном UI impact | не добавлять сразу `api_versioning_guardian`, если версия API не меняется |
+| Новый cross-layer feature | `solution_designer` или `0 external`, если path уже очевиден | не добавлять `code_review`/`docs_keeper` в начале |
+| Неочевидный баг | `debug_investigator` + максимум 1 доменный агент | не звать `solution_designer` одновременно без причины |
+| API / WS / payload / status change | `contracts_guardian`; `frontend_scout` только при реальном UI impact | не добавлять сразу `api_versioning_guardian`, если версия API не меняется |
 | Extraction / scoring change | `extractor` или `scoring_guardian` | не связывать их автоматически в каждую задачу |
-| Persistence / migration / history change | `db_persistence` или `data_integrity_guardian` | не звать оба без явного риска |
-| Release / Docker / nginx / deploy | `security_guardian` + `devops_release` | не тянуть `deployment_guardian`, если нет automation/rollback задачи |
+| Persistence / migration / history change | `data_integrity_guardian` или `db_persistence` | не звать оба без явного риска |
+| Release / Docker / nginx / deploy | `devops_release`; `security_guardian` только при trust-boundary impact | не тянуть `deployment_guardian`, если нет automation/rollback задачи |
 | Большая программа работ / roadmap | `planner_guardian` + `solution_designer` | не путать planning с реализацией |
 | Финал medium/high-risk задачи | `test_planner` → `code_review` → `docs_keeper` | не делать их стартовым investigation bundle |
 
@@ -123,6 +180,7 @@
 - Не запускать `docs_keeper` в начале задачи.
 - Не звать `security_guardian`, `policy_guardian`, `compliance_guardian` пачкой без явного regulatory/security scope.
 - Не звать `devops_release` и `deployment_guardian` вместе, если нет одновременно release risk и deploy automation work.
+- Не трактовать `orchestration mode` как обязательство позвать хотя бы одного внешнего субагента.
 - Не раздувать orchestration на simple bugfix, typo, local refactor.
 
 ## Как читать TOML manifests

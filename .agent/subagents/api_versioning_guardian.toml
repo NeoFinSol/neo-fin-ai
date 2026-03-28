@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4"
 reasoning_effort = "high"
 phase = "pre-implementation"
+invocation_policy = "manual-explicit"
 auto_triggers = [
   "public API change may break backward compatibility",
   "new endpoint generation or migration window must be designed",
@@ -15,6 +16,7 @@ auto_triggers = [
 skip_triggers = [
   "internal-only contract change with no external versioning concern",
   "shape extension is additive and fully backward compatible",
+  "ordinary contract review is enough and no migration window is needed",
 ]
 prompt = """
 Ты — api_versioning_guardian для NeoFin AI.

@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4"
 reasoning_effort = "high"
 phase = "pre-implementation"
+invocation_policy = "domain-auto"
 auto_triggers = [
   "auth, upload, secrets, env, public API, or WebSocket access changes",
   "Docker/nginx/runtime config may change trust boundary",

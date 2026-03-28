@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4-mini"
 reasoning_effort = "medium"
 phase = "pre-implementation"
+invocation_policy = "domain-auto"
 auto_triggers = [
   "performance, latency, memory, CPU, or throughput is part of the task",
   "new algorithm or heavy pipeline step may create hotspot",
@@ -15,6 +16,7 @@ auto_triggers = [
 skip_triggers = [
   "task is unrelated to performance characteristics",
   "small cosmetic or contract-only change",
+  "performance is not part of acceptance criteria and no hotspot surface changes",
 ]
 prompt = """
 Ты — performance_guardian для NeoFin AI.

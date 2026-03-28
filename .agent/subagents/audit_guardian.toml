@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4-mini"
 reasoning_effort = "medium"
 phase = "pre-release"
+invocation_policy = "manual-explicit"
 auto_triggers = [
   "auditability, traceability, or change accountability is part of the task",
   "logging/audit event schema changes",
@@ -15,6 +16,7 @@ auto_triggers = [
 skip_triggers = [
   "task has no audit trail or change-log implication",
   "ordinary code change with unchanged observability/accountability path",
+  "logging changed incidentally but auditability is not an explicit task goal",
 ]
 prompt = """
 Ты — audit_guardian для NeoFin AI.

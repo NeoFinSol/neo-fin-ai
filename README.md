@@ -79,7 +79,7 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 
 ## Гибридная архитектура
 
-Система работает на двух независимых уровнях. Недоступность AI-провайдера не влияет на числовой результат.
+Система работает на трех независимых уровнях. Недоступность AI-провайдера не влияет на числовой результат.
 
 **Уровень 1 — детерминированный (всегда активен):**
 Извлечение данных → Confidence Score → фильтрация по порогу → расчёт коэффициентов → интегральный скоринг. Воспроизводимо, объяснимо, не зависит от внешних сервисов.
@@ -323,7 +323,7 @@ docker-compose -f docker-compose.prod.yml up -d --build
 | [`docs/API.md`](docs/API.md) | Все эндпоинты, форматы запросов/ответов, curl-примеры |
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Все переменные окружения с типами и значениями по умолчанию |
 | [`AGENTS.md`](AGENTS.md) | Правила работы агента, orchestration policy и update ritual |
-| [`.agent/subagents/README.md`](.agent/subagents/README.md) | Human-readable система субагентов, trigger bundles и max fan-out |
+| [`.agent/subagents/README.md`](.agent/subagents/README.md) | Human-readable система субагентов, invocation budget, trigger bundles и manual-only guards |
 
 ---
 

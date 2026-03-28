@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4"
 reasoning_effort = "high"
 phase = "pre-implementation"
+invocation_policy = "domain-auto"
 auto_triggers = [
   "schema, migration, persistence shape, backfill, or derived data invariants change",
   "task may create silent corruption or stale/mixed data states",

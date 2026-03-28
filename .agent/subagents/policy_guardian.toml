@@ -7,6 +7,7 @@ human_workflow_only = true
 preferred_model = "gpt-5.4"
 reasoning_effort = "medium"
 phase = "pre-implementation"
+invocation_policy = "manual-explicit"
 auto_triggers = [
   "task touches internal engineering policy or workflow rules",
   "need to reconcile solution with project governance constraints",
@@ -15,6 +16,7 @@ auto_triggers = [
 skip_triggers = [
   "pure product code change with no policy/process implication",
   "policy questions are already resolved by AGENTS.md",
+  "governance interpretation is not blocking the task",
 ]
 prompt = """
 Ты — policy_guardian для NeoFin AI.
