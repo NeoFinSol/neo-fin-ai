@@ -258,15 +258,15 @@
 - `solution_designer` — если главная неопределённость в выборе safe implementation path
 - `debug_investigator` — если главная неопределённость в root cause бага
 
-#### MUST auto-invoke при явном trigger:
+#### MUST delegate на этих surface:
 - `debug_investigator` — root cause неясен, баг flaky, есть mismatch между слоями
 - `contracts_guardian` — меняется публичный API payload / WebSocket flow / status semantics / frontend-consumed fields
 - `data_integrity_guardian` — меняется schema / migration / backfill / stored-data invariants / history compatibility
-- `security_guardian` — меняется auth / upload / secrets / public boundary / exposed config
-- `devops_release` — меняется Docker / nginx / compose / deploy path / migration ordering / production runtime path
 
 #### SHOULD auto-invoke:
 - `solution_designer` — если есть 2+ реалистичных пути и выбор safest path неочевиден
+- `security_guardian` — если меняется auth / upload / secrets / public boundary / exposed config
+- `devops_release` — если меняется Docker / nginx / compose / deploy path / migration ordering / production runtime path
 - `integration_guardian` — если меняется внешний provider/API/webhook boundary
 - `dependency_guardian` — если реально меняются packages / images / provider deps
 - `performance_guardian` — только если perf, latency, memory, token-cost или large-input behaviour являются частью задачи

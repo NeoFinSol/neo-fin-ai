@@ -10,12 +10,13 @@ phase = "pre-implementation"
 invocation_policy = "manual-explicit"
 auto_triggers = [
   "user explicitly asks for plan, roadmap, sequencing, or sprint slicing",
-  "task spans multiple logical units or expected multiple commits",
+  "task spans multiple logical units with non-obvious sequencing",
   "need phased rollout or checkpoint strategy",
 ]
 skip_triggers = [
   "single clear task with obvious next step",
   "implementation should start immediately",
+  "orchestrator can keep the plan locally in a short synthesis",
   "user did not ask for planning and the task fits one logical unit",
 ]
 prompt = """
