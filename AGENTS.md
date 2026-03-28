@@ -233,6 +233,9 @@
 2. Определить, нужна ли делегация вообще, или достаточно локального lightweight synthesis
 3. Если делегация нужна — определить **минимально достаточный** набор релевантных субагентов
 4. Запустить нужных субагентов как read-only investigation pass
+   - сначала выбрать **конкретную project-role** (`solution_designer`, `contracts_guardian`, `data_integrity_guardian` и т.д.)
+   - затем выбрать tool/runtime carrier (`default`, `explorer`, `worker`) только как технический способ исполнения
+   - carrier не заменяет роль субагента и не должен подменять её формулой “действуй как ...”
 5. Дождаться результатов всех субагентов
 6. Выполнить synthesis:
 
@@ -279,6 +282,12 @@
 #### Stop rule:
 - если после первого pass safe path выбран, инварианты ясны и validation plan очевиден, новых субагентов больше не добавлять
 
+#### Identity rule:
+- project subagent identity всегда первична: оркестратор обязан назвать, какой именно субагент из `.agent/subagents` был вызван
+- `explorer` / `default` / `worker` — это только tool-level carrier, а не имя субагента
+- если используется registry-backed роль с `.toml`, оркестратор обязан брать модель, reasoning и prompt из её manifest
+- если используется `.md`-only роль, оркестратор обязан ссылаться на её role-spec как на source of truth
+
 #### NEVER auto-invoke:
 - `code_review` — до появления diff
 - `docs_keeper` — в начале задачи
@@ -299,6 +308,8 @@
 - “задача high-risk, значит запускаем всех субагентов”
 - “задача cross-module, значит нужен хотя бы один субагент”
 - “задача cross-layer, значит на старте нужны два субагента”
+- “запустить generic `explorer`/`default` с prompt ‘действуй как solution_designer’ вместо явного вызова выбранной project-role”
+- ссылаться в findings только на carrier (`explorer`), а не на реальную роль субагента
 
 ---
 
@@ -418,6 +429,7 @@
 * пропускать synthesis
 * игнорировать вывод субагентов
 * запускать субагентов формально, без использования результатов
+* подменять project-role generic carrier-агентом с prompt’ом “действуй как ...”
 * делать частичную реализацию без полного анализа
 * делегировать write-heavy реализацию в пересекающихся файлах
 
@@ -429,6 +441,7 @@
 🧠 Orchestration:
 - workflow:
 - используемые субагенты:
+- tool/runtime carrier:
 - причина выбора:
 
 📊 Findings:

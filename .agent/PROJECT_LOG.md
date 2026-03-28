@@ -1,5 +1,28 @@
 # Project Log
 
+## 2026-03-28 — docs(agent): separate project roles from runtime carriers
+
+**Изменения:**
+- `AGENTS.md`:
+  - добавлено жёсткое различие между project-role субагента и tool/runtime carrier
+  - зафиксировано, что `default` / `explorer` / `worker` — это только техника исполнения, а не имя субагента
+  - добавлен прямой запрет на anti-pattern “generic explorer с prompt ‘действуй как ...’”
+  - orchestration format теперь должен явно показывать и выбранную роль, и runtime carrier
+- `.agent/subagents/README.md`:
+  - добавлен отдельный раздел `Role identity vs runtime carrier`
+  - уточнён порядок вызова: сначала роль, затем manifest/model/prompt, затем carrier
+- `README.md`:
+  - описание subagents README синхронизировано с separation между role и carrier
+- `.agent/overview.md`:
+  - зафиксирована новая итерация hardening правил оркестрации
+
+**Верификация:**
+- manual consistency check:
+  - `AGENTS.md`
+  - `.agent/subagents/README.md`
+  - `README.md`
+  - `.agent/overview.md`
+
 ## 2026-03-28 — feat(db): evolve analysis schema with typed summaries and cleanup helpers
 
 **Изменения:**

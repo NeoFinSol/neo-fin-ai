@@ -14,6 +14,26 @@
 - `.toml` — это registry entry для оркестратора
 - `.md` — это deep role-spec, который тоже можно вызывать по имени роли
 - отсутствие `.toml` не означает, что роль нельзя использовать; это означает, что у неё пока нет registry-backed manifest
+- `default` / `explorer` / `worker` — это только tool/runtime carrier; они не являются заменой project-role
+
+## Role identity vs runtime carrier
+
+Оркестратор должен различать два уровня:
+
+- **project-role**: `solution_designer`, `contracts_guardian`, `data_integrity_guardian`, `extractor` и т.д.
+- **runtime carrier**: `default`, `explorer`, `worker`
+
+Правильный порядок такой:
+
+1. выбрать project-role по manifest / role-spec
+2. взять её `preferred_model`, `reasoning_effort`, prompt и trigger policy
+3. только потом выбрать carrier как технический способ исполнения
+
+Неправильно:
+
+- запускать просто `explorer` и писать ему “действуй как solution_designer”
+- в отчёте писать, что был вызван `explorer`, не называя реальную роль
+- считать, что carrier автоматически определяет обязанности субагента
 
 ## Базовые правила оркестрации
 
@@ -129,6 +149,10 @@ Orchestration mode обязателен для задач выше `local-low-ri
 - если у роли есть `.toml`, оркестратор использует его как основной registry entry
 - если у роли есть только `.md`, оркестратор использует `.md` как source of truth для зоны ответственности и expected output
 - `.toml` отвечает за invocation policy, `.md` отвечает за deep role-spec
+- при фактическом вызове в отчёте должны явно фигурировать оба слоя:
+  - project-role
+  - runtime carrier
+- project-role всегда указывается первой и считается source of truth; carrier описывает только технику исполнения
 
 ## Категории субагентов
 
@@ -227,6 +251,7 @@ Orchestration mode обязателен для задач выше `local-low-ri
 - Не звать `devops_release` и `deployment_guardian` вместе, если нет одновременно release risk и deploy automation work.
 - Не трактовать `orchestration mode` как обязательство позвать хотя бы одного внешнего субагента.
 - Не раздувать orchestration на simple bugfix, typo, local refactor.
+- Не подменять выбранную роль generic carrier-агентом с prompt’ом “act as ...”.
 
 ## Как читать TOML manifests
 

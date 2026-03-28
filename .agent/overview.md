@@ -78,6 +78,11 @@
   - `performance_guardian` теперь явно работает и до, и после реализации: без diff даёт гипотезы, с diff — фактический hotspot review
   - граница `devops_release` vs `deployment_guardian` усилена явными anti-trigger пояснениями в самих manifest prompts
   - в `AGENTS.md`, `.agent/subagents/README.md` и root `README.md` явно зафиксировано различие между `.toml` registry entries и `.md`-only product role-specs
+✅ **Agent Workflow Hardening 4**:
+  - жёстко разведены `project-role` и `runtime carrier`
+  - `explorer` / `default` / `worker` теперь прямо зафиксированы как tool-level carriers, а не замена registry-role
+  - добавлен прямой запрет на паттерн “generic explorer с prompt ‘действуй как solution_designer’”
+  - orchestration report теперь должен явно называть и роль субагента, и carrier исполнения
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
