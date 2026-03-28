@@ -45,7 +45,7 @@
 ├─────────────────────────────────────────────────────┤
 │                    ИИ-сервис                        │
 │   BaseAIAgent · единая сессия · повторы при сбое    │
-│   GigaChat · DeepSeek · Ollama · деградация         │
+│   GigaChat · HuggingFace · Ollama · деградация      │
 ├─────────────────────────────────────────────────────┤
 │                Хранение данных                      │
 │   PostgreSQL · SQLAlchemy async · JSONB · Alembic   │
@@ -88,8 +88,8 @@ POST /upload  →  задача поставлена в выполнение, к
 │  • TASK_RUNTIME=celery     → Redis broker + worker   │
 │  • ошибки постановки → канонический HTTP 503         │
 │                                                      │
-│  WebSocket-события в persistent path идут через      │
-│  Redis pub/sub bridge и затем транслируются в UI     │
+│  В персистентном контуре события WebSocket идут      │
+│  через Redis pub/sub и затем транслируются в клиент  │
 └──────────────────────────────────────────────────────┘
    │
    ▼
@@ -138,7 +138,7 @@ POST /upload  →  задача поставлена в выполнение, к
 │  • finally: cleanup_temp_file(file_path)             │
 └──────────────────────────────────────────────────────┘
 
-Клиентская часть: useAnalysisSocket.ts (WebSocket) ↔ ws_manager.py / Redis event bridge
+Клиентская часть: `useAnalysisSocket.ts` (WebSocket) ↔ `ws_manager.py` / мост событий через Redis
 ```
 
 ---
@@ -233,10 +233,10 @@ else:
 ### Объяснимость в интерфейсе
 
 - **`ConfidenceBadge`** — цветовая маркировка каждого показателя: 🟢 ≥ 0.8 / 🟡 0.5–0.8 / 🔴 < 0.5
-- **Tooltip** при наведении — структурированный блок: «Источник», «Метод», «Уверенность»
+- **Подсказка** при наведении — структурированный блок: «Источник», «Метод», «Уверенность»
 - **Приглушённый стиль** строки при `confidence < CONFIDENCE_THRESHOLD`
 - **Сводная строка**: «Извлечено надёжно: N из 15 показателей»
-- **Hint**: «Показатели с низкой уверенностью (🔴) могут быть исключены из расчёта коэффициентов»
+- **Пояснение**: «Показатели с низкой уверенностью (🔴) могут быть исключены из расчёта коэффициентов»
 
 **Отличие от непрозрачных моделей**: система не просто выдаёт скоринг — она показывает, какие данные использовались, насколько им можно доверять, и какой вклад внёс каждый коэффициент в итоговую оценку.
 
@@ -317,7 +317,7 @@ GET /multi-analysis/{session_id}
       │     • OAuth2 с кешированием токена
       │     • работа с SSL-сертификатами
       │
-      ├── DeepSeekAgent (HuggingFace)
+      ├── HuggingFaceAgent
       │     • аутентификация по bearer-токену
       │
       └── OllamaAgent
@@ -344,8 +344,8 @@ AIService._configure()  (вызывается однократно при ста
    │      └─ ✅  GigaChat (OAuth2, единая ClientSession, кеш токена 55 мин)
    │
    ├─ 2. HF_TOKEN задан?
-   │      └─ ✅  DeepSeek-R1 через HuggingFace Inference API
-   │             модель: DeepSeek-R1-Distill-Qwen-7B
+   │      └─ ✅  HuggingFace Inference API
+   │             модель по умолчанию: Qwen/Qwen3.5-9B-Instruct
    │
    ├─ 3. LLM_URL задан?
    │      └─ ✅  Ollama (локальная модель, полностью автономный режим)
@@ -393,7 +393,7 @@ ai_service.invoke(prompt)
    │   ├── POST /chat/completions, timeout=120s
    │   └── Ошибка → logging.warning(); исключение передаётся выше
    │
-   ├── HuggingFace / DeepSeek  (если выбран при старте)
+   ├── HuggingFace  (если выбран при старте)
    │   ├── Bearer HF_TOKEN
    │   ├── POST inference API, timeout=120s
    │   └── Ошибка → logging.warning(); исключение передаётся выше
@@ -580,7 +580,7 @@ python scripts/admin_cleanup.py --analyses --multi-sessions --execute
 ### Стек
 
 - **React 18** + **TypeScript** — строгая типизация, без `any`
-- **Mantine UI** — компонентная библиотека
+- **Mantine** — компонентная библиотека интерфейса
 - **@mantine/charts** (Recharts) — `LineChart` для `TrendChart`
 - **Vite** — сборка и сервер разработки с проксированием (`/api` → `http://localhost:8000`)
 
@@ -623,14 +623,14 @@ type MultiAnalysisResponse =
 
 **`TrendChart.tsx`** — интерактивный график динамики коэффициентов.
 - `LineChart` из `@mantine/charts`, `connectNulls={false}` — явный разрыв линии при `null`; нет интерполяции отсутствующих данных
-- Checkbox-селектор: пользователь выбирает, какие коэффициенты отображать
-- Trend indicators: стрелки ↑↓ по сравнению двух последних значений
-- Anomaly detection: маркер ⚠ при `abs(delta) > anomalyThreshold`
+- Селектор с флажками: пользователь выбирает, какие коэффициенты отображать
+- Индикаторы тренда: стрелки ↑↓ по сравнению двух последних значений
+- Выявление аномалий: маркер ⚠ при `abs(delta) > anomalyThreshold`
 - `series` и `trendMap` мемоизированы через `useMemo`
 
 **`ConfidenceBadge.tsx`** — индикатор надёжности показателя.
 - Цветовая маркировка: 🟢 ≥ 0.8 / 🟡 0.5–0.8 / 🔴 < 0.5
-- Tooltip: «Источник», «Метод», «Уверенность»
+- Подсказка: «Источник», «Метод», «Уверенность»
 - Приглушённый стиль строки при `confidence < CONFIDENCE_THRESHOLD`
 
 ### Механизм периодического опроса
@@ -668,17 +668,26 @@ Internet
        ┌───────┴────────┐
        ▼                ▼
 ┌─────────────┐   ┌─────────────────────────────┐
-│  FastAPI    │   │  React (статика)             │
-│  uvicorn    │   │  Multi-stage build inside    │
+│  FastAPI    │   │  React (статика)            │
+│  uvicorn    │   │  многоэтапная сборка в      │
 │  :8000      │   │  `frontend/Dockerfile.frontend` │
 └──────┬──────┘   └─────────────────────────────┘
        │
-  ┌────┴────┐
-  ▼         ▼
-┌──────┐  ┌────────┐
-│  PG  │  │ Ollama │  (опционально, только если LLM_URL задан)
-│ :5432│  │ :11434 │
-└──────┘  └────────┘
+   ┌───┴───────────────┐
+   ▼                   ▼
+┌──────────┐      ┌──────────────┐
+│  Redis   │◄────►│ Celery worker│
+│ :6379    │      │ очередь neofin│
+└────┬─────┘      └──────┬───────┘
+     │                   │
+     └─────────┬─────────┘
+               ▼
+            ┌──────┐
+            │  PG  │
+            │ :5432│
+            └──────┘
+
+Отдельно по профилю может подниматься `Ollama` (`:11434`) для полностью локального ИИ-контура.
 ```
 
 ### Docker Compose сервисы (`docker-compose.prod.yml`)
@@ -686,20 +695,30 @@ Internet
 | Сервис | Образ | Порт | Описание |
 |---|---|---|---|
 | `db` | `postgres:16-alpine` | 5432 | PostgreSQL; health check: `pg_isready`, interval 10s |
-| `backend` | `./Dockerfile.backend` (multi-stage) | 8000 | FastAPI + uvicorn; health check: `GET /health`, интервал 30 с, таймаут 10 с |
+| `redis` | `redis:8.6-alpine` | 6379 | Redis для брокера очереди, backend результатов и моста событий статуса |
+| `backend` | `./Dockerfile.backend` (multi-stage) | 8000 | FastAPI + uvicorn; health check: `GET /system/health`, интервал 30 с, таймаут 10 с |
+| `worker` | `./Dockerfile.backend` (multi-stage) | — | Отдельный Celery worker для персистентного выполнения задач из очереди `neofin` |
+| `backend-migrate` | `./Dockerfile.backend` (multi-stage) | — | Одноразовый контейнер миграций Alembic перед запуском backend и worker |
 | `nginx` | `./frontend/Dockerfile.frontend` (multi-stage) | 80 | Самодостаточный Nginx, сборка React для продакшн и проксирование `/api` |
 
-`backend` запускается только после `db: condition: service_healthy`.
+`backend` и `worker` запускаются только после `db: condition: service_healthy`, `redis: condition: service_healthy` и успешного завершения `backend-migrate`.
+
+### Локальный Compose-контур (`docker-compose.yml`)
+
+- По умолчанию локальный запуск поднимает `backend`, `worker`, `backend-migrate`, `frontend`, `db`, `redis`.
+- `db_test` включается только при `--profile test`.
+- `ollama` включается только при `--profile ollama`.
+- Для runtime-сервисов в compose принудительно задано `TESTING=0`, чтобы локальный `.env` не мог увести backend или worker в `TEST_DATABASE_URL`.
 
 ### Многоэтапные Dockerfile
 
 **`Dockerfile.backend`:**
-- Stage `build`: установка Python-зависимостей
-- Stage `runtime`: минимальный образ для выполнения приложения
+- этап `build`: установка Python-зависимостей
+- этап `runtime`: минимальный образ для выполнения приложения
 
 **`frontend/Dockerfile.frontend`:**
-- Stage `build`: Node.js + `npm ci` + `npm run build` (Vite → `dist/`)
-- Stage `serve`: Nginx, статика из `dist/` и конфигурация прокси для продакшн из `frontend/nginx.prod.conf`
+- этап `build`: Node.js + `npm ci` + `npm run build` (Vite → `dist/`)
+- этап `serve`: Nginx, статика из `dist/` и конфигурация прокси для продакшн из `frontend/nginx.prod.conf`
 
 ### SSL-конфигурация
 
@@ -720,6 +739,7 @@ Internet
 ### Операционные заметки после первой волны аудита
 
 - `backend-migrate` зависит от наличия `entrypoint.sh` внутри backend image; `Dockerfile.backend` должен копировать этот файл и делать его executable.
+- `backend`, `worker` и `backend-migrate` должны запускаться с `TESTING=0`, иначе при локальном `.env` с `TESTING=1` runtime может тихо предпочесть `TEST_DATABASE_URL`.
 - `GET /analyses/{task_id}` возвращает внутреннюю полезную нагрузку `result.data`, а не целиком JSONB-объект результата.
 - `tasks.py` шлёт промежуточные WebSocket-статусы `extracting`, `scoring`, `analyzing` до финального `completed|failed`.
 - `process_multi_analysis()` нормализует частично успешные сессии к статусу `completed`, а ошибки отдельных периодов остаются внутри `periods[].error`.
