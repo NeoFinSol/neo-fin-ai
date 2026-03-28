@@ -1,19 +1,21 @@
-# Real PDF Smoke Fixtures
+# Real PDF Fixtures
 
-Этот набор хранит маленький committed baseline corpus из реальных PDF-файлов финансовой отчётности.
+Этот каталог хранит committed corpus из реальных PDF-файлов финансовой отчётности.
 
 ## Зачем он нужен
 
 - synthetic dataset в `tests/data/pdf_regression_corpus.json` хорошо покрывает layout-driven edge cases
 - real PDFs дополнительно страхуют text-layer extraction на настоящих годовых отчётах
-- baseline pack должен оставаться быстрым и стабильным в CI
+- baseline smoke pack должен оставаться быстрым и стабильным в CI
+- optional heavy tier нужен для явной проверки full pipeline на реальных annual reports
 
 ## Что здесь лежит
 
 - `manifest.json` — metadata, provenance, `sha256`, expected subset metric values и expected extraction sources
+- `manifest_heavy.json` — отдельный manifest для optional heavy-tier с full pipeline
 - `*.pdf` — committed smoke fixtures
 
-## Почему pipeline сейчас `text_only`
+## Smoke tier (`manifest.json`)
 
 Для первой итерации smoke pack intentionally использует:
 
@@ -33,4 +35,27 @@ Synthetic corpus уже страхует:
 - garbled labels
 - OCR pseudo-tables
 
-Следующий слой — optional heavy corpus с full pipeline / OCR cases.
+## Heavy tier (`manifest_heavy.json`)
+
+Отдельный optional слой использует:
+
+- `extract_text()`
+- `extract_tables()`
+- `parse_financial_statements_with_metadata(tables, text)`
+
+Он не должен входить в обычный быстрый прогон. Heavy-tier запускается только явно:
+
+```powershell
+$env:RUN_PDF_REAL_HEAVY = "1"
+python -m pytest tests/test_pdf_real_heavy_fixtures.py -q
+```
+
+Почему так:
+
+- Camelot на реальных annual reports может работать десятки секунд
+- часть документов может стабильно проходить только через `stream`
+- heavy-tier должен проверять узкие business-инварианты, а не пытаться валидировать весь metrics dict
+
+## OCR cases
+
+Формат `manifest_heavy.json` уже допускает `pipeline = "force_ocr"`, но committed scanned real-PDF fixtures пока не добавлены. Когда появится curated scanned corpus, он должен входить только в этот optional heavy layer, а не в default smoke path.

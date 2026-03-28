@@ -37,6 +37,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "pdf_real: mark test as real-PDF smoke regression corpus"
     )
+    config.addinivalue_line(
+        "markers", "pdf_real_heavy: mark test as optional heavy real-PDF regression corpus"
+    )
 
 
 @pytest.fixture(autouse=True, scope="session")

@@ -1,0 +1,56 @@
+[
+  {
+    "id": "corvel_2023_full_pipeline",
+    "filename": "corvel_2023_annual_report.pdf",
+    "kind": "heavy",
+    "pipeline": "full_tables",
+    "report_type": "US_GAAP_annual_report",
+    "layout_tags": ["digitally_born", "annual_report", "full_pipeline"],
+    "provenance_url": "https://www.sec.gov/Archives/edgar/data/874866/000119312523180484/d398438dars.pdf",
+    "sha256": "d241bcd09b46146e8c9ac6f941ac604a96b552d6c2f21dc37bc69f5953164eb9",
+    "size_bytes": 2491950,
+    "expected_scanned": false,
+    "min_text_length": 200000,
+    "min_table_count": 8,
+    "allowed_flavors": ["stream"],
+    "expected_values": {
+      "total_assets": 393923.0,
+      "liabilities": 191747.0,
+      "current_assets": 71329.0,
+      "revenue": 10000.0
+    },
+    "expected_sources": {
+      "total_assets": ["text_regex"],
+      "liabilities": ["text_regex"],
+      "current_assets": ["text_regex"],
+      "revenue": ["table_partial"]
+    },
+    "notes": "Heavy tier verifies that the full pipeline still discovers real tables on CorVel and preserves a narrow manually verified subset of extracted values."
+  },
+  {
+    "id": "cloudflare_2023_full_pipeline",
+    "filename": "cloudflare_2023_annual_report.pdf",
+    "kind": "heavy",
+    "pipeline": "full_tables",
+    "report_type": "US_GAAP_annual_report",
+    "layout_tags": ["digitally_born", "annual_report", "full_pipeline", "camelot_timeout_tolerant"],
+    "provenance_url": "https://www.annualreports.com/HostedData/AnnualReportArchive/c/NYSE_NET_2023.pdf",
+    "sha256": "0db31241fe19e0cc6727c8896c5e36d79fe5567292735e5d1f8dd211fd23b5f8",
+    "size_bytes": 2078132,
+    "expected_scanned": false,
+    "min_text_length": 800000,
+    "min_table_count": 10,
+    "allowed_flavors": ["stream"],
+    "expected_values": {
+      "cash_and_equivalents": 86900.0,
+      "current_assets": 5400.0,
+      "liabilities": 1996.0
+    },
+    "expected_sources": {
+      "cash_and_equivalents": ["text_regex"],
+      "current_assets": ["text_regex"],
+      "liabilities": ["text_regex"]
+    },
+    "notes": "This case tolerates Camelot lattice timeout but still expects the heavy stream path to return tables and preserve narrow liquidity/balance signals."
+  }
+]

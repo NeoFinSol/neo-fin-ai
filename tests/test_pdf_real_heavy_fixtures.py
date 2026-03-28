@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import warnings
 from pathlib import Path
 
@@ -17,7 +18,20 @@ from src.analysis import pdf_extractor
 
 
 FIXTURE_ROOT = Path(__file__).parent / "data" / "pdf_real_fixtures"
-MANIFEST_PATH = FIXTURE_ROOT / "manifest.json"
+MANIFEST_PATH = FIXTURE_ROOT / "manifest_heavy.json"
+RUN_HEAVY_REAL_PDF = os.getenv("RUN_PDF_REAL_HEAVY") == "1"
+
+pytestmark = [
+    pytest.mark.pdf_real_heavy,
+    pytest.mark.skipif(
+        not RUN_HEAVY_REAL_PDF,
+        reason="Set RUN_PDF_REAL_HEAVY=1 to run the heavy real-PDF regression tier.",
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:.*camelot only works on text-based pages.*:UserWarning"
+    ),
+    pytest.mark.filterwarnings("ignore:No tables found.*:UserWarning"),
+]
 
 
 def _sha256(path: Path) -> str:
@@ -29,12 +43,27 @@ def _load_cases() -> list[dict]:
         return json.load(fh)
 
 
-REAL_PDF_CASES = _load_cases()
+def _extract_pipeline(case: dict, pdf_path: Path) -> tuple[str, list[dict]]:
+    pipeline = case.get("pipeline", "full_tables")
+    if pipeline == "full_tables":
+        return pdf_extractor.extract_text(str(pdf_path)), pdf_extractor.extract_tables(str(pdf_path))
+    if pipeline == "force_ocr":
+        return (
+            pdf_extractor.extract_text_from_scanned(str(pdf_path)),
+            pdf_extractor.extract_tables(str(pdf_path), force_ocr=True),
+        )
+    raise AssertionError(f"Unsupported heavy real-PDF pipeline: {pipeline}")
 
 
-@pytest.mark.pdf_real
-@pytest.mark.parametrize("case", REAL_PDF_CASES, ids=[case["id"] for case in REAL_PDF_CASES])
-def test_pdf_real_smoke_fixtures(case: dict) -> None:
+REAL_PDF_HEAVY_CASES = _load_cases()
+
+
+@pytest.mark.parametrize(
+    "case",
+    REAL_PDF_HEAVY_CASES,
+    ids=[case["id"] for case in REAL_PDF_HEAVY_CASES],
+)
+def test_pdf_real_heavy_fixtures(case: dict) -> None:
     pdf_path = FIXTURE_ROOT / case["filename"]
 
     assert pdf_path.exists(), f"Fixture file is missing: {pdf_path.name}"
@@ -44,14 +73,15 @@ def test_pdf_real_smoke_fixtures(case: dict) -> None:
     scanned = pdf_extractor.is_scanned_pdf(str(pdf_path))
     assert scanned is case["expected_scanned"]
 
-    text = pdf_extractor.extract_text(str(pdf_path))
+    text, tables = _extract_pipeline(case, pdf_path)
     assert len(text) >= case["min_text_length"]
+    assert len(tables) >= case.get("min_table_count", 0)
 
-    pipeline = case.get("pipeline", "text_only")
-    if pipeline == "text_only":
-        tables: list[dict] = []
-    else:
-        tables = pdf_extractor.extract_tables(str(pdf_path))
+    if "allowed_flavors" in case:
+        actual_flavors = {table.get("flavor") for table in tables}
+        assert actual_flavors.issubset(set(case["allowed_flavors"])), (
+            f"{case['id']}: unexpected table flavors {sorted(actual_flavors)}"
+        )
 
     metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
 
