@@ -3,10 +3,38 @@
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
 - **Последний коммит**: `refactor(core): decompose tasks.py and centralize mapping/utilities`
-- **Последняя сессия**: 2026-03-27 — LLM Financial Extraction завершён (таски 1–11), OCR fixes, Agent Hooks, GigaChat setup
+- **Последняя сессия**: 2026-03-28 — Sprint 1 / Task 1.2 завершён: diagnostic exec paths в Autopilot переведены на общую runtime/validation base; добавлены helpers для temp workspace, schema file, one-shot `codex exec`, output reading и typed success/failure envelopes. Тесты: `41/41` зелёные.
+- **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
 ---
+
+✅ **Autopilot Codex-only runtime adapter** — `.agent/autopilot.py` теперь содержит `RuntimeAdapter`, `SubprocessRuntimeAdapter`, `CodexCliAdapter`, `SubprocessInvocation` и `create_default_runtime_adapter()`. Поддерживается только Codex runtime без внешних API/Claude. Adapter ищет бинарник через `CODEX_BINARY`, `PATH` и WindowsApps пути, а standalone CLI вызывается по реальному контракту `codex exec -m <model> -s <sandbox> -C <root> -`.
+✅ **Autopilot runtime smoke test** — добавлен безопасный `smoke_test_runtime()` и CLI-флаг `python .agent/autopilot.py --smoke-test-runtime`. Он проверяет только `codex --version`, `codex exec --help` и preview финальной команды запуска без реального agent execution и без расхода на модель. Вывод preview санитизирован и не содержит `env`.
+✅ **Autopilot real-exec smoke test** — добавлен второй режим `exec_smoke_test_runtime()` и CLI-флаг `python .agent/autopilot.py --smoke-test-real-exec`. Он делает ровно один минимальный `codex exec` в пустом temp workspace, использует дешёвую модель, `read-only` sandbox, `--ephemeral` и жёсткий контракт ответа `SMOKE_TEST_OK`. Режим изолирован от planner/subagent orchestration и не использует `build_execution_plan()`. Живой прогон подтверждён: `returncode=0`, `stdout=SMOKE_TEST_OK`.
+✅ **Autopilot mini subagent exec test** — добавлен третий режим `mini_subagent_exec_test()` и CLI-флаг `python .agent/autopilot.py --mini-subagent-exec-test`. Он делает один synthetic subagent-like `codex exec` с жёстким JSON-контрактом `{\"subagent\":\"test_planner\",\"status\":\"ok\",\"summary\":\"...\"}`, использует `--output-schema`, пустой temp workspace и не трогает `build_execution_plan()` / `prepare_execution_requests()` / `execute_plan()`. Живой прогон подтверждён: `returncode=0`, `parsed_output.subagent=test_planner`, `parsed_output.status=ok`.
+✅ **Autopilot docs pack** — создана папка [docs_autopilot](E:/neo-fin-ai/docs_autopilot) с базовой документацией по развитию автопилота:
+  - [README.md](E:/neo-fin-ai/docs_autopilot/README.md)
+  - [VERSIONS.md](E:/neo-fin-ai/docs_autopilot/VERSIONS.md)
+  - [SPRINTS.md](E:/neo-fin-ai/docs_autopilot/SPRINTS.md)
+  - [SPRINT_1_BACKLOG.md](E:/neo-fin-ai/docs_autopilot/SPRINT_1_BACKLOG.md)
+  - [TASKS_SPRINT_1.md](E:/neo-fin-ai/docs_autopilot/TASKS_SPRINT_1.md)
+✅ **Sprint 1 / Task 1.1 complete** — в [autopilot.py](E:/neo-fin-ai/.agent/autopilot.py) введён typed failure foundation:
+  - `FailureCode`
+  - `FailureStage`
+  - `ExecutionMode`
+  - `ExecutionFailure`
+  Typed failure подключён к probe/smoke/subprocess paths без удаления legacy `error` полей. Тесты: `35/35` зелёные.
+✅ **Sprint 1 / Task 1.2 complete** — в [autopilot.py](E:/neo-fin-ai/.agent/autopilot.py) вынесена общая runtime/validation base для diagnostic exec paths:
+  - `DiagnosticExecContext`
+  - `OneShotExecSnapshot`
+  - helpers для shared command building, temp workspace,
+    schema file generation, output reading и failure building
+  - `exec_smoke_test_runtime()` и `mini_subagent_exec_test()`
+    используют один one-shot execution flow
+  - покрыты stdout fallback и missing output scenarios
+✅ **Config-driven model chooser** — `.agent/choose_model_for_subagent.py` теперь использует `.codex/config.toml` как источник model settings и per-subagent overrides, а `.codex/agents/*.toml` как source of truth для профилей субагентов.
+✅ **Autopilot tests** — обновлены `tests/test_agent_autopilot.py` и `tests/test_choose_model_for_subagent.py`: покрытие config loading, `.codex` registry loading, registry validation, classification trace, execution plan, explainability, Codex subprocess adapter, zero-cost smoke-test, real-exec smoke-test, mini subagent exec test, execution backend, stdout fallback, missing output и helper-level contract validation. 41/41 тест зелёный.
 
 ✅ **Qwen Regression Fixes 2** — исправлены все 10 багов: `_normalize_number` (Unicode-минус), `_extract_first_numeric_cell` (4-значные ячейки), `analyze_narrative` (пустой текст в LLM), `extract_text_from_scanned` (MAX_OCR_PAGES=50), `translate_ratios` (утечка ключей), `_format_metric_value` (отрицательные числа), `_parse_recommendations_response` (дедупликация + f-строки), `generate_recommendations` (timeout=90), `_log_missing_data` (f-строки). 20/20 тестов зелёные.
 
@@ -45,6 +73,18 @@
 
 ---
 
+
+## Исправления сессии 2026-03-27 (Большой коммит: scoring + LLM extraction + WebSocket + cleanup)
+✅ **Коммит `b8ffaef`** — feat(scoring): enhance business model with contextual descriptions and 4-level risk system
+✅ **Scoring Model Refinement** — 4-уровневая система риска (low/medium/high/critical), осмысленные описания факторов с ссылками на бенчмарки
+✅ **LLM Financial Extraction** — полная реализация llm_extractor.py с chunking, anomaly detection, fallback merging
+✅ **WebSocket Integration** — ws_manager.py (ConnectionManager), useAnalysisSocket.ts hook, real-time task updates
+✅ **AI Agents Refactoring** — BaseAIAgent с Singleton ClientSession, исправлена утечка ресурсов в GigaChat
+✅ **Pipeline Refactoring** — tasks.py декомпозирован на фазы (extraction, scoring, AI, finalize)
+✅ **Repository Cleanup** — удалены env/, test scripts, IDE files, hypothesis cache; очищен .gitignore
+✅ **Documentation Updates** — BUSINESS_MODEL.md, ROADMAP.md, ARCHITECTURE.md, README.md обновлены
+✅ **Kiro Infrastructure** — добавлены .kiro/hooks/, .kiro/specs/, .kiro/steering/ для автоматизации и правил
+✅ **Статистика** — 335 файлов изменено, 28177 строк добавлено, 13712 удалено
 
 ## Исправления сессии 2026-03-27 (LLM Financial Extraction — таски 4–11 + hotfixes)
 ✅ **`src/models/settings.py`** — добавлены 4 поля: `llm_extraction_enabled`, `llm_chunk_size`, `llm_max_chunks`, `llm_token_budget` с валидаторами.

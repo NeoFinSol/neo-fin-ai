@@ -1,5 +1,397 @@
 # Project Log
 
+## 2026-03-28 — Sprint 1 / Task 1.2: unified runtime helpers
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - добавлены `DiagnosticExecContext` и `OneShotExecSnapshot`
+  - вынесены общие helpers для:
+    - runtime setup
+    - temp workspace
+    - schema file generation
+    - one-shot `codex exec`
+    - output reading
+    - success/failure result building
+  - `exec_smoke_test_runtime()` и `mini_subagent_exec_test()`
+    переведены на общий one-shot execution flow
+  - mode-specific validation/result builders сохранены раздельными,
+    чтобы не смешивать smoke-token и mini-JSON contract validation
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` получил проверки stdout fallback,
+    missing output и helper-level success paths
+- Обновлена документация:
+  - `docs_autopilot/SPRINT_1_BACKLOG.md`
+  - `docs_autopilot/TASKS_SPRINT_1.md`
+  - `.agent/overview.md`
+
+**Верификация:**
+- helper coverage:
+  - success helper path
+  - missing output file
+  - invalid output payload
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 41 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+
+## 2026-03-28 — Sprint 1 / Task 1.1: typed failure foundation
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - добавлены `FailureCode`, `FailureStage`, `ExecutionMode`,
+    `ExecutionFailure`
+  - добавлены helpers для typed failure mapping
+  - typed failure подключён к:
+    - `RuntimeProbeResult`
+    - `RuntimeSmokeTestResult`
+    - `RuntimeExecSmokeTestResult`
+    - `MiniSubagentExecTestResult`
+    - `SubagentExecutionResult`
+  - legacy `error` fields сохранены для обратной совместимости
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` получил проверки typed failures
+    для missing binary, timeout, nonzero exit и JSON serialization
+- Обновлена документация:
+  - `docs_autopilot/SPRINT_1_BACKLOG.md`
+  - `docs_autopilot/TASKS_SPRINT_1.md`
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 35 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+
+## 2026-03-28 — Autopilot docs pack: versions and sprints
+
+**Изменения:**
+- Создана папка `docs_autopilot/`
+- Добавлены файлы:
+  - `docs_autopilot/README.md`
+  - `docs_autopilot/VERSIONS.md`
+  - `docs_autopilot/SPRINTS.md`
+  - `docs_autopilot/SPRINT_1_BACKLOG.md`
+  - `docs_autopilot/TASKS_SPRINT_1.md`
+- В документации зафиксированы:
+  - roadmap по версиям `V5–V10`
+  - sprint plan `Sprint 1–Sprint 4`
+  - implementation backlog для `Sprint 1`
+  - task breakdown `Task 1.1–1.4`
+  - цели, задачи и definition of done для каждого этапа
+
+**Верификация:**
+- `docs_autopilot/` создана в корне репозитория
+- структура документации читаема и готова к дальнейшему пополнению по мере работы над Autopilot
+
+## 2026-03-28 — Autopilot v4.7: mini subagent exec test verified live
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - исправлен synthetic prompt для mini subagent режима
+    (убрана лишняя `}` в примере JSON)
+- Обновлены мета-файлы:
+  - live result mini subagent exec test зафиксирован в `overview.md`
+
+**Верификация:**
+- `python .agent\\autopilot.py --mini-subagent-exec-test` →
+  - `returncode: 0`
+  - `parsed_output.subagent: test_planner`
+  - `parsed_output.status: ok`
+  - `parsed_output.summary: Ready and awaiting the planning task.`
+- observed non-fatal CLI warnings in `raw_stderr`:
+  - plugin sync 403 warnings from `chatgpt.com/backend-api/plugins/*`
+  - `Shell snapshot not supported yet for PowerShell`
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 31 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+
+## 2026-03-28 — Autopilot v4.6: mini subagent exec test mode
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - добавлен `MiniSubagentExecTestResult`
+  - добавлен `mini_subagent_exec_test()`
+  - добавлены helpers для synthetic subagent prompt, JSON schema file,
+    command building и strict JSON validation
+  - добавлен CLI-флаг `--mini-subagent-exec-test`
+  - новый режим делает один `codex exec` в пустом temp workspace и ожидает
+    строгое JSON-сообщение вида
+    `{\"subagent\":\"test_planner\",\"status\":\"ok\",\"summary\":\"...\"}`
+  - режим изолирован от `build_execution_plan()`,
+    `prepare_execution_requests()` и `execute_plan()`
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` получил проверки success path,
+    planner isolation, invalid JSON, schema mismatch и timeout
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 31 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+- Живой `--mini-subagent-exec-test` не запускался, чтобы не тратить реальный модельный вызов без отдельного подтверждения
+
+## 2026-03-28 — Autopilot v4.5: real exec smoke-test verified against live Codex CLI
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - удалён флаг `-a never` из `codex exec` invocations после живой проверки
+    standalone CLI `codex-cli 0.117.0`
+  - runtime adapter и real-exec smoke-test теперь соответствуют фактическому
+    контракту `codex exec`
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` синхронизирован с реальным invocation shape
+- Обновлён `.agent/local_notes.md`:
+  - зафиксировано, что `codex exec` не принимает `-a/--ask-for-approval`
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 27 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+- `python .agent\\autopilot.py --smoke-test-real-exec` → `returncode: 0`, `stdout: SMOKE_TEST_OK`
+- observed non-fatal CLI warnings in `stderr`:
+  - plugin sync 403 warnings from `chatgpt.com/backend-api/plugins/*`
+  - `Shell snapshot not supported yet for PowerShell`
+
+## 2026-03-28 — Autopilot v4.4: cheap real exec smoke-test mode
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - добавлен `RuntimeExecSmokeTestResult`
+  - добавлены `exec_smoke_test_runtime()` и helpers для cheap real exec smoke-test
+  - добавлен CLI-флаг `--smoke-test-real-exec`
+  - реальный smoke-test выполняет ровно один `codex exec` в пустом temp workspace
+    с `read-only` sandbox, `--ephemeral`, дешёвой моделью и жёстким контрактом
+    ответа `SMOKE_TEST_OK`
+  - режим изолирован от planner/subagent flow и не использует
+    `build_execution_plan()` / `prepare_execution_requests()`
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` получил проверки success path,
+    planner isolation, unexpected output и timeout для real-exec smoke-test
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 27 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+- Живой `--smoke-test-real-exec` намеренно не запускался, чтобы не тратить реальный модельный вызов без отдельного подтверждения пользователя
+
+## 2026-03-28 — Autopilot v4.3: safe runtime smoke-test path
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - добавлены `RuntimeProbeResult` и `RuntimeSmokeTestResult`
+  - добавлены `_run_runtime_probe()` и `smoke_test_runtime()`
+  - добавлен CLI-флаг `--smoke-test-runtime`
+  - smoke-test выполняет только `codex --version`, `codex exec --help` и строит
+    безопасный `invocation_preview` без `env`
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` получил проверки success/failure сценариев
+    для runtime smoke-test
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 23 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+- `python .agent\\autopilot.py --smoke-test-runtime` → `available: true`, `resolved_binary: C:\\Users\\User\\AppData\\Roaming\\npm\\codex.CMD`
+
+## 2026-03-28 — Autopilot v4.2: sync with standalone Codex CLI contract
+
+**Изменения:**
+- Локально подтверждён standalone CLI:
+  - `codex --version` → `codex-cli 0.117.0`
+  - `codex --help`
+  - `codex exec --help`
+- Обновлён `.agent/autopilot.py`:
+  - `CodexCliAdapter.build_invocation()` теперь использует фактический CLI-контракт:
+    `codex exec -m <model> -s <sandbox> -a never -C <root> -`
+  - adapter теперь естественно предпочитает npm-installed `codex.cmd` из `PATH`,
+    а не WindowsApps binary, если standalone CLI установлен
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` теперь проверяет реальный набор флагов
+    для `codex exec`
+  - учтён Windows standalone shim (`codex.cmd`) как валидный runtime path
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 21 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+- `where.exe codex` → npm standalone path идёт раньше WindowsApps path
+
+## 2026-03-28 — Autopilot v4.1: Codex-only runtime adapter
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - удалён runtime fallback на Claude CLI; execution backend теперь ориентирован только на Codex
+  - добавлен `_resolve_codex_binary_path()` с поиском через `CODEX_BINARY`, `PATH` и типовые WindowsApps пути
+  - `CodexCliAdapter` теперь возвращает диагностическое `availability_error()` вместо немого `False`
+  - `create_default_runtime_adapter()` поднимает понятную ошибку с причиной недоступности Codex runtime
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` переведён на Codex-only assertions
+  - добавлены проверки Codex runtime selection и диагностического failure path
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 21 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+- runtime probe: `CodexCliAdapter().availability_error()` → `codex executable exists but is not runnable: [WinError 5] Отказано в доступе`
+
+## 2026-03-28 — Autopilot v4: concrete Claude CLI runtime adapter
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - добавлены `RuntimeAdapter`, `SubprocessRuntimeAdapter`,
+    `ClaudeCliAdapter`, `CodexCliAdapter`, `SubprocessInvocation`
+  - `create_default_runtime_adapter()` теперь выбирает concrete runtime
+    по availability probe
+  - `ClaudeCliAdapter` запускает субагентов через `claude -p` в
+    non-interactive subprocess режиме
+  - internal model names маппятся в Claude-compatible alias
+  - `CodexCliAdapter` добавлен как experimental path с runtime probe
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` получил проверки subprocess invocation,
+    success/failure mapping и runtime adapter selection
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 20 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+- `claude --version` → `2.1.81 (Claude Code)`
+- `codex --version` → subprocess launch fails with `Access denied`, поэтому Codex adapter не используется как default runtime
+
+## 2026-03-28 — Autopilot v3: execution backend для запуска субагентов
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - `AutopilotConfig` теперь читает execution-related флаги из `.codex/config.toml`
+    (`enable_subagents`, `max_subagent_depth`, `subagent_timeout_ms`,
+    `save_subagent_responses`, `log_directory`, `use_parallel_subagents`)
+  - `SubagentSpec` расширен runtime-полями (`developer_instructions`,
+    `sandbox_mode`, `nickname_candidates`)
+  - добавлены runtime dataclass-модели:
+    `SubagentExecutionRequest`, `SubagentExecutionResult`, `ExecutionRun`
+  - добавлены `build_subagent_prompt()`, `prepare_execution_requests()`,
+    `CallableExecutionBackend`, `execute_plan()`
+  - execution backend поддерживает последовательный и параллельный режим,
+    а также optional persistence результатов в `.codex/logs/`
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` получил проверки runtime config fields,
+    preparation of execution requests и backend execution flow
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 16 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+
+## 2026-03-28 — Autopilot v2: config-driven routing + `.codex` registry
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - routing и trigger rules теперь читаются из `.codex/config.toml`
+  - machine-readable registry субагентов теперь читается из `.codex/agents/*.toml`
+  - добавлены `AutopilotConfig`, `TriggerRule`, `RuleMatch`
+  - добавлены `validate_registry()` и `explain_plan()`
+  - `dry_run()` теперь возвращает explainability payload с `rule_matches`
+- Обновлён `.agent/choose_model_for_subagent.py`:
+  - добавлены `ModelSelectionConfig` и `AgentModelProfile`
+  - модель и reasoning effort теперь определяются на основе `.codex/config.toml` и `.codex/agents/*.toml`
+  - добавлена нормализация Unicode hyphen в model names (`gpt‑5.4` → `gpt-5.4`)
+  - `very high` из TOML нормализуется в `xhigh`
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py`
+  - `tests/test_choose_model_for_subagent.py`
+  - добавлены проверки config loading, registry loading из `.codex`, registry validation, explainability trace и config-driven model selection
+- Обновлён `.agent/subagents/README.md`:
+  - зафиксировано, что для Autopilot v2 machine-readable source of truth находится в `.codex/`
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 14 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+
+## 2026-03-28 — Autopilot v1 planner для `.agent/`
+
+**Изменения:**
+- Добавлен `.agent/autopilot.py`:
+  - dataclass-модели `TaskClassification`, `SubagentSpec`, `SubagentRequest`, `ExecutionPlan`
+  - rule-based классификация задач по тексту и `touched_files`
+  - загрузка реестра субагентов из `.agent/subagents/`
+  - выбор workflow, subagent selection, dry-run execution plan и synthesis skeleton
+- Добавлен `.agent/choose_model_for_subagent.py`:
+  - `ModelSelectionRequest` и `ModelSelection`
+  - request-based rule engine для выбора модели и reasoning effort
+  - fallback-профиль для неизвестных субагентов
+- Добавлены `tests/test_agent_autopilot.py` и `tests/test_choose_model_for_subagent.py`:
+  - проверка registry loading
+  - классификация `local-low-risk`, `contract-sensitive`
+  - выбор субагентов и построение execution plan
+  - выбор модели для known и invalid input cases
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 9 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+
+## 2026-03-28 — Документация агента: декомпозиция AGENTS.md
+
+**Изменения:**
+- `AGENTS.md` очищен от операционных секций:
+  - структура проекта
+  - жёсткие лимиты
+  - триггеры действий
+  - чеклист перед коммитом
+  - режимы работы агента
+- Добавлены короткие ссылки в `AGENTS.md` на новые рабочие документы:
+  - `.agent/architecture.md`
+  - `.agent/checklists.md`
+  - `.agent/modes.md`
+- `.agent/architecture.md` дополнен:
+  - операционная структура из AGENTS
+  - Docker production notes
+  - таблица триггеров действий
+  - синхронизация блока жёстких лимитов
+- `.agent/checklists.md` заполнен:
+  - pre-commit checklist
+  - validation patterns
+  - deployment checks
+- `.agent/modes.md` заполнен:
+  - описание режимов
+  - переключение режимов
+  - поведение каждого режима
+
+## 2026-03-27 — Большой коммит: scoring improvements + LLM extraction + WebSocket + cleanup
+
+**Коммит:** `b8ffaef` — feat(scoring): enhance business model with contextual descriptions and 4-level risk system
+
+**Основные изменения:**
+
+Backend (src/):
+- `scoring.py` — 4-уровневая система риска (low/medium/high/critical), функция `_build_factor_description()` с ссылками на бенчмарки
+- `schemas.py` — обновлён `RiskLevel = Literal["low", "medium", "high", "critical"]`
+- `llm_extractor.py` — полная реализация LLM-извлечения метрик (chunking, anomaly detection, merging)
+- `base_agent.py` — новый BaseAIAgent с Singleton ClientSession для всех провайдеров
+- `ws_manager.py` — WebSocket ConnectionManager для real-time обновлений
+- `prompts.py` — централизованные LLM промпты (extraction + analysis)
+- `pdf_extractor.py` — улучшенная обработка OCR, детекция масштаба, glyph encoding
+- `nlp_analysis.py` — интегрирована LLM-анализ с clean text preprocessing
+- `recommendations.py` — 3–5 рекомендаций с явными ссылками на метрики, timeout handling
+- `tasks.py` — рефакторинг pipeline на фазы (extraction, scoring, AI, finalize)
+- `ratios.py` — исправлена утечка ключей в translate_ratios
+- `app.py` — исправлена инициализация CORS, улучшен порядок middleware
+- `settings.py` — централизованное управление конфигурацией через Pydantic
+- `routers/` — обновлены эндпоинты с proper error handling и masking
+
+Frontend (frontend/src/):
+- Удалён дублирующий `types.ts`, консолидировано в `interfaces.ts`
+- Добавлены `useAnalysisSocket.ts` (WebSocket real-time updates) и `useMultiAnalysisPolling.ts`
+- Обновлены `AnalysisContext.tsx`, `Dashboard.tsx`, `DetailedReport.tsx`
+- Обновлен `vite.config.ts` с proper proxy configuration
+
+Документация:
+- `docs/BUSINESS_MODEL.md` — обновлены UVP и инвестиционная привлекательность
+- `docs/ROADMAP.md` — Task 6.1 отмечен как COMPLETED
+- `docs/ARCHITECTURE.md` — обновлены компоненты и таймауты
+- `docs/CONFIGURATION.md` — добавлены LLM extraction settings
+- `README.md` — исправлены merge conflicts, обновлена диаграмма
+- `.agent/overview.md` — обновлена секция "Что работает"
+- `.agent/PROJECT_LOG.md` — добавлены session logs
+
+Инфраструктура:
+- Добавлены `.kiro/hooks/` (8 хуков для автоматизации)
+- Добавлены `.kiro/specs/` (llm-financial-extraction, qwen-regression-fixes-2)
+- Добавлены `.kiro/steering/` (tech, structure, product rules)
+- Обновлен `.gitignore` с IDE и test artifacts
+- Очищен репозиторий: удалены env/, test scripts, IDE files, hypothesis cache
+
+Тесты:
+- `test_llm_extractor.py` — 22 unit-теста
+- `test_llm_extractor_properties.py` — 19 property-based тестов
+- `test_qwen_regression_exploratory_2.py` и `test_qwen_regression_preservation_2.py`
+- Обновлены существующие тесты для новой логики scoring и extraction
+
+**Статистика:** 335 файлов изменено, 28177 строк добавлено, 13712 удалено
+
 ## 2026-03-27 — Обновление BUSINESS_MODEL.md и ROADMAP.md
 
 **Изменения:**
