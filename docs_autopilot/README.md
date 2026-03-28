@@ -19,6 +19,7 @@
 - `smoke_test_runtime()`
 - `exec_smoke_test_runtime()`
 - `mini_subagent_exec_test()`
+- `full_subagent_exec_test()` с CLI-флагом `--full-subagent-exec-test`
 
 Пока ещё отсутствуют как отдельные системные слои:
 

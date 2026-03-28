@@ -28,6 +28,24 @@ def _load_agent_module(filename: str, module_name: str):
 autopilot = _load_agent_module("autopilot.py", "tests.agent_autopilot")
 
 
+def _full_contract_payload(
+    *,
+    subagent: str = "test_planner",
+    summary: str = "Full contract is healthy",
+    findings: list[str] | None = None,
+    risks: list[str] | None = None,
+    files_to_change: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "subagent": subagent,
+        "status": "ok",
+        "summary": summary,
+        "findings": findings or ["One bounded finding"],
+        "risks": risks or ["Low regression risk"],
+        "files_to_change": files_to_change or ["src/tasks.py"],
+    }
+
+
 def test_load_autopilot_config_reads_codex_settings():
     config = autopilot.load_autopilot_config()
 
@@ -690,6 +708,227 @@ def test_mini_subagent_exec_test_reports_missing_output_when_empty(
     assert result.validation_error == "missing json output"
     assert result.failure is not None
     assert result.failure.code == autopilot.FailureCode.INVALID_STDOUT
+
+
+@patch("tests.agent_autopilot.prepare_execution_requests")
+@patch("tests.agent_autopilot.execute_plan")
+@patch("tests.agent_autopilot.build_execution_plan")
+@patch("tests.agent_autopilot.subprocess.run")
+@patch("tests.agent_autopilot._resolve_codex_binary_path")
+def test_full_subagent_exec_test_returns_parsed_final_output_on_success(
+    mock_resolve_binary,
+    mock_run,
+    mock_build_plan,
+    mock_execute_plan,
+    mock_prepare_requests,
+):
+    mock_resolve_binary.return_value = "C:\\fake\\codex.exe"
+
+    def run_side_effect(command, **kwargs):
+        if "--version" in command:
+            return MagicMock(returncode=0, stdout="codex-cli 0.117.0", stderr="")
+        output_path = command[command.index("-o") + 1]
+        Path(output_path).write_text(
+            json.dumps(_full_contract_payload()),
+            encoding="utf-8",
+        )
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = run_side_effect
+
+    result = autopilot.full_subagent_exec_test()
+
+    mock_build_plan.assert_not_called()
+    mock_execute_plan.assert_not_called()
+    mock_prepare_requests.assert_not_called()
+    assert result.success is True
+    assert result.final_output is not None
+    assert result.final_output.subagent == "test_planner"
+    assert result.final_output.files_to_change == ["src/tasks.py"]
+    assert "--output-schema" in result.command_preview
+    assert result.failure is None
+
+
+@patch("tests.agent_autopilot.build_execution_plan")
+@patch("tests.agent_autopilot.subprocess.run")
+@patch("tests.agent_autopilot._resolve_codex_binary_path")
+def test_full_subagent_exec_test_maps_nonzero_exit_to_failed_result(
+    mock_resolve_binary,
+    mock_run,
+    mock_build_plan,
+):
+    mock_resolve_binary.return_value = "C:\\fake\\codex.exe"
+    mock_run.side_effect = [
+        MagicMock(returncode=0, stdout="codex-cli 0.117.0", stderr=""),
+        MagicMock(returncode=2, stdout="", stderr="boom"),
+    ]
+
+    result = autopilot.full_subagent_exec_test()
+
+    mock_build_plan.assert_not_called()
+    assert result.success is False
+    assert result.error == "boom"
+    assert result.failure is not None
+    assert result.failure.code == autopilot.FailureCode.RUNTIME_EXIT_NONZERO
+
+
+@patch("tests.agent_autopilot.subprocess.run")
+@patch("tests.agent_autopilot._resolve_codex_binary_path")
+def test_full_subagent_exec_test_rejects_invalid_json(
+    mock_resolve_binary,
+    mock_run,
+):
+    mock_resolve_binary.return_value = "C:\\fake\\codex.exe"
+
+    def run_side_effect(command, **kwargs):
+        if "--version" in command:
+            return MagicMock(returncode=0, stdout="codex-cli 0.117.0", stderr="")
+        output_path = command[command.index("-o") + 1]
+        Path(output_path).write_text("{bad json", encoding="utf-8")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = run_side_effect
+
+    result = autopilot.full_subagent_exec_test()
+
+    assert result.success is False
+    assert result.validation_error is not None
+    assert result.error == "invalid json output"
+    assert result.failure is not None
+    assert result.failure.code == autopilot.FailureCode.INVALID_JSON
+
+
+@patch("tests.agent_autopilot.subprocess.run")
+@patch("tests.agent_autopilot._resolve_codex_binary_path")
+def test_full_subagent_exec_test_rejects_schema_mismatch(
+    mock_resolve_binary,
+    mock_run,
+):
+    mock_resolve_binary.return_value = "C:\\fake\\codex.exe"
+
+    def run_side_effect(command, **kwargs):
+        if "--version" in command:
+            return MagicMock(returncode=0, stdout="codex-cli 0.117.0", stderr="")
+        output_path = command[command.index("-o") + 1]
+        Path(output_path).write_text(
+            json.dumps(_full_contract_payload(subagent="wrong_agent")),
+            encoding="utf-8",
+        )
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    mock_run.side_effect = run_side_effect
+
+    result = autopilot.full_subagent_exec_test()
+
+    assert result.success is False
+    assert result.validation_error == "json output subagent mismatch"
+    assert result.error == "subagent output validation failed"
+    assert result.failure is not None
+    assert result.failure.code == autopilot.FailureCode.OUTPUT_SCHEMA_MISMATCH
+
+
+@patch("tests.agent_autopilot.subprocess.run")
+@patch("tests.agent_autopilot._resolve_codex_binary_path")
+def test_full_subagent_exec_test_handles_timeout(
+    mock_resolve_binary,
+    mock_run,
+):
+    mock_resolve_binary.return_value = "C:\\fake\\codex.exe"
+    mock_run.side_effect = [
+        MagicMock(returncode=0, stdout="codex-cli 0.117.0", stderr=""),
+        autopilot.subprocess.TimeoutExpired(cmd=["codex"], timeout=20),
+    ]
+
+    result = autopilot.full_subagent_exec_test()
+
+    assert result.success is False
+    assert result.error is not None
+    assert "timeout" in result.error
+    assert result.failure is not None
+    assert result.failure.code == autopilot.FailureCode.RUNTIME_TIMEOUT
+
+
+@patch("tests.agent_autopilot.subprocess.run")
+@patch("tests.agent_autopilot._resolve_codex_binary_path")
+def test_full_subagent_exec_test_falls_back_to_stdout_when_output_file_missing(
+    mock_resolve_binary,
+    mock_run,
+):
+    mock_resolve_binary.return_value = "C:\\fake\\codex.exe"
+
+    def run_side_effect(command, **kwargs):
+        if "--version" in command:
+            return MagicMock(returncode=0, stdout="codex-cli 0.117.0", stderr="")
+        return MagicMock(
+            returncode=0,
+            stdout=json.dumps(
+                _full_contract_payload(summary="Healthy stdout fallback")
+            ),
+            stderr="",
+        )
+
+    mock_run.side_effect = run_side_effect
+
+    result = autopilot.full_subagent_exec_test()
+
+    assert result.success is True
+    assert result.final_output is not None
+    assert result.final_output.summary == "Healthy stdout fallback"
+    assert result.failure is None
+
+
+@patch("tests.agent_autopilot.subprocess.run")
+@patch("tests.agent_autopilot._resolve_codex_binary_path")
+def test_full_subagent_exec_test_reports_missing_output_when_empty(
+    mock_resolve_binary,
+    mock_run,
+):
+    mock_resolve_binary.return_value = "C:\\fake\\codex.exe"
+    mock_run.side_effect = [
+        MagicMock(returncode=0, stdout="codex-cli 0.117.0", stderr=""),
+        MagicMock(returncode=0, stdout="", stderr=""),
+    ]
+
+    result = autopilot.full_subagent_exec_test()
+
+    assert result.success is False
+    assert result.error == "missing json output"
+    assert result.validation_error == "missing json output"
+    assert result.failure is not None
+    assert result.failure.code == autopilot.FailureCode.INVALID_STDOUT
+
+
+@patch("tests.agent_autopilot.full_subagent_exec_test")
+@patch("tests.agent_autopilot.build_execution_plan")
+@patch("builtins.print")
+def test_main_dispatches_full_subagent_exec_test_without_task(
+    mock_print,
+    mock_build_plan,
+    mock_full_exec_test,
+):
+    mock_full_exec_test.return_value = autopilot.FullSubagentExecTestResult(
+        adapter_name="CodexCliAdapter",
+        resolved_binary="C:\\fake\\codex.exe",
+        request={"subagent_name": "test_planner"},
+        command_preview=["codex", "exec"],
+        prompt_preview="prompt",
+        success=True,
+        final_output=autopilot.SubagentFinalOutput(
+            subagent="test_planner",
+            status="ok",
+            summary="CLI dispatch is healthy",
+            findings=["One bounded finding"],
+            risks=["Low regression risk"],
+            files_to_change=["src/tasks.py"],
+        ),
+    )
+
+    exit_code = autopilot.main(["--full-subagent-exec-test"])
+
+    mock_full_exec_test.assert_called_once_with()
+    mock_build_plan.assert_not_called()
+    mock_print.assert_called_once()
+    assert exit_code == 0
 
 
 def test_build_real_exec_smoke_result_accepts_expected_token():

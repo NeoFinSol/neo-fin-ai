@@ -76,6 +76,7 @@ REAL_EXEC_SMOKE_TOKEN = "SMOKE_TEST_OK"
 REAL_EXEC_SMOKE_MAX_OUTPUT_CHARS = 64
 REAL_EXEC_SMOKE_TIMEOUT_MS = 15000
 MINI_SUBAGENT_EXEC_TIMEOUT_MS = 20000
+FULL_SUBAGENT_EXEC_TIMEOUT_MS = 20000
 MINI_SUBAGENT_SUMMARY_MAX_CHARS = 120
 SUBAGENT_FINAL_OUTPUT_CONTRACT = "subagent_final_v1"
 SUBAGENT_FINAL_OUTPUT_STATUS = "ok"
@@ -124,6 +125,7 @@ class ExecutionMode(str, Enum):
     RUNTIME_SMOKE = "runtime_smoke"
     EXEC_SMOKE = "exec_smoke"
     MINI_SUBAGENT_EXEC = "mini_subagent_exec"
+    FULL_SUBAGENT_EXEC = "full_subagent_exec"
     SUBPROCESS_BACKEND = "subprocess_backend"
 
 
@@ -427,6 +429,35 @@ class MiniSubagentExecTestResult:
 
     def as_dict(self) -> dict[str, object]:
         payload = asdict(self)
+        payload["failure"] = (
+            self.failure.as_dict() if self.failure else None
+        )
+        return payload
+
+
+@dataclass(frozen=True)
+class FullSubagentExecTestResult:
+    adapter_name: str
+    resolved_binary: str | None
+    request: dict[str, object]
+    command_preview: list[str]
+    prompt_preview: str
+    success: bool
+    returncode: int | None = None
+    duration_ms: int | None = None
+    raw_stdout: str | None = None
+    raw_stderr: str | None = None
+    raw_output: str | None = None
+    final_output: SubagentFinalOutput | None = None
+    validation_error: str | None = None
+    error: str | None = None
+    failure: ExecutionFailure | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        payload = asdict(self)
+        payload["final_output"] = (
+            self.final_output.as_dict() if self.final_output else None
+        )
         payload["failure"] = (
             self.failure.as_dict() if self.failure else None
         )
@@ -1744,6 +1775,24 @@ def _mini_subagent_exec_prompt(subagent_name: str) -> str:
     )
 
 
+def _full_subagent_exec_prompt(subagent_name: str) -> str:
+    return (
+        f'You are simulating subagent "{subagent_name}".\n'
+        "Return exactly one JSON object and nothing else.\n"
+        "The JSON must contain exactly these fields:\n"
+        '- "subagent": exact subagent name\n'
+        '- "status": "ok"\n'
+        '- "summary": short non-empty text\n'
+        '- "findings": list of non-empty strings\n'
+        '- "risks": list of non-empty strings\n'
+        '- "files_to_change": list of non-empty strings\n'
+        "Do not inspect files.\n"
+        "Do not run commands.\n"
+        "Do not modify files.\n"
+        "Do not explain outside JSON."
+    )
+
+
 def _normalize_real_exec_smoke_output(value: str | None) -> str | None:
     if not value:
         return None
@@ -2067,9 +2116,37 @@ def _build_mini_subagent_exec_command(
     )
 
 
+def _build_full_subagent_exec_command(
+    binary: str,
+    *,
+    model: str,
+    sandbox_mode: str,
+    cwd: str,
+    output_file: str,
+    schema_file: str,
+) -> list[str]:
+    return _build_one_shot_codex_exec_command(
+        binary,
+        model=model,
+        sandbox_mode=sandbox_mode,
+        cwd=cwd,
+        output_file=output_file,
+        extra_args=("--output-schema", schema_file),
+    )
+
+
 def _build_mini_subagent_schema_file(cwd: str, subagent_name: str) -> str:
     schema_path = Path(cwd) / "output_schema.json"
     _build_output_schema_file(schema_path, subagent_name=subagent_name)
+    return str(schema_path)
+
+
+def _build_full_subagent_schema_file(cwd: str, subagent_name: str) -> str:
+    schema_path = Path(cwd) / "output_schema.json"
+    _build_subagent_final_output_schema_file(
+        schema_path,
+        subagent_name=subagent_name,
+    )
     return str(schema_path)
 
 
@@ -2289,6 +2366,54 @@ def mini_subagent_exec_test(
         )
 
     return _run_mini_subagent_exec(
+        resolved_binary=str(context.resolved_binary),
+        request_payload=request_payload,
+        prompt=prompt,
+    )
+
+
+def full_subagent_exec_test(
+    *,
+    config: AutopilotConfig | None = None,
+    binary_name: str | None = None,
+    subagent_name: str = "test_planner",
+    model: str | None = None,
+    sandbox_mode: str = "read-only",
+    timeout_ms: int = FULL_SUBAGENT_EXEC_TIMEOUT_MS,
+) -> FullSubagentExecTestResult:
+    """Run one synthetic full-contract subagent exec without orchestration."""
+
+    context = _prepare_diagnostic_exec_context(
+        config=config,
+        binary_name=binary_name,
+        model=model,
+    )
+    prompt = _full_subagent_exec_prompt(subagent_name)
+    request_payload = {
+        "subagent_name": subagent_name,
+        "model": context.selected_model,
+        "sandbox_mode": sandbox_mode,
+        "timeout_ms": timeout_ms,
+        "output_contract": SUBAGENT_FINAL_OUTPUT_CONTRACT,
+    }
+    if context.availability_error:
+        return FullSubagentExecTestResult(
+            adapter_name=context.adapter_name,
+            resolved_binary=context.resolved_binary,
+            request=request_payload,
+            command_preview=[],
+            prompt_preview=prompt,
+            success=False,
+            validation_error=None,
+            error=context.availability_error,
+            failure=_build_runtime_unavailable_failure(
+                mode=ExecutionMode.FULL_SUBAGENT_EXEC,
+                resolved_binary=context.resolved_binary,
+                error=context.availability_error,
+            ),
+        )
+
+    return _run_full_subagent_exec(
         resolved_binary=str(context.resolved_binary),
         request_payload=request_payload,
         prompt=prompt,
@@ -2544,6 +2669,56 @@ def _run_mini_subagent_exec(
     )
 
 
+def _run_full_subagent_exec(
+    *,
+    resolved_binary: str,
+    request_payload: dict[str, object],
+    prompt: str,
+) -> FullSubagentExecTestResult:
+    subagent_name = str(request_payload["subagent_name"])
+    model = str(request_payload["model"])
+    sandbox_mode = str(request_payload["sandbox_mode"])
+    timeout_ms = int(request_payload["timeout_ms"])
+    snapshot = _run_one_shot_codex_exec(
+        resolved_binary=resolved_binary,
+        model=model,
+        sandbox_mode=sandbox_mode,
+        prompt=prompt,
+        timeout_ms=timeout_ms,
+        temp_dir_prefix="codex-full-subagent-",
+        build_command=lambda cwd, output_file, binary: _build_full_subagent_exec_command(
+            binary,
+            model=model,
+            sandbox_mode=sandbox_mode,
+            cwd=cwd,
+            output_file=output_file,
+            schema_file=_build_full_subagent_schema_file(cwd, subagent_name),
+        ),
+    )
+    if snapshot.error:
+        return _full_subagent_exec_failure(
+            resolved_binary=resolved_binary,
+            request_payload=request_payload,
+            command=snapshot.command,
+            prompt=prompt,
+            error=snapshot.error,
+        )
+
+    return _build_full_subagent_exec_result(
+        resolved_binary=resolved_binary,
+        request_payload=request_payload,
+        command=snapshot.command,
+        prompt=prompt,
+        duration_ms=int(snapshot.duration_ms or 0),
+        returncode=int(snapshot.returncode or 0),
+        raw_stdout=snapshot.raw_stdout,
+        raw_stderr=snapshot.raw_stderr,
+        output_text=_normalize_json_candidate(
+            snapshot.output_text or snapshot.raw_stdout
+        ),
+    )
+
+
 def _build_mini_subagent_exec_result(
     *,
     resolved_binary: str,
@@ -2641,6 +2816,70 @@ def _build_mini_subagent_exec_result(
     )
 
 
+def _build_full_subagent_exec_result(
+    *,
+    resolved_binary: str,
+    request_payload: dict[str, object],
+    command: list[str],
+    prompt: str,
+    duration_ms: int,
+    returncode: int,
+    raw_stdout: str | None,
+    raw_stderr: str | None,
+    output_text: str | None,
+) -> FullSubagentExecTestResult:
+    if returncode != 0:
+        error = raw_stderr or f"exit code {returncode}"
+        return _full_subagent_exec_failure(
+            resolved_binary=resolved_binary,
+            request_payload=request_payload,
+            command=command,
+            prompt=prompt,
+            returncode=returncode,
+            duration_ms=duration_ms,
+            raw_stdout=raw_stdout,
+            raw_stderr=raw_stderr,
+            raw_output=output_text,
+            error=error,
+        )
+
+    final_output, validation_error, error = _parse_subagent_final_output(
+        output_text,
+        expected_subagent=str(request_payload["subagent_name"]),
+    )
+    if error:
+        return _full_subagent_exec_failure(
+            resolved_binary=resolved_binary,
+            request_payload=request_payload,
+            command=command,
+            prompt=prompt,
+            returncode=returncode,
+            duration_ms=duration_ms,
+            raw_stdout=raw_stdout,
+            raw_stderr=raw_stderr,
+            raw_output=output_text,
+            validation_error=validation_error,
+            error=error,
+        )
+
+    return FullSubagentExecTestResult(
+        adapter_name="CodexCliAdapter",
+        resolved_binary=resolved_binary,
+        request=request_payload,
+        command_preview=command,
+        prompt_preview=prompt,
+        success=True,
+        returncode=returncode,
+        duration_ms=duration_ms,
+        raw_stdout=raw_stdout,
+        raw_stderr=raw_stderr,
+        raw_output=output_text,
+        final_output=final_output,
+        validation_error=None,
+        error=None,
+    )
+
+
 def _validate_mini_subagent_output(
     payload: object,
     *,
@@ -2714,6 +2953,52 @@ def _mini_subagent_exec_failure(
             details={
                 "returncode": returncode,
                 "command": command,
+            },
+        ),
+    )
+
+
+def _full_subagent_exec_failure(
+    *,
+    resolved_binary: str,
+    request_payload: dict[str, object],
+    command: list[str],
+    prompt: str,
+    error: str,
+    returncode: int | None = None,
+    duration_ms: int | None = None,
+    raw_stdout: str | None = None,
+    raw_stderr: str | None = None,
+    raw_output: str | None = None,
+    validation_error: str | None = None,
+) -> FullSubagentExecTestResult:
+    return FullSubagentExecTestResult(
+        adapter_name="CodexCliAdapter",
+        resolved_binary=resolved_binary,
+        request=request_payload,
+        command_preview=command,
+        prompt_preview=prompt,
+        success=False,
+        returncode=returncode,
+        duration_ms=duration_ms,
+        raw_stdout=raw_stdout,
+        raw_stderr=raw_stderr,
+        raw_output=raw_output,
+        final_output=None,
+        validation_error=validation_error,
+        error=error,
+        failure=_build_one_shot_exec_failure(
+            mode=ExecutionMode.FULL_SUBAGENT_EXEC,
+            error=error,
+            returncode=returncode,
+            validation_error=validation_error,
+            default_validation_code=FailureCode.OUTPUT_SCHEMA_MISMATCH
+            if validation_error
+            else FailureCode.UNEXPECTED_OUTPUT,
+            details={
+                "returncode": returncode,
+                "command": command,
+                "output_contract": SUBAGENT_FINAL_OUTPUT_CONTRACT,
             },
         ),
     )
@@ -2800,7 +3085,7 @@ def dry_run(
     return payload
 
 
-if __name__ == "__main__":
+def _build_cli_parser():
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -2845,7 +3130,17 @@ if __name__ == "__main__":
         action="store_true",
         help="Run one synthetic mini subagent exec test and exit",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--full-subagent-exec-test",
+        action="store_true",
+        help="Run one synthetic full-contract subagent exec test and exit",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = _build_cli_parser()
+    args = parser.parse_args(argv)
 
     if args.smoke_test_runtime:
         print(
@@ -2855,7 +3150,7 @@ if __name__ == "__main__":
                 indent=2,
             )
         )
-        raise SystemExit(0)
+        return 0
 
     if args.smoke_test_real_exec:
         print(
@@ -2865,7 +3160,7 @@ if __name__ == "__main__":
                 indent=2,
             )
         )
-        raise SystemExit(0)
+        return 0
 
     if args.mini_subagent_exec_test:
         print(
@@ -2875,7 +3170,17 @@ if __name__ == "__main__":
                 indent=2,
             )
         )
-        raise SystemExit(0)
+        return 0
+
+    if args.full_subagent_exec_test:
+        print(
+            json.dumps(
+                full_subagent_exec_test().as_dict(),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0
 
     if not args.task:
         parser.error(
@@ -2889,3 +3194,8 @@ if __name__ == "__main__":
         depth=args.depth,
     )
     print(plan.to_json())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

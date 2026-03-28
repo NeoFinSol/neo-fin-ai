@@ -185,6 +185,10 @@
 
 ## Task 1.4 — Full Diagnostic Exec Mode
 
+### Статус
+
+Выполнено
+
 ### Цель
 
 Добавить diagnostic режим, который использует full contract, но не трогает orchestration.
@@ -215,6 +219,31 @@
 - есть безопасный diagnostic bridge между mini mode,
   будущим `run_safe` и future reviewer loop
 
+### Фактический результат
+
+- добавлен `full_subagent_exec_test()`
+- добавлен `FullSubagentExecTestResult`
+- full diagnostic mode использует existing `subagent_final_v1`
+  schema + local validator
+- mode изолирован от `build_execution_plan`,
+  `prepare_execution_requests` и `execute_plan`
+- добавлен CLI-флаг `--full-subagent-exec-test`
+- добавлен `main(argv=None)` для testable CLI dispatch
+
+### Верификация
+
+- success path с полным structured contract
+- nonzero exit
+- invalid JSON
+- schema mismatch
+- timeout
+- stdout fallback
+- empty output
+- planner isolation
+- CLI dispatch без positional `task`
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → `57 passed`
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+
 ## Порядок выполнения
 
 1. `Task 1.1`
@@ -229,3 +258,5 @@ Sprint 1 считается завершённым, когда:
 - `Task 1.1–1.4` реализованы
 - contract tests и regression tests зелёные
 - новый execution contract зафиксирован в документации
+
+Текущее состояние: критерии Sprint 1 выполнены.

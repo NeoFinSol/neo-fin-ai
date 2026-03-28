@@ -1,5 +1,32 @@
 # Project Log
 
+## 2026-03-28 — Sprint 1 / Task 1.4: full diagnostic exec mode
+
+**Изменения:**
+- Обновлён `.agent/autopilot.py`:
+  - добавлен `ExecutionMode.FULL_SUBAGENT_EXEC`
+  - добавлен `FullSubagentExecTestResult`
+  - добавлен `full_subagent_exec_test()`
+  - добавлены prompt/command/schema helpers для isolated full-contract diagnostic run
+  - mode использует existing `subagent_final_v1` schema и `_parse_subagent_final_output()`
+  - добавлен CLI-флаг `--full-subagent-exec-test`
+  - добавлен testable entrypoint `main(argv=None)` для unit-level CLI dispatch
+  - diagnostic path изолирован от `build_execution_plan()`,
+    `prepare_execution_requests()` и `execute_plan()`
+- Обновлены тесты:
+  - `tests/test_agent_autopilot.py` получил проверки success path,
+    nonzero exit, invalid JSON, schema mismatch, timeout,
+    stdout fallback, empty output и CLI dispatch
+- Обновлена документация:
+  - `docs_autopilot/README.md`
+  - `docs_autopilot/SPRINT_1_BACKLOG.md`
+  - `docs_autopilot/TASKS_SPRINT_1.md`
+  - `.agent/overview.md`
+
+**Верификация:**
+- `$env:PYTHONPATH='E:\\neo-fin-ai'; python -m pytest tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py` → 57 passed
+- `python -m flake8 --isolated --max-line-length=100 .agent\\autopilot.py .agent\\choose_model_for_subagent.py tests\\test_choose_model_for_subagent.py tests\\test_agent_autopilot.py`
+
 ## 2026-03-28 — Sprint 1 / Task 1.3: full subagent output contract
 
 **Изменения:**
