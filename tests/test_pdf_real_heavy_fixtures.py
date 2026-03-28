@@ -1,12 +1,24 @@
+"""Optional heavy real-PDF regression tier.
+
+Enable explicitly via `--run-pdf-real-heavy` or `RUN_PDF_REAL_HEAVY=1`.
+"""
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import warnings
 from pathlib import Path
 
 import pytest
+from cryptography.utils import CryptographyDeprecationWarning
 from src.analysis import pdf_extractor
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"ARC4 has been moved.*",
+    category=CryptographyDeprecationWarning,
+)
 
 
 FIXTURE_ROOT = Path(__file__).parent / "data" / "pdf_real_fixtures"

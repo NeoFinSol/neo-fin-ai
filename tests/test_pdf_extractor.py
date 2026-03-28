@@ -1,9 +1,17 @@
 ﻿from __future__ import annotations
 
 import tempfile
+import warnings
 from pathlib import Path
 
+from cryptography.utils import CryptographyDeprecationWarning
 from src.analysis import pdf_extractor
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"ARC4 has been moved.*",
+    category=CryptographyDeprecationWarning,
+)
 
 
 def _build_pdf_bytes(text: str) -> bytes:

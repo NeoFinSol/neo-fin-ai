@@ -1,13 +1,21 @@
 """Tests for background tasks module."""
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+import warnings
 
 import pytest
+from cryptography.utils import CryptographyDeprecationWarning
 
 from src.analysis.pdf_extractor import extract_text
 from src.analysis.ratios import translate_ratios
 from src.analysis.scoring import build_score_payload
 from src.tasks import process_pdf
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"ARC4 has been moved.*",
+    category=CryptographyDeprecationWarning,
+)
 
 # Minimal valid score dict returned by calculate_integral_score
 _MOCK_SCORE = {"score": 85.5, "risk_level": "низкий", "details": {}}

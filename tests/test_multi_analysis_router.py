@@ -12,13 +12,21 @@ Run: pytest tests/test_multi_analysis_router.py -v
 """
 
 import io
+import warnings
 from contextlib import contextmanager
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from hypothesis import given, settings, HealthCheck
 from hypothesis import strategies as st
+from cryptography.utils import CryptographyDeprecationWarning
 from sqlalchemy.exc import SQLAlchemyError
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"ARC4 has been moved.*",
+    category=CryptographyDeprecationWarning,
+)
 
 from src.app import app
 

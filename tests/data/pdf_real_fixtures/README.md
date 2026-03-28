@@ -50,11 +50,23 @@ $env:RUN_PDF_REAL_HEAVY = "1"
 python -m pytest tests/test_pdf_real_heavy_fixtures.py -q
 ```
 
+или через pytest option:
+
+```powershell
+python -m pytest tests/test_pdf_real_heavy_fixtures.py -q --run-pdf-real-heavy
+```
+
 Почему так:
 
 - Camelot на реальных annual reports может работать десятки секунд
 - часть документов может стабильно проходить только через `stream`
 - heavy-tier должен проверять узкие business-инварианты, а не пытаться валидировать весь metrics dict
+
+### Рекомендация для CI
+
+- default CI path heavy-tier не запускает
+- heavy-tier лучше держать в отдельном nightly / integration job
+- если corpus временно отсутствует или manifest повреждён, suite должен cleanly skip, а не ломать обычный pytest collection
 
 ## OCR cases
 

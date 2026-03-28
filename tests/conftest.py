@@ -23,7 +23,7 @@ import src.db.database as db
 from src.db.database import Base
 
 
-def pytest_addoption(parser: pytest.Parser) -> None:
+def pytest_addoption(parser) -> None:
     parser.addoption(
         "--run-pdf-real-heavy",
         action="store_true",
@@ -34,10 +34,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_configure(config):
     """Register custom markers."""
-    config.addinivalue_line(
-        "filterwarnings",
-        "ignore:ARC4 has been moved.*:cryptography.utils.CryptographyDeprecationWarning",
-    )
     config.addinivalue_line(
         "markers", "e2e: mark test as end-to-end test (requires full app setup)"
     )
