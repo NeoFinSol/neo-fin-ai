@@ -351,7 +351,7 @@ def test_tasks_module_level_imports():
 # ---------------------------------------------------------------------------
 
 def test_pdfplumber_version():
-    """pdfplumber~=0.12.0 in requirements.txt. Req 2.23"""
+    """requirements pin stays on the latest published pdfplumber release. Req 2.23"""
     req_file = os.path.normpath(
         os.path.join(os.path.dirname(__file__), "..", "requirements.txt")
     )
@@ -361,10 +361,8 @@ def test_pdfplumber_version():
     with open(req_file, encoding="utf-8") as f:
         content = f.read()
 
-    assert "pdfplumber~=0.12" in content, \
-        "pdfplumber version is not ~=0.12.x in requirements.txt"
-    assert "pdfplumber~=0.11" not in content, \
-        "Old pdfplumber~=0.11.x still present in requirements.txt"
+    assert "pdfplumber~=0.11.9" in content, \
+        "pdfplumber pin is not aligned with the latest published release in requirements.txt"
 
 
 # ---------------------------------------------------------------------------

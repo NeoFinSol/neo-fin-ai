@@ -49,7 +49,7 @@ psycopg2~=2.9.9
 # -----------------------------------------------------------------------------
 # PDF Processing
 # -----------------------------------------------------------------------------
-# pdfplumber 0.11.9 - PDF text and table extraction
+# pdfplumber 0.11.9 - latest published PyPI release as of 2026-03; keep pin aligned with upstream availability
 # PyPDF2 3.0.x - PDF manipulation
 # pdf2image 1.16.x - Convert PDF to images (for OCR)
 # pytesseract 0.3.x - OCR engine wrapper
