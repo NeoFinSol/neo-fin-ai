@@ -343,7 +343,7 @@ docker-compose -f docker-compose.prod.yml up -d --build
 | [`docs/API.md`](docs/API.md) | Все эндпоинты, форматы запросов/ответов, curl-примеры |
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Все переменные окружения с типами и значениями по умолчанию |
 | [`AGENTS.md`](AGENTS.md) | Правила работы агента, orchestration policy и update ritual |
-| [`.agent/subagents/README.md`](.agent/subagents/README.md) | Human-readable система субагентов, invocation budget, различие `.toml` registry / `.md` role-spec и separation между project-role и runtime carrier |
+| [`.agent/subagents/README.md`](.agent/subagents/README.md) | Human-readable система субагентов, invocation budget, hard invocation protocol, deep synthesis ladder и separation между project-role и runtime carrier |
 
 ---
 

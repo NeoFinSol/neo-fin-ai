@@ -3,7 +3,7 @@
 
 # **AGENTS.md** — Правила работы с проектом NeoFin AI
 
-<!-- Версия: 1.7 | Обновлено: 2026-03-28 -->
+<!-- Версия: 1.8 | Обновлено: 2026-03-28 -->
 
 > Все вспомогательные файлы агентов лежат в `.agent/`. При сомнениях — читай их в первую очередь.
 >
@@ -282,11 +282,85 @@
 #### Stop rule:
 - если после первого pass safe path выбран, инварианты ясны и validation plan очевиден, новых субагентов больше не добавлять
 
+#### Deep synthesis ladder for very-complex tasks:
+Для действительно сложных `cross-layer` / `release/security-sensitive` задач допускается дополнительная ступенчатая синтезация вместо хаотичного fan-out:
+
+1. `Primary pass`
+   - один основной субагент по главной неопределённости
+2. `Independent cross-check`
+   - максимум один дополнительный субагент по другому независимому риску
+3. `Cross-synthesis checkpoint`
+   - оркестратор обязан явно сверить:
+     - согласуются ли findings
+     - есть ли конфликтующие инварианты
+     - нужен ли ещё один pass или path уже ясен
+4. `Pre-implementation validation gate`
+   - до кода оркестратор обязан отдельно зафиксировать:
+     - minimal safe path
+     - rollback/failure expectations
+     - required validation set
+
+Запрещено:
+- перескакивать сразу к 3+ агентам без прохождения checkpoint
+- заменять extra synthesis дополнительным хаотичным fan-out
+
 #### Identity rule:
 - project subagent identity всегда первична: оркестратор обязан назвать, какой именно субагент из `.agent/subagents` был вызван
 - `explorer` / `default` / `worker` — это только tool-level carrier, а не имя субагента
 - если используется registry-backed роль с `.toml`, оркестратор обязан брать модель, reasoning и prompt из её manifest
 - если используется `.md`-only роль, оркестратор обязан ссылаться на её role-spec как на source of truth
+
+#### Hard invocation protocol:
+- перед каждым внешним вызовом оркестратор обязан явно зафиксировать:
+  - `project-role`
+  - source of truth (`.toml` manifest или `.md` role-spec)
+  - `preferred_model`
+  - `reasoning_effort`
+  - `runtime carrier`
+- если хотя бы один из этих пунктов не зафиксирован, внешний вызов считается **недействительным** и не должен выдаваться за вызов project-role
+- findings и synthesis обязаны ссылаться на `project-role`, а не на carrier
+- carrier можно указывать только как вторичный технический слой исполнения
+- если нет возможности корректно связать внешний вызов с project-role, нужно:
+  - либо не звать внешнего субагента вообще
+  - либо прямо сообщить, что был выполнен локальный synthesis без валидного role-bound delegation
+
+#### Binding rule:
+- prompt внешнего вызова не должен создавать роль “с нуля” формулой `act as ...`
+- prompt может только:
+  - передать уже выбранной роли её task context
+  - сослаться на manifest / role-spec как на source of truth
+  - уточнить bounded scope текущего investigation pass
+- если роль существует только внутри prompt, а не в явном role-binding оркестратора, это нарушение orchestration rules
+
+#### Failure diagnostics / feedback loop:
+- если внешний субагент вернул:
+  - неполный ответ
+  - противоречивые findings
+  - carrier-only identity без role-binding
+  - timeout / invalid completion
+  оркестратор обязан пометить pass как diagnostic failure
+- после diagnostic failure допускается только один из путей:
+  - один повторный role-bound retry того же субагента с более узким scope
+  - один compensating pass от другого субагента, если исходный риск остался непокрыт
+  - отказ от дальнейшей делегации и переход к локальному synthesis с явным описанием неопределённости
+- diagnostic retry не должен превращаться в бесконечную эскалацию
+- если orchestration срывается, оркестратор обязан собрать краткую диагностику:
+  - какой role-binding ожидался
+  - что фактически вернулось
+  - почему результат нельзя считать валидным
+  - как это влияет на реализацию
+
+#### Adaptive review loop:
+- оркестратор обязан периодически пересматривать trigger policy как human-readable workflow, без runtime-автоматики:
+  - после повторяющегося orchestration failure
+  - после 2+ однотипных misfire случаев
+  - после заметного изменения архитектуры проекта
+  - после серии новых task patterns, которых нет в текущих bundle rules
+- результат adaptive review фиксируется только в документации:
+  - `AGENTS.md`
+  - `.agent/subagents/README.md`
+  - при необходимости `README.md`, `.agent/overview.md`, `.agent/PROJECT_LOG.md`
+- нельзя превращать adaptive review в скрытую автономную систему принятия решений; это manual policy hardening, а не возврат Autopilot runtime
 
 #### NEVER auto-invoke:
 - `code_review` — до появления diff
@@ -430,6 +504,7 @@
 * игнорировать вывод субагентов
 * запускать субагентов формально, без использования результатов
 * подменять project-role generic carrier-агентом с prompt’ом “действуй как ...”
+* считать внешний вызов валидным, если role-binding не был явно зафиксирован до делегации
 * делать частичную реализацию без полного анализа
 * делегировать write-heavy реализацию в пересекающихся файлах
 
@@ -441,6 +516,7 @@
 🧠 Orchestration:
 - workflow:
 - используемые субагенты:
+- project-role binding:
 - tool/runtime carrier:
 - причина выбора:
 

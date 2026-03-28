@@ -35,6 +35,26 @@
 - в отчёте писать, что был вызван `explorer`, не называя реальную роль
 - считать, что carrier автоматически определяет обязанности субагента
 
+## Hard invocation protocol
+
+Внешний вызов считается валидным только если оркестратор до запуска явно определил:
+
+1. `project-role`
+2. source of truth:
+   - `.toml` manifest
+   - или `.md` role-spec
+3. `preferred_model`
+4. `reasoning_effort`
+5. `runtime carrier`
+
+Если один из пунктов отсутствует, вызов нельзя считать role-bound delegation.
+
+Практическое следствие:
+
+- нельзя сначала запустить generic carrier, а потом “додумать”, какой это был субагент
+- нельзя использовать findings такого вызова как findings role-level субагента
+- в сомнительном случае правильный fallback — локальный synthesis без внешней делегации
+
 ## Базовые правила оркестрации
 
 1. Сначала классифицируй задачу.
@@ -88,6 +108,39 @@ Orchestration mode обязателен для задач выше `local-low-ri
 - validation plan
 
 то fan-out закрывается, и новые субагенты не добавляются.
+
+## Deep synthesis ladder
+
+Для very-complex задач разрешён не fan-out ради количества, а staged synthesis:
+
+### Stage 1. Primary pass
+
+- один primary subagent по главной неопределённости
+
+### Stage 2. Independent cross-check
+
+- максимум один дополнительный subagent по другому риску
+- только если этот риск реально независим
+
+### Stage 3. Cross-synthesis checkpoint
+
+Оркестратор обязан ответить себе:
+
+- findings согласуются или конфликтуют?
+- инварианты уже ясны?
+- нужен ли ещё один pass?
+
+Если ответы уже получены, orchestration останавливается.
+
+### Stage 4. Pre-implementation gate
+
+До кода должны быть явно названы:
+
+- minimal safe path
+- validation plan
+- failure/rollback expectations
+
+Это и есть правильный “дополнительный слой синтеза” для сложных задач.
 
 ## Invocation budget
 
@@ -144,6 +197,48 @@ Orchestration mode обязателен для задач выше `local-low-ri
 
 Практическое правило: если роль нельзя обосновать одной отдельной фразой риска, её не надо вызывать.
 
+## Failure diagnostics
+
+Если orchestration-pass завершился плохо, оркестратор должен не “дозвать всех”, а сначала диагностировать тип сбоя:
+
+- role-binding был нарушен
+- ответ неполный
+- findings противоречат друг другу
+- timeout / invalid completion
+- pass не дал новой информации
+
+Только после этого допустим один следующий шаг:
+
+- узкий retry того же role-bound subagent
+- compensating pass другого subagent
+- локальный synthesis с явным описанием остаточной неопределённости
+
+`Failure diagnostics` нужен для качества оркестрации, а не для раздувания fan-out.
+
+## Adaptive review
+
+Система orchestration должна адаптироваться, но только через manual documentation hardening.
+
+Триггеры для review:
+
+- повторяющиеся misfire случаи
+- новые типы задач
+- изменение архитектуры проекта
+- повторяющиеся diagnostic failures
+
+Что обновляется:
+
+- trigger policy
+- bundle recommendations
+- anti-rules
+- deep-synthesis guidance
+
+Что не делается:
+
+- не добавляется скрытый runtime-слой
+- не возвращается Autopilot foundation
+- не вводится автономная self-modifying логика
+
 ### Формат вызова ролей
 
 - если у роли есть `.toml`, оркестратор использует его как основной registry entry
@@ -153,6 +248,7 @@ Orchestration mode обязателен для задач выше `local-low-ri
   - project-role
   - runtime carrier
 - project-role всегда указывается первой и считается source of truth; carrier описывает только технику исполнения
+- prompt должен опираться на уже выбранную роль, а не создавать её формулой `act as ...`
 
 ## Категории субагентов
 
@@ -252,6 +348,7 @@ Orchestration mode обязателен для задач выше `local-low-ri
 - Не трактовать `orchestration mode` как обязательство позвать хотя бы одного внешнего субагента.
 - Не раздувать orchestration на simple bugfix, typo, local refactor.
 - Не подменять выбранную роль generic carrier-агентом с prompt’ом “act as ...”.
+- Не считать role-binding “подразумеваемым”, если он не был явно зафиксирован.
 
 ## Как читать TOML manifests
 

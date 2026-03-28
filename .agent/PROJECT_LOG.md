@@ -1,5 +1,32 @@
 # Project Log
 
+## 2026-03-28 — docs(agent): add hard invocation protocol and synthesis ladder
+
+**Изменения:**
+- `AGENTS.md`:
+  - добавлен `Hard invocation protocol`
+  - введён явный `role-binding` как обязательное условие валидного внешнего вызова
+  - добавлены `Deep synthesis ladder`, `Failure diagnostics / feedback loop`, `Adaptive review loop`
+  - orchestration format теперь требует отдельное поле `project-role binding`
+- `.agent/subagents/README.md`:
+  - добавлены разделы:
+    - `Hard invocation protocol`
+    - `Deep synthesis ladder`
+    - `Failure diagnostics`
+    - `Adaptive review`
+  - усилен запрет на неявный/подразумеваемый role-binding
+- `README.md`:
+  - описание orchestration docs синхронизировано с новыми hardening-правилами
+- `.agent/overview.md`:
+  - зафиксирован `Agent Workflow Hardening 5`
+
+**Верификация:**
+- manual consistency check:
+  - `AGENTS.md`
+  - `.agent/subagents/README.md`
+  - `README.md`
+  - `.agent/overview.md`
+
 ## 2026-03-28 — feat(maintenance): add bounded admin cleanup job
 
 **Изменения:**

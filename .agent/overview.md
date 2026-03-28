@@ -89,6 +89,11 @@
   - `explorer` / `default` / `worker` теперь прямо зафиксированы как tool-level carriers, а не замена registry-role
   - добавлен прямой запрет на паттерн “generic explorer с prompt ‘действуй как solution_designer’”
   - orchestration report теперь должен явно называть и роль субагента, и carrier исполнения
+✅ **Agent Workflow Hardening 5**:
+  - введён hard invocation protocol: внешний вызов считается валидным только при явном role-binding
+  - добавлен deep synthesis ladder для very-complex cross-layer задач вместо хаотичного fan-out
+  - добавлен failure diagnostics path для invalid/contradictory/timeouted orchestration passes
+  - adaptive review loop зафиксирован как manual documentation hardening, без скрытого runtime-слоя
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
