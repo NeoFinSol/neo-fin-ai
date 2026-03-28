@@ -3,7 +3,7 @@
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
 - **Последний зафиксированный коммит до текущей волны**: `fix(db): harden persistence runtime and schema guards`
-- **Последняя сессия**: 2026-03-28 — orchestration policy дополнительно уточнена: `contracts_guardian` повышен до `gpt-5.4/high`, `performance_guardian` переведён в `pre-or-post-implementation`, а различие `.toml` registry и `.md` role-spec явно зафиксировано в agent docs.
+- **Последняя сессия**: 2026-03-28 — начат real-PDF fixture pack: добавлен committed smoke corpus из реальных annual reports, manifest-driven expectations и `sha256` provenance без утяжеления default CI full-table extraction.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -79,6 +79,7 @@
 ✅ **PDF extraction** — PyPDF2 (текст), camelot/pdfplumber (таблицы), pytesseract (OCR для сканов); улучшена детекция сканов через проверку `/Image` объектов
 ✅ **OCR Regression Guard** — multiline-safe numeric helpers и page-cap enforcement в fallback path защищают от silent giant-number regressions
 ✅ **Complex Table Layout Guard** — corpus pack защищает note/year columns, RSBU line-code layouts, garbled labels и OCR pseudo-tables
+✅ **Real-PDF Smoke Guard** — `tests/data/pdf_real_fixtures/` и `tests/test_pdf_real_fixtures.py` проверяют committed annual-report fixtures по manifest-driven subset assertions и file provenance
 ✅ **Financial ratios** — 13 коэффициентов (4 группы: ликвидность, рентабельность, устойчивость, активность); RU-ключи → EN через `translate_ratios()`
 ✅ **Integral scoring** — скоринг 0–100, risk_level (пороги 75/55/35, уровни: low/medium/high/critical), factors, normalized_scores; добавлено поле `confidence_score` для оценки полноты данных
 ✅ **Scoring factors** — осмысленные описания факторов с ссылками на бенчмарки (вместо просто "Значение: 1.23")

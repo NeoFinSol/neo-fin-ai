@@ -1,5 +1,32 @@
 # Project Log
 
+## 2026-03-28 — test(pdf): add real-PDF smoke fixture pack
+
+**Изменения:**
+- Добавлен committed real-PDF smoke corpus:
+  - `tests/data/pdf_real_fixtures/corvel_2023_annual_report.pdf`
+  - `tests/data/pdf_real_fixtures/cloudflare_2023_annual_report.pdf`
+  - `tests/data/pdf_real_fixtures/manifest.json`
+  - `tests/data/pdf_real_fixtures/README.md`
+- Добавлен новый harness:
+  - `tests/test_pdf_real_fixtures.py`
+  - проверяет наличие файла, размер, `sha256`, `is_scanned_pdf`, минимальную длину text layer и narrow business assertions
+- В первой итерации committed real-PDF smoke pack использует `text_only` pipeline:
+  - `extract_text()`
+  - `parse_financial_statements_with_metadata([], text)`
+  - это сделано сознательно, чтобы не утяжелять default CI Camelot timeouts на больших annual reports
+- `tests/conftest.py` получил marker:
+  - `pdf_real`
+- Документация синхронизирована:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `.agent/overview.md`
+  - `.agent/local_notes.md`
+
+**Верификация:**
+- новый real-PDF smoke harness запускается вместе с существующими PDF regression tests
+- `manifest.json` фиксирует provenance URLs и `sha256`, чтобы fixture drift не проходил silently
+
 ## 2026-03-28 — docs(agent): refine guard roles and format boundaries
 
 **Изменения:**

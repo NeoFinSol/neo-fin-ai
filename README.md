@@ -26,6 +26,7 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 - **OCR Fallback**: автоматическое переключение на Tesseract при обнаружении сканов или невидимых текстовых слоёв
 - **OCR Hardening**: multiline-safe numeric extraction не склеивает соседние строки, а fallback OCR-batch соблюдает `MAX_OCR_PAGES`
 - **Regression Corpus**: сложные table layouts (note columns, year columns, RSBU line codes, garbled labels, OCR pseudo-tables) зафиксированы corpus-driven тестами
+- **Real-PDF Smoke Pack**: committed real annual-report fixtures с `sha256` provenance страхуют text-layer extraction без утяжеления default CI
 - **DB Hardening**: async engine применяет pool timeout/recycle, тестовый runtime предпочитает `TEST_DATABASE_URL`, а persistence-boundary больше не маскирует DB failures под `not found`
 - Вычисляет 13 коэффициентов: ликвидность, рентабельность, финансовая устойчивость, деловая активность
 - Формирует интегральный скоринг 0–100 с оценкой достоверности (**Confidence Score**) и факторами влияния
@@ -226,6 +227,7 @@ curl http://localhost/api/multi-analysis/xyz-456 \
 - **Regex fallback тесты**: извлечение метрик из текста при отсутствии таблиц
 - **LLM budget tests**: compaction, chunk-size invariants, narrative gating и compact JSON recommendation context
 - **PDF regression corpus**: note/year columns, multi-period rows, garbled labels и OCR pseudo-table scenarios
+- **Real-PDF smoke fixtures**: manifest-driven small corpus с committed PDF-файлами и narrow business assertions
 
 **E2E тесты (9 тестов):**
 - Требуют внешних зависимостей (PostgreSQL, AI-сервис)

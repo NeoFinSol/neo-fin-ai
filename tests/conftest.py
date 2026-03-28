@@ -34,6 +34,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "frontend: mark test as frontend integration test"
     )
+    config.addinivalue_line(
+        "markers", "pdf_real: mark test as real-PDF smoke regression corpus"
+    )
 
 
 @pytest.fixture(autouse=True, scope="session")

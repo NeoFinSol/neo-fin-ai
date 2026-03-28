@@ -31,6 +31,17 @@
 
 ---
 
+### Camelot на реальных annual reports может быть слишком медленным для fast smoke suite
+**Статус**: 🟡 Известно
+**Дата**: 2026-03-28
+**Проблема**: На части реальных многостраничных annual reports `extract_tables()` может уходить в десятки секунд и упираться в Camelot timeout budget, даже если text-layer extraction сама по себе стабильна.
+**Временное решение**:
+- committed real-PDF smoke corpus в `tests/data/pdf_real_fixtures/` использует `text_only` pipeline
+- full-table / OCR-heavy real corpus держать отдельным optional tier, а не частью default green path
+- synthetic corpus остаётся основным regression guard для table-layout edge cases
+
+---
+
 ### BOM в `.flake8`
 **Статус**: 🟡 Известно
 **Дата**: 2026-03-28
