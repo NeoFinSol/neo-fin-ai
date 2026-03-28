@@ -81,6 +81,7 @@ run_ocr.bat
 # IDE and tool directories
 .agent/
 .kiro/
+AGENTS.md
 .qwen/
 .grok/
 .lingma/
@@ -89,6 +90,7 @@ run_ocr.bat
 .pytest_cache/
 .ruff_cache/
 PDFforTests/
+docs/ROADMAP.md
 
 # Coverage artifacts
 coverage.json

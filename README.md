@@ -21,19 +21,14 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 ### Извлечение и анализ данных
 
 - Обрабатывает текстовые PDF, таблицы и сканы (OCR через pytesseract)
-- **Real-time Updates**: система мгновенных уведомлений через **WebSocket** (прогресс-бары, смена статусов без перезагрузки)
-- **Smart PDF Detection**: интеллектуальный выбор метода (анализ первых 3 страниц на наличие текста и изображений `/Image`)
-- **OCR Fallback**: автоматическое переключение на Tesseract при обнаружении сканов или невидимых текстовых слоёв
-- **OCR Hardening**: multiline-safe numeric extraction не склеивает соседние строки, а fallback OCR-batch соблюдает `MAX_OCR_PAGES`
-- **Regression Corpus**: сложные table layouts (note columns, year columns, RSBU line codes, garbled labels, OCR pseudo-tables) зафиксированы corpus-driven тестами
-- **Real-PDF Smoke Pack**: committed real annual-report fixtures с `sha256` provenance страхуют text-layer extraction без утяжеления default CI
-- **DB Hardening**: async engine применяет pool timeout/recycle, тестовый runtime предпочитает `TEST_DATABASE_URL`, а persistence-boundary больше не маскирует DB failures под `not found`
-- **DB Schema Evolution**: `analyses` хранит typed summary-поля (`filename`, `score`, `risk_level`, `scanned`, `confidence_score`, `completed_at`, `error_message`) рядом с каноническим JSONB snapshot; list/history path читает их с fallback на `result`, а cleanup helpers работают в bounded `dry_run`-friendly режиме
-- **Admin Cleanup Job**: отдельный CLI `scripts/admin_cleanup.py` чистит только stale in-progress rows, по умолчанию работает как `dry-run`, не открывает новый HTTP delete-surface и не удаляет completed business history
+- **Обновления в реальном времени**: уведомления через **WebSocket** без перезагрузки страницы
+- **Интеллектуальное определение типа PDF**: система различает текстовые документы и сканы
+- **Резервный OCR-сценарий**: при необходимости автоматически подключается Tesseract
+- **Регрессионные проверки PDF**: сложные макеты таблиц и реальные годовые отчёты покрыты тестовыми наборами
 - Вычисляет 13 коэффициентов: ликвидность, рентабельность, финансовая устойчивость, деловая активность
-- Формирует интегральный скоринг 0–100 с оценкой достоверности (**Confidence Score**) и факторами влияния
+- Формирует интегральный скоринг 0–100 с оценкой достоверности и факторами влияния
 
-### Explainability — объяснимость решений
+### Объяснимость решений
 
 Система оценивает надёжность каждого числа и всего отчёта в целом:
 
@@ -46,10 +41,10 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 | Производный расчёт | `derived` | 0.3 | Вычислено из других метрик (активы − капитал) |
 
 **Механизмы доверия:**
-- **Confidence Score отчёта**: интегральный показатель (0.0–1.0) полноты и надёжности данных в `ScoreData`
+- **Оценка достоверности отчёта**: интегральный показатель (0.0–1.0) полноты и надёжности данных в `ScoreData`
 - **Фильтрация по порогу**: показатели ниже `CONFIDENCE_THRESHOLD` (0.5) исключаются из расчёта коэффициентов
 - **Визуальные алерты**: баннеры о низкой достоверности (< 60%) и цветовая маркировка (🟢🟡🔴)
-- **Tooltips**: подробная информация об источнике и методе извлечения при наведении
+- **Всплывающие подсказки**: подробная информация об источнике и методе извлечения при наведении
 
 **Защита от мусора:**
 - Фильтр лет: числа 1900–2100 игнорируются (это годы отчётности, не данные)
@@ -61,18 +56,9 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 
 - Выявляет финансовые риски и ключевые факторы через языковые модели
 - Генерирует 3–5 рекомендаций с явными ссылками на конкретные метрики
-- **Token-aware compaction**: перед LLM удаляются page/year noise, дубли строк и low-signal OCR-фрагменты; narrative и recommendation prompts ужимаются до budget-friendly контекста
+- **Компактизация контекста**: перед LLM удаляются служебный шум, дубли строк и малополезные OCR-фрагменты
 - **Ресурсная эффективность**: Singleton-управление сессиями для AI-провайдеров, предотвращение port exhaustion
 - Поддерживаемые провайдеры: GigaChat, DeepSeek (HuggingFace), Ollama (offline)
-
-### Persistence и runtime hardening
-
-- `analyses` и `multi_analysis_sessions` защищены status constraints на уровне схемы; для lifecycle multi-session добавлен индекс `(status, updated_at)`
-- FastAPI lifespan теперь гарантированно вызывает `dispose_engine()` на shutdown, чтобы не оставлять висящие DB connections
-- Router boundary переводит ошибки чтения/записи БД в явный service-level failure вместо тихого `404`
-- `analyses` использует гибридную модель хранения: полный результат остаётся в JSONB, а hot fields для history/cleanup dual-write'ятся в typed summary columns
-- maintenance helpers в `src/db/crud.py` позволяют находить и удалять stale analyses / multi-analysis sessions ограниченными batch'ами с `dry_run=True`
-- `scripts/admin_cleanup.py` использует эти helper’ы только для stale `uploading/processing` rows; completed rows и terminal business history в v1 не удаляются по умолчанию
 
 ### Многопериодный анализ
 
@@ -94,30 +80,30 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 NLP-анализ рисков и генерация рекомендаций через языковые модели. При сбое или недоступности LLM — числовой анализ сохраняется в полном объёме.
 
 **Уровень 3 — коммуникационный (WebSocket):**
-Real-time менеджер соединений для мгновенного обновления UI при смене фаз анализа.
+Менеджер соединений для мгновенного обновления интерфейса при смене фаз анализа.
 
 ```
 
-PDF → Extractor → ExtractionMetadata {value, confidence, source}
+PDF → Извлечение → Метаданные {value, confidence, source}
                         │
        ┌────────────────┤
        ▼                ▼
-  Confidence Filter    Explainability UI (🟢🟡🔴 + tooltip)
+  Фильтр достоверности    Интерфейс объяснимости (🟢🟡🔴 + подсказка)
        │
        ▼
-  Ratios (13 коэффициентов, 4 группы)
+  Коэффициенты (13 показателей, 4 группы)
        │
        ▼
-  Scoring (0–100, risk_level, factors, normalized_scores)
+  Скоринг (0–100, risk_level, factors, normalized_scores)
        │
        ▼
-  AI Analysis (NLP + рекомендации, при наличии провайдера)
+  AI-анализ (NLP + рекомендации, при наличии провайдера)
        │
        ▼
-  WebSocket Broadcast (Real-time update)
+  WebSocket-обновление
        │
        ▼
-  PostgreSQL (JSONB + typed summaries) → React / Mantine UI
+  PostgreSQL → React / Mantine UI
 ```
 
 **Выбор AI-провайдера:** определяется один раз при старте приложения по наличию переменных окружения. Нет runtime-переключения между провайдерами.
@@ -132,7 +118,7 @@ PDF → Extractor → ExtractionMetadata {value, confidence, source}
 
 ---
 
-## Confidence Score: как это работает
+## Оценка достоверности: как это работает
 
 Каждый извлечённый показатель получает оценку на основе метода извлечения:
 
@@ -165,7 +151,7 @@ docker compose up --build
 # 4. Открыть: http://localhost
 ```
 
-**Production:**
+**Для продакшн-развёртывания:**
 
 ```bash
 ./scripts/deploy-prod.sh
@@ -173,18 +159,6 @@ docker compose up --build
 # → применяет миграции → поднимает production stack
 # Доступно на порту 80
 ```
-
-**Maintenance cleanup (admin/cron):**
-
-```bash
-# Safe preview: nothing is deleted
-python scripts/admin_cleanup.py --analyses --multi-sessions
-
-# Explicit execute mode for stale in-progress rows only
-python scripts/admin_cleanup.py --analyses --multi-sessions --execute
-```
-
----
 
 ## Пример использования
 
@@ -225,58 +199,22 @@ curl http://localhost/api/multi-analysis/xyz-456 \
 
 ## Тестирование
 
-### Статистика
+Проект покрыт модульными, интеграционными и выборочными сквозными тестами.
 
-| Компонент | Тесты | Покрытие | Статус |
-|-----------|-------|----------|--------|
-| **Backend** | 578 passed | 85% | ✅ |
-| **Frontend** | 78 passed | 55% | ✅ |
-
-### Стратегия тестирования
-
-**Unit и integration тесты (570+ тестов):**
-- Все unit и integration тесты бизнес-логики проходят успешно
-- Покрытие критической бизнес-логики: 85%+
-- Property-based тесты (Hypothesis) для проверки инвариантов
-- Mock внешних зависимостей (БД, AI-сервис)
-- **Regex fallback тесты**: извлечение метрик из текста при отсутствии таблиц
-- **LLM budget tests**: compaction, chunk-size invariants, narrative gating и compact JSON recommendation context
-- **PDF regression corpus**: note/year columns, multi-period rows, garbled labels и OCR pseudo-table scenarios
-- **Real-PDF smoke fixtures**: manifest-driven small corpus с committed PDF-файлами и narrow business assertions
-
-**E2E тесты (9 тестов):**
-- Требуют внешних зависимостей (PostgreSQL, AI-сервис)
-- Вынесены в отдельный слой тестирования
-- Запускаются отдельно с реальной БД через `pytest tests/test_e2e.py -m e2e`
-
-**Frontend тесты:**
-- Pure функции: 100% покрытие (buildChartData, getBarColor, THRESHOLDS)
-- Components: ConfidenceBadge (100%), TrendChart (95%)
-- Hooks: useAnalysisHistory (100%), apiClient (100%)
-- Pages: Auth (100%), AnalysisHistory (72%)
+- Проверяется критическая бизнес-логика расчётов и скоринга.
+- Есть регрессионные тесты для OCR, сложных PDF-таблиц и реальных PDF-файлов.
+- Отдельно проверяются API-контракты и ключевые сценарии интерфейса.
+- Сквозные тесты вынесены в отдельный слой и запускаются на окружении с реальной базой данных.
 
 ---
 
-## Production Docker
+## Docker для развёртывания
 
-### Оптимизация образа
+Проект поставляется с Docker-конфигурацией для локальной разработки и отдельной production-сборкой.
 
-**Multi-stage build:**
-- **Builder stage:** компиляция зависимостей (gcc, build-essential, libpq-dev)
-- **Runtime stage:** только готовый venv и код приложения
-- **Размер:** ~500-600MB vs ~1.2GB (single-stage)
-
-**Безопасность:**
-- Non-root пользователь `appuser`
-- Read-only code copies с `--chown=appuser:appuser`
-- Удалены build-инструменты после компиляции
-
-**Зависимости:**
-- **Build stage:** build-essential, libpq-dev, tesseract-ocr, poppler-utils, libgl1
-- **Runtime stage:** tesseract-ocr, poppler-utils, libgl1, curl, ca-certificates
-- **Исключено:** build-essential, libpq-dev (400-600MB экономии)
-
-**Примечание:** Основной вклад в размер дают OCR и PDF-зависимости (tesseract-ocr, poppler-utils, libgl1) — необходимы для обработки сканов PDF.
+- backend и frontend собираются раздельно
+- для OCR и PDF-обработки в образ включены Tesseract и Poppler
+- production-образ использует многоэтапную сборку и непривилегированного пользователя
 
 ### Сборка и запуск
 
@@ -293,24 +231,6 @@ docker run -p 8000:8000 --env-file .env neofinai:prod
 # Или через docker-compose
 docker-compose -f docker-compose.prod.yml up -d --build
 ```
-
-### Детализация покрытия
-
-**Backend:**
-- routers/system.py: 98.65%
-- routers/analyses.py: 100%
-- core/auth.py: 100%
-- analysis/scoring.py: 97.62%
-- analysis/ratios.py: 95.59%
-
-**Frontend:**
-- api/client.ts: 100%
-- hooks/useAnalysisHistory.ts: 100%
-- components/ConfidenceBadge.tsx: 100%
-- components/TrendChart.tsx: 95%
-- pages/Auth.tsx: 100%
-
----
 
 ## Ключевые переменные окружения
 
@@ -339,25 +259,10 @@ docker-compose -f docker-compose.prod.yml up -d --build
 
 | Файл | Содержание |
 |---|---|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layered-архитектура, data flow, AI pipeline, explainability |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Архитектура слоёв, поток данных и логика обработки |
 | [`docs/API.md`](docs/API.md) | Все эндпоинты, форматы запросов/ответов, curl-примеры |
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Все переменные окружения с типами и значениями по умолчанию |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Актуальный execution plan: cleanup operationalization, test hygiene, heavy/OCR real-PDF tier, persistent runtime и production hardening |
-| [`AGENTS.md`](AGENTS.md) | Правила работы агента, orchestration policy и update ritual |
-
----
-
-## Текущая повестка
-
-Ближайший execution plan после завершённых PDF/DB hardening волн такой:
-
-1. Довести `scripts/admin_cleanup.py` до реального scheduled/ops-сценария.
-2. Почистить test hygiene: `pytest-asyncio`, warning noise, legacy coverage-suite.
-3. Добавить optional heavy/OCR real-PDF tier отдельно от fast CI path.
-4. Подготовить переход с in-process `BackgroundTasks` на persistent runtime.
-5. Закрыть production hardening: VPS smoke, HTTPS, backup/restore flow.
-
-Подробный план с горизонтом и критериями готовности — в [`docs/ROADMAP.md`](docs/ROADMAP.md).
+| [`docs/BUSINESS_MODEL.md`](docs/BUSINESS_MODEL.md) | Бизнес-модель, ценностное предложение и экономическое обоснование |
 
 ---
 
@@ -365,8 +270,8 @@ docker-compose -f docker-compose.prod.yml up -d --build
 
 | Слой | Технологии |
 |---|---|
-| Backend | Python 3.11, FastAPI, SQLAlchemy async, Alembic, Pydantic v2 |
-| Frontend | React 18, TypeScript, Mantine UI, Recharts, Vite |
+| Серверная часть | Python 3.11, FastAPI, SQLAlchemy async, Alembic, Pydantic v2 |
+| Клиентская часть | React 18, TypeScript, Mantine UI, Recharts, Vite |
 | База данных | PostgreSQL 16, JSONB для полного результата + typed summary columns для history/cleanup |
 | AI | GigaChat, DeepSeek (HuggingFace), Ollama (offline) |
 | Инфраструктура | Docker, Docker Compose, Nginx, multi-stage builds |

@@ -19,7 +19,7 @@ cp .env.example .env
 
 ## Переменные конфигурации
 
-### Core
+### Основные параметры
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
 |---|---|---|:---:|---|
@@ -30,7 +30,7 @@ cp .env.example .env
 | `DEV_MODE` | `bool` | `false` | — | Режим разработки: отключает проверку `API_KEY`, разрешает CORS `*` |
 | `DEMO_MODE` | `int` | `0` | — | При `1` — маскирует числовые данные в ответах API |
 
-### Database pool
+### Пул подключений к базе данных
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
 |---|---|---|:---:|---|
@@ -45,7 +45,7 @@ cp .env.example .env
 - при невалидных значениях применяются безопасные defaults и логируется `WARNING`
 - при `TESTING=1` с заданным `TEST_DATABASE_URL` pool создаётся поверх тестовой БД, а не production/local `DATABASE_URL`
 
-### Maintenance cleanup
+### Очистка зависших задач
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
 |---|---|---|:---:|---|
@@ -110,7 +110,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
 
 ---
 
-### Backend
+### Параметры backend
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
 |---|---|---|:---:|---|
@@ -122,7 +122,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
 
 ---
 
-### Production / SSL
+### Продакшн / SSL
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
 |---|---|---|:---:|---|
@@ -165,7 +165,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
 
 ---
 
-### Confidence Threshold
+### Порог достоверности
 
 `CONFIDENCE_THRESHOLD` определяет, какие извлечённые показатели участвуют в расчёте финансовых коэффициентов.
 
@@ -195,7 +195,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
 
 ---
 
-## Пример .env
+## Пример файла .env
 
 ```env
 # ── Core ──────────────────────────────────────────────────
