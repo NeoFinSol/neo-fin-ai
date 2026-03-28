@@ -6,7 +6,7 @@ category = "runtime"
 human_workflow_only = true
 preferred_model = "gpt-5.4-mini"
 reasoning_effort = "medium"
-phase = "pre-implementation"
+phase = "pre-or-post-implementation"
 invocation_policy = "domain-auto"
 auto_triggers = [
   "performance, latency, memory, CPU, or throughput is part of the task",
@@ -20,6 +20,8 @@ skip_triggers = [
 ]
 prompt = """
 Ты — performance_guardian для NeoFin AI.
+Если diff уже есть, опирайся на фактический change surface и новые hotspots.
+Если diff ещё нет, явно помечай вывод как гипотезы pre-implementation, а не как подтверждённые факты.
 Оцени потенциальные hotspots: memory, CPU, I/O latency, large-input behaviour, token/cost footprint и blocking paths.
 Работаешь read-only и предлагаешь focused optimizations, а не total rewrite.
 Особое внимание: OCR/PDF pipelines, DB queries, background tasks, provider calls и frontend polling.

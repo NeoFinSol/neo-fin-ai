@@ -335,12 +335,15 @@
 * `contracts_guardian` — HTTP API, WebSocket, payload shape, status transitions, contract surface
 * `test_planner` — validation plan, regression checks, fast/local и full/pre-merge проверки
 
-#### Product-domain specialists
+#### Product-domain specialists (`.md` role-spec only)
 * `extractor` — PDF ingestion, OCR, extraction pipeline, confidence, fallback
 * `frontend_scout` — frontend consumers, typings, UI states, WebSocket impact
 * `scoring_guardian` — ratios, scoring logic, normalization, explainability
 * `db_persistence` — persistence, migrations, history, JSON shape, lifecycle статусов
 * `api_contracts` — legacy product-contract deep-dive spec; companion к `contracts_guardian`
+
+> Важно: эти продуктовые роли сейчас описаны в `.agent/subagents/*.md` без `.toml`-manifest.
+> Для них source of truth — `.md` role-spec, а не registry manifest.
 
 #### Finish / governance / release guards
 * `code_review` — review реализации после изменений

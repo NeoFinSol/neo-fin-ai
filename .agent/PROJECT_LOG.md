@@ -1,5 +1,29 @@
 # Project Log
 
+## 2026-03-28 — docs(agent): refine guard roles and format boundaries
+
+**Изменения:**
+- `contracts_guardian.toml`:
+  - повышен до `gpt-5.4` / `high`
+  - закреплён как более строгий contract-risk guard для внешних surface
+- `performance_guardian.toml`:
+  - `phase` переведён в `pre-or-post-implementation`
+  - prompt теперь явно различает гипотезы до diff и фактический hotspot review после diff
+- `devops_release.toml` и `deployment_guardian.toml`:
+  - усилена граница ответственности через явные anti-trigger / escalation hints друг на друга
+- `.agent/subagents/README.md`:
+  - чётче разведены `.toml` registry entries и `.md`-only product role-specs
+  - product-domain specialists теперь явно помечены как `.md` only
+  - release bundle guidance уточнён: `deployment_guardian` не зовётся, если риск не в automation, а в общем release/runtime surface
+- `AGENTS.md`:
+  - product-domain specialists помечены как `.md` role-spec only
+- `README.md`:
+  - описание agent docs синхронизировано с различием `.toml` registry и `.md` role-spec
+
+**Верификация:**
+- ручная проверка согласованности `AGENTS.md`, `.agent/subagents/README.md` и соответствующих `.toml`
+- повторная проверка, что registry по-прежнему остаётся human-readable workflow, а не возвратом Autopilot foundation
+
 ## 2026-03-28 — docs(agent): tighten subagent invocation budget
 
 **Изменения:**

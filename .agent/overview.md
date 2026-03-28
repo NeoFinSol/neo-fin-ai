@@ -3,7 +3,7 @@
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
 - **Последний зафиксированный коммит до текущей волны**: `fix(db): harden persistence runtime and schema guards`
-- **Последняя сессия**: 2026-03-28 — orchestration policy дополнительно ужата под экономию лимитов: `orchestration mode` отделён от обязательного внешнего fan-out, введены `core-auto` / `domain-auto` / `phase-gated` / `manual-explicit` правила вызова.
+- **Последняя сессия**: 2026-03-28 — orchestration policy дополнительно уточнена: `contracts_guardian` повышен до `gpt-5.4/high`, `performance_guardian` переведён в `pre-or-post-implementation`, а различие `.toml` registry и `.md` role-spec явно зафиксировано в agent docs.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -67,6 +67,11 @@
   - введён invocation budget: `core-auto`, `domain-auto`, `phase-gated`, `manual-explicit`
   - `policy_guardian`, `compliance_guardian`, `api_versioning_guardian`, `audit_guardian`, `backup_guardian`, `feature_flag_guardian` закреплены как non-default/manual-explicit guards
   - `devops_release`, `runtime_guardian`, `deployment_guardian`, `error_monitoring_guardian`, `usability_guardian` закреплены как phase-gated, а не стартовые агенты
+✅ **Agent Workflow Hardening 3**:
+  - `contracts_guardian` повышен до `gpt-5.4` / `high` как core contract-risk guard для финансового продукта
+  - `performance_guardian` теперь явно работает и до, и после реализации: без diff даёт гипотезы, с diff — фактический hotspot review
+  - граница `devops_release` vs `deployment_guardian` усилена явными anti-trigger пояснениями в самих manifest prompts
+  - в `AGENTS.md`, `.agent/subagents/README.md` и root `README.md` явно зафиксировано различие между `.toml` registry entries и `.md`-only product role-specs
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`

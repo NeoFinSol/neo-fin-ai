@@ -7,8 +7,13 @@
 ## Что хранится в этой папке
 
 - `*.md` — подробные role-specs для продуктовых доменных субагентов
-- `*.toml` — лёгкие манифесты оркестрации: preferred model, prompt, auto-triggers, anti-triggers
+- `*.toml` — registry-backed манифесты оркестрации: preferred model, prompt, auto-triggers, anti-triggers
 - `README.md` — правила выбора bundle-ов, max fan-out и phase-based orchestration
+
+Важно:
+- `.toml` — это registry entry для оркестратора
+- `.md` — это deep role-spec, который тоже можно вызывать по имени роли
+- отсутствие `.toml` не означает, что роль нельзя использовать; это означает, что у неё пока нет registry-backed manifest
 
 ## Базовые правила оркестрации
 
@@ -119,6 +124,12 @@ Orchestration mode обязателен для задач выше `local-low-ri
 
 Практическое правило: если роль нельзя обосновать одной отдельной фразой риска, её не надо вызывать.
 
+### Формат вызова ролей
+
+- если у роли есть `.toml`, оркестратор использует его как основной registry entry
+- если у роли есть только `.md`, оркестратор использует `.md` как source of truth для зоны ответственности и expected output
+- `.toml` отвечает за invocation policy, `.md` отвечает за deep role-spec
+
 ## Категории субагентов
 
 ### 1. Core orchestration
@@ -129,20 +140,20 @@ Orchestration mode обязателен для задач выше `local-low-ri
 |---|---|---|
 | `solution_designer` | `gpt-5.4` | есть несколько путей реализации |
 | `debug_investigator` | `gpt-5.4` | причина бага неочевидна |
-| `contracts_guardian` | `gpt-5.4-mini` | API / WS / payload / status surface |
+| `contracts_guardian` | `gpt-5.4` | API / WS / payload / status surface |
 | `test_planner` | `gpt-5.4-mini` | нужно спланировать validation после изменений |
 
 ### 2. Product-domain specialists
 
-Эти роли уже существуют как подробные `.md`-спеки и зовутся только по зоне влияния.
+Эти роли сейчас живут как подробные `.md`-спеки без `.toml`-manifest. Их можно вызывать по имени роли, но source of truth для вызова и expected output у них находится в `.md`.
 
 | Субагент | Где полезен |
 |---|---|
-| `extractor` | OCR, PDF ingestion, fallback, confidence |
-| `frontend_scout` | frontend consumers, hooks, UI-state impact |
-| `scoring_guardian` | ratios, scoring, explainability |
-| `db_persistence` | persistence, history, migrations, JSON shape |
-| `api_contracts` | legacy product-contract spec; глубокий companion для `contracts_guardian` |
+| `extractor` (`.md` only) | OCR, PDF ingestion, fallback, confidence |
+| `frontend_scout` (`.md` only) | frontend consumers, hooks, UI-state impact |
+| `scoring_guardian` (`.md` only) | ratios, scoring, explainability |
+| `db_persistence` (`.md` only) | persistence, history, migrations, JSON shape |
+| `api_contracts` (`.md` only) | legacy product-contract spec; глубокий companion для `contracts_guardian` |
 
 ### 3. Governance / release / specialized guards
 
@@ -179,7 +190,7 @@ Orchestration mode обязателен для задач выше `local-low-ri
 | API / WS / payload / status change | `contracts_guardian`; `frontend_scout` только при реальном UI impact | не добавлять сразу `api_versioning_guardian`, если версия API не меняется |
 | Extraction / scoring change | `extractor` или `scoring_guardian` | не связывать их автоматически в каждую задачу |
 | Persistence / migration / history change | `data_integrity_guardian` или `db_persistence` | не звать оба без явного риска |
-| Release / Docker / nginx / deploy | `devops_release`; `security_guardian` только при trust-boundary impact | не тянуть `deployment_guardian`, если нет automation/rollback задачи |
+| Release / Docker / nginx / deploy | `devops_release`; `security_guardian` только при trust-boundary impact | не тянуть `deployment_guardian`, если меняется не automation, а общий release/runtime risk |
 | Большая программа работ / roadmap | `planner_guardian` + `solution_designer` | не путать planning с реализацией |
 | Финал medium/high-risk задачи | `test_planner` → `code_review` → `docs_keeper` | не делать их стартовым investigation bundle |
 
