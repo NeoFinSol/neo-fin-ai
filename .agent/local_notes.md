@@ -54,6 +54,19 @@
 
 ---
 
+### Docker daemon может быть недоступен в Codex desktop сессии
+**Статус**: 🟡 Известно
+**Дата**: 2026-03-28
+**Проблема**: `docker compose ... build` может падать не из-за compose-конфига, а потому что недоступен `dockerDesktopLinuxEngine` pipe.
+**Где проявилось**:
+- `docker compose -f docker-compose.prod.yml build nginx`
+**Временное решение**:
+- сначала проверять `docker compose ... config`
+- отдельно валидировать shell-скрипты (`bash -n scripts/deploy-prod.sh`)
+- если нужен реальный build smoke-check, убедиться что Docker Desktop/daemon запущен в хостовой среде
+
+---
+
 ## Решённые проблемы
 
 ### Сбой shell-команд в sandbox Codex сессии

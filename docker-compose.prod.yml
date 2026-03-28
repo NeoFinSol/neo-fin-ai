@@ -27,15 +27,14 @@ services:
   # - Rate limiting, gzip, security headers
   # ==========================================================================
   nginx:
-    image: nginx:alpine
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
     container_name: neofin-nginx
     restart: always
     ports:
       - "80:80"
-      - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
       - nginx_logs:/var/log/nginx
     depends_on:
       backend:

@@ -157,6 +157,27 @@ alembic.ini                       # путь к migrations/, sqlalchemy.url из
 .pre-commit-config.yaml           # ruff + flake8 + mypy хуки
 ```
 
+### 3.1 Операционная структура (вынесено из AGENTS.md)
+
+```
+src/
+├── app.py              → точка входа FastAPI, middleware, lifespan
+├── tasks.py            → оркестратор pipeline; декомпозирован на фазы
+├── analysis/           → чистые функции: pdf_extractor, ratios, scoring, nlp_analysis, recommendations
+├── core/               → ai_service, base_agent, gigachat_agent, agent, ws_manager
+├── db/                 → database (lazy engine), crud (единственный файл с SQL), models
+├── models/             → schemas (Pydantic), settings (env-переменные)
+└── routers/            → upload, result, analyses, websocket, multi_analysis
+
+frontend/src/
+├── api/                → client.ts (axios), interfaces.ts (основной контракт)
+├── hooks/              → usePdfAnalysis.ts, useAnalysisSocket.ts, useMultiAnalysisPolling.ts
+├── pages/              → Dashboard, DetailedReport, AnalysisHistory, Auth
+└── components/         → Layout.tsx, ProtectedRoute.tsx, ConfidenceBadge.tsx
+
+migrations/versions/    → 0001_create_analyses, 0002_add_indexes
+```
+
 ---
 
 ## 4. Основные сущности и модели данных
@@ -638,13 +659,42 @@ MAX_PDF_PAGES    = 100        # защита от DoS; проверяется в
 MAX_FILE_SIZE    = 50MB       # проверяется в upload.py при чтении чанками
 AI_TIMEOUT       = 120s       # задан в agent.py, gigachat_agent.py, ai_service.py — менять везде
 NLP_TIMEOUT      = 60s        # asyncio.wait_for в tasks.py
-REC_TIMEOUT      = 90s        # timeout=90 в recommendations.py → ai_service.invoke()
+REC_TIMEOUT      = 65s        # asyncio.wait_for в tasks.py
 MAX_OCR_PAGES    = 50         # константа в pdf_extractor.py; OCR останавливается после 50 страниц
 POLLING_INTERVAL = 2000ms     # захардкожен в frontend/src/hooks/usePdfAnalysis.ts
 TOKEN_CACHE_TTL  = 55min      # GigaChat Bearer token; меньше срока жизни токена (60 мин)
 SPOOLED_MAX_SIZE = 1MB        # SpooledTemporaryFile RAM-порог в upload.py
 CHUNK_SIZE       = 8192       # размер чанка при чтении файла в upload.py
+DOCKER_BUILD_CACHE = local    # Dockerfile.backend: кеш между сборками
+NGINX_RATE_LIMIT   = 10r/s    # nginx.conf: limit_req_zone rate
 ```
+
+### Docker production notes (вынесено из AGENTS.md)
+
+```
+Dockerfile.backend           → multi-stage build (build → runtime)
+frontend/Dockerfile.frontend → multi-stage build (node → nginx)
+docker-compose.prod.yml      → production-оркестрация (nginx, backend, db, ollama)
+nginx.conf                   → reverse proxy, rate limiting, gzip, security headers
+scripts/deploy-prod.sh       → деплой-пайплайн (validate → build → migrate → start)
+```
+
+### Триггеры действий (вынесено из AGENTS.md)
+
+| Условие | Действие |
+|---------|----------|
+| Видишь `TODO` в коде | Проверь `.agent/overview.md#Что-будет-дальше` — возможно, задача уже запланирована |
+| Ошибка `429 Too Many Requests` | Проверь `SlowAPI` rate limiter в `src/app.py`; лимит в `RATE_LIMIT` env |
+| Ошибка `401 Unauthorized` | Проверь `DEV_MODE` в `.env`; при `DEV_MODE=1` auth отключена |
+| Меняешь структуру ответа `/result/{id}` | Обязательно обнови `frontend/src/api/interfaces.ts` |
+| Добавляешь новый коэффициент в `ratios.py` | Добавь маппинг в `RATIO_KEY_MAP` в `tasks.py` |
+| Меняешь `AI_TIMEOUT` | Менять в трёх файлах: `agent.py`, `gigachat_agent.py`, `ai_service.py` |
+| Видишь `status` зависший в `"processing"` | BackgroundTask упал; см. `.agent/local_notes.md` — известное ограничение |
+| Ошибка SSL при GigaChat | Проверь `GIGACHAT_SSL_VERIFY` env и CA bundle |
+| **Production деплой** | Используй `scripts/deploy-prod.sh` или `docker compose -f docker-compose.prod.yml` |
+| **Docker build ошибка** | Проверь `.dockerignore` и `frontend/.dockerignore` — лишние файлы могут сломать сборку |
+| **Nginx 502 Bad Gateway** | Backend не запустился; проверь `docker-compose logs backend` и health check |
+| **Миграции не применяются** | Запусти вручную: `docker compose -f docker-compose.prod.yml run --rm backend-migrate` |
 
 ---
 

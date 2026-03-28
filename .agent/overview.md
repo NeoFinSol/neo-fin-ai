@@ -3,7 +3,7 @@
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
 - **Последний коммит**: `refactor(core): decompose tasks.py and centralize mapping/utilities`
-- **Последняя сессия**: 2026-03-28 — выполнена первая волна product-аудита: исправлены контрактные рассинхроны frontend/backend, восстановлен polling fallback, улучшены WS lifecycle updates, стабилизирован PDF extractor на малых значениях и OCR fallback, `Dockerfile.backend` снова включает `entrypoint.sh` для migration container.
+- **Последняя сессия**: 2026-03-28 — выполнены первая и вторая волны product-аудита: закрыты contract/runtime bugs, а production Docker path переведён на self-contained frontend image без зависимости от локального `frontend/dist`.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -31,6 +31,12 @@
   - `process_multi_analysis()` больше не отдаёт неподдерживаемый статус `completed_with_errors`
   - `pdf_extractor.py` больше не отбрасывает table-extracted малые monetary values и поддерживает mock-friendly OCR fallback
   - `Dockerfile.backend` копирует `entrypoint.sh`, что снимает риск падения `backend-migrate`
+✅ **Audit Wave 2** — production Docker hardening:
+  - `docker-compose.prod.yml` теперь собирает `nginx` напрямую из `frontend/Dockerfile.frontend`
+  - production deploy больше не зависит от локального bind mount `frontend/dist`
+  - `frontend/nginx.prod.conf` получил rate limiting, CSP, proxy error page и более жёсткий proxy path
+  - `scripts/deploy-prod.sh` переведён на `docker compose` и добавляет `config` validation перед build
+  - docs и agent-checklists синхронизированы с новым deploy path
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
@@ -57,6 +63,7 @@
   - `tests/test_analyses_router.py`, `tests/test_tasks.py` → 27 passed
   - legacy `tests/test_tasks_coverage.py` остаётся устаревшим compatibility-suite и не отражает текущий product contract
 ✅ **Production Docker** — `Dockerfile.backend` (multi-stage), `Dockerfile.frontend` (multi-stage), `docker-compose.prod.yml`, `nginx.conf`, `scripts/deploy-prod.sh`
+✅ **Production Frontend Image** — compose собирает frontend/Nginx образ сам, без внешнего `frontend/dist`
 ✅ **Code Quality** — полная чистка неиспользуемых импортов, исправление линтера, переход на Pydantic-settings для управления env
 
 ---

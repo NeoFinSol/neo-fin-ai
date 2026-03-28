@@ -1,5 +1,27 @@
 # Project Log
 
+## 2026-03-28 — chore(devops): harden production compose frontend path
+
+**Изменения:**
+- `docker-compose.prod.yml` переведён на self-contained `nginx` build из `frontend/Dockerfile.frontend`
+  вместо runtime-зависимости от bind-mounted `frontend/dist`
+- `frontend/nginx.prod.conf` усилен:
+  - rate limiting
+  - CSP header
+  - proxy error handling / `api-unavailable.html`
+  - сохранён SPA routing + `/api/` reverse proxy
+- `scripts/deploy-prod.sh`:
+  - переведён на `docker compose`
+  - добавляет `docker compose ... config` validation перед build
+- обновлены `docs/ARCHITECTURE.md`, `.agent/checklists.md`,
+  `.agent/architecture.md`, `.env.example`
+
+**Верификация:**
+- `docker compose -f docker-compose.prod.yml config`
+- `C:\Program Files\Git\bin\bash.exe -n scripts/deploy-prod.sh`
+- `docker compose -f docker-compose.prod.yml build nginx` attempted,
+  but blocked by unavailable Docker daemon in current Codex session
+
 ## 2026-03-28 — fix(product): align contracts, ws lifecycle, pdf parsing and docker migrate image
 
 **Изменения:**

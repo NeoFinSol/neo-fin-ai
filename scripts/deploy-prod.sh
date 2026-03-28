@@ -46,27 +46,33 @@ done
 echo -e "${GREEN}✓ Environment validated${NC}"
 echo ""
 
-# Step 2: Build all images
-echo -e "${YELLOW}[2/5] Building Docker images...${NC}"
-docker-compose -f "$COMPOSE_FILE" build --no-cache
+# Step 2: Validate compose structure
+echo -e "${YELLOW}[2/6] Validating Docker Compose configuration...${NC}"
+docker compose -f "$COMPOSE_FILE" config >/dev/null
+echo -e "${GREEN}✓ Compose configuration is valid${NC}"
+echo ""
+
+# Step 3: Build all images
+echo -e "${YELLOW}[3/6] Building Docker images...${NC}"
+docker compose -f "$COMPOSE_FILE" build --no-cache
 echo -e "${GREEN}✓ Images built${NC}"
 echo ""
 
-# Step 3: Run database migrations
-echo -e "${YELLOW}[3/5] Running database migrations...${NC}"
-docker-compose -f "$COMPOSE_FILE" run --rm backend-migrate
+# Step 4: Run database migrations
+echo -e "${YELLOW}[4/6] Running database migrations...${NC}"
+docker compose -f "$COMPOSE_FILE" run --rm backend-migrate
 echo -e "${GREEN}✓ Migrations completed${NC}"
 echo ""
 
-# Step 4: Start all services
-echo -e "${YELLOW}[4/5] Starting services...${NC}"
-docker-compose -f "$COMPOSE_FILE" up -d
+# Step 5: Start all services
+echo -e "${YELLOW}[5/6] Starting services...${NC}"
+docker compose -f "$COMPOSE_FILE" up -d
 echo -e "${GREEN}✓ Services started${NC}"
 echo ""
 
-# Step 5: Show status
-echo -e "${YELLOW}[5/5] Service status:${NC}"
-docker-compose -f "$COMPOSE_FILE" ps
+# Step 6: Show status
+echo -e "${YELLOW}[6/6] Service status:${NC}"
+docker compose -f "$COMPOSE_FILE" ps
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
@@ -78,11 +84,11 @@ echo "Backend API: http://localhost/api/"
 echo "Health check: http://localhost/system/health"
 echo ""
 echo -e "${YELLOW}To view logs:${NC}"
-echo "  docker-compose -f $COMPOSE_FILE logs -f"
+echo "  docker compose -f $COMPOSE_FILE logs -f"
 echo ""
 echo -e "${YELLOW}To stop services:${NC}"
-echo "  docker-compose -f $COMPOSE_FILE down"
+echo "  docker compose -f $COMPOSE_FILE down"
 echo ""
 echo -e "${YELLOW}To restart services:${NC}"
-echo "  docker-compose -f $COMPOSE_FILE restart"
+echo "  docker compose -f $COMPOSE_FILE restart"
 echo ""

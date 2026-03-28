@@ -569,10 +569,9 @@ Internet
    │
    ▼
 ┌──────────────────────────────────────────────────────┐
-│  Nginx  (порт 80 / 443)                              │
+│  Nginx  (порт 80)                                    │
 │  • Reverse proxy: /api/ → FastAPI :8000              │
-│  • Раздача статики React (dist/) напрямую            │
-│  • SSL termination (cert.pem / key.pem через volume) │
+│  • Статика React baked into image                    │
 │  • gzip для JS/CSS/JSON                              │
 │  • Cache-Control: immutable для статических ассетов  │
 │  • Rate limiting                                     │
@@ -582,8 +581,8 @@ Internet
        ▼                ▼
 ┌─────────────┐   ┌─────────────────────────────┐
 │  FastAPI    │   │  React (статика)             │
-│  uvicorn    │   │  Собрана Vite → dist/        │
-│  :8000      │   │  Раздаётся Nginx напрямую    │
+│  uvicorn    │   │  Multi-stage build inside    │
+│  :8000      │   │  `frontend/Dockerfile.frontend` │
 └──────┬──────┘   └─────────────────────────────┘
        │
   ┌────┴────┐
@@ -600,7 +599,7 @@ Internet
 |---|---|---|---|
 | `db` | `postgres:16-alpine` | 5432 | PostgreSQL; health check: `pg_isready`, interval 10s |
 | `backend` | `./Dockerfile.backend` (multi-stage) | 8000 | FastAPI + uvicorn; health check: `GET /health`, interval 30s, timeout 10s |
-| `frontend` | `./frontend/Dockerfile.frontend` (multi-stage) | 80, 443 | Nginx + production build React |
+| `nginx` | `./frontend/Dockerfile.frontend` (multi-stage) | 80 | Self-contained Nginx + production build React + `/api` reverse proxy |
 
 `backend` запускается только после `db: condition: service_healthy`.
 
@@ -612,18 +611,19 @@ Internet
 
 **`frontend/Dockerfile.frontend`:**
 - Stage `build`: Node.js + `npm ci` + `npm run build` (Vite → `dist/`)
-- Stage `serve`: Nginx + только статика из `dist/`
+- Stage `serve`: Nginx + статика из `dist/` + production proxy config из `frontend/nginx.prod.conf`
 
 ### SSL-конфигурация
 
-Nginx читает сертификаты из volume `/etc/nginx/certs`. При отсутствии переменной `SSL_CERT_PATH` работает по HTTP без ошибки запуска. SSL-блок активируется через `envsubst` при наличии переменной.
+Текущий production compose разворачивает HTTP-only путь на `:80`. Блок HTTPS в `frontend/nginx.prod.conf` остаётся шаблоном для отдельной future hardening-итерации.
 
 ### Запуск production
 
 ```bash
 ./scripts/deploy-prod.sh
 # Проверяет наличие .env — завершается с ошибкой если файл отсутствует
-# docker-compose -f docker-compose.prod.yml up -d --build
+# docker compose -f docker-compose.prod.yml config
+# docker compose -f docker-compose.prod.yml up -d --build
 # Запускает backend-migrate отдельным контейнером перед стартом backend
 ```
 
