@@ -89,9 +89,6 @@ def _parse_cors_list(list_str: str, default_values: List[str]) -> List[str]:
 async def lifespan(app: FastAPI):
     # Setup structured logging
     setup_logging()
-    
-    # Register global exception handlers
-    register_exception_handlers(app)
 
     # AI service auto-configures based on available credentials
     # Priority: GigaChat > Qwen > Local LLM (Ollama)
@@ -118,6 +115,7 @@ limiter = Limiter(
 )
 
 app = FastAPI(version="0.1.0", lifespan=lifespan)
+register_exception_handlers(app)
 
 # Add rate limiter to app state
 app.state.limiter = limiter

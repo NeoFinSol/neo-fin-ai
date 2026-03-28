@@ -11,7 +11,6 @@ import tempfile
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
-from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -80,9 +79,10 @@ async def start_multi_analysis(
         handed_off = True
         return MultiAnalysisAcceptedResponse(session_id=session_id, status="processing")
     except ValidationError as exc:
+        logger.warning("Validation failed for multi-analysis input: %s", exc.errors())
         raise HTTPException(
             status_code=422,
-            detail=jsonable_encoder(exc.errors()),
+            detail="Invalid multi-analysis request",
         ) from exc
     except SQLAlchemyError as exc:
         logger.error("Failed to create multi-analysis session %s: %s", session_id, exc)

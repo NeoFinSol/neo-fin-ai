@@ -167,6 +167,7 @@ class TestPostMultiAnalysis:
         response = client.post("/multi-analysis", files=files, data=data)
 
         assert response.status_code == 422
+        assert response.json()["detail"] == "Invalid multi-analysis request"
 
     def test_post_multi_analysis_whitespace_only_label(self, client):
         """POST with whitespace-only period_label should return 422."""
@@ -176,6 +177,7 @@ class TestPostMultiAnalysis:
         response = client.post("/multi-analysis", files=files, data=data)
 
         assert response.status_code == 422
+        assert response.json()["detail"] == "Invalid multi-analysis request"
 
     def test_post_multi_analysis_cleans_temp_files_on_validation_failure(self, client):
         files, data = self._make_multipart(["2022", "   "])
@@ -194,7 +196,7 @@ class TestPostMultiAnalysis:
         mock_remove.assert_any_call("/tmp/period-a.pdf")
         mock_remove.assert_any_call("/tmp/period-b.pdf")
 
-    def test_post_multi_analysis_cleans_temp_files_on_db_failure(self):
+    def test_post_multi_analysis_returns_canonical_db_error_and_cleans_temp_files(self):
         files, data = self._make_multipart(["2022", "2023"])
 
         temp_a = MagicMock()
@@ -215,7 +217,14 @@ class TestPostMultiAnalysis:
                         with patch("src.routers.multi_analysis.os.remove") as mock_remove:
                             response = client.post("/multi-analysis", files=files, data=data)
 
-        assert response.status_code == 500
+        assert response.status_code == 503
+        assert response.json() == {
+            "status": "failed",
+            "error": {
+                "code": "DATABASE_ERROR",
+                "message": "Database operation failed",
+            },
+        }
         assert mock_remove.call_count == 2
         mock_remove.assert_any_call("/tmp/period-a.pdf")
         mock_remove.assert_any_call("/tmp/period-b.pdf")
