@@ -31,6 +31,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/multi-analysis", tags=["multi-analysis"])
 
 
+def _cleanup_temp_files(paths: list[str]) -> None:
+    """Best-effort cleanup for temporary PDF files before background handoff."""
+    for path in paths:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning("Failed to remove temp file %s: %s", path, exc)
+
+
 @router.post("", status_code=202, response_model=MultiAnalysisAcceptedResponse)
 async def start_multi_analysis(
     background_tasks: BackgroundTasks,
@@ -48,31 +59,37 @@ async def start_multi_analysis(
         raise HTTPException(status_code=422, detail="Максимум 5 периодов")
 
     period_inputs: list[PeriodInput] = []
-    for file, label in zip(files, periods):
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-        content = await file.read()
-        tmp.write(content)
-        tmp.close()
-        try:
-            period_inputs.append(PeriodInput(period_label=label, file_path=tmp.name))
-        except ValidationError as exc:
-            try:
-                os.unlink(tmp.name)
-            except OSError:
-                logger.warning("Failed to remove temp file after period validation error: %s", tmp.name)
-            raise HTTPException(
-                status_code=422,
-                detail=jsonable_encoder(exc.errors()),
-            ) from exc
-
-    session_id = str(uuid4())
+    temp_paths: list[str] = []
+    handed_off = False
+    session_id = ""
     try:
+        for file, label in zip(files, periods):
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            temp_paths.append(tmp.name)
+            try:
+                content = await file.read()
+                tmp.write(content)
+            finally:
+                tmp.close()
+
+            period_inputs.append(PeriodInput(period_label=label, file_path=tmp.name))
+
+        session_id = str(uuid4())
         await create_multi_session(session_id)
+        background_tasks.add_task(process_multi_analysis, session_id, period_inputs)
+        handed_off = True
+        return MultiAnalysisAcceptedResponse(session_id=session_id, status="processing")
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=jsonable_encoder(exc.errors()),
+        ) from exc
     except SQLAlchemyError as exc:
         logger.error("Failed to create multi-analysis session %s: %s", session_id, exc)
         raise DatabaseError("Database operation failed") from exc
-    background_tasks.add_task(process_multi_analysis, session_id, period_inputs)
-    return MultiAnalysisAcceptedResponse(session_id=session_id, status="processing")
+    finally:
+        if not handed_off:
+            _cleanup_temp_files(temp_paths)
 
 
 @router.get(

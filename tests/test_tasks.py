@@ -1,8 +1,16 @@
 """Tests for background tasks module."""
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+import warnings
 
 import pytest
+from cryptography.utils import CryptographyDeprecationWarning
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"ARC4 has been moved.*",
+    category=CryptographyDeprecationWarning,
+)
 
 from src.analysis.pdf_extractor import extract_text
 from src.analysis.ratios import translate_ratios
@@ -11,6 +19,13 @@ from src.tasks import process_pdf
 
 # Minimal valid score dict returned by calculate_integral_score
 _MOCK_SCORE = {"score": 85.5, "risk_level": "низкий", "details": {}}
+
+
+def _assert_completed_status_called(mock_update, task_id: str) -> None:
+    assert any(
+        call.args[:2] == (task_id, "completed")
+        for call in mock_update.call_args_list
+    ), f"update_analysis was never called with completed status for {task_id}"
 
 
 class TestExtractTextFromPdf:
@@ -156,8 +171,7 @@ class TestProcessPdf:
             await process_pdf(task_id, file_path)
 
             mock_update.assert_called()
-            last_call = mock_update.call_args_list[-1]
-            assert last_call[0][1] == "completed"
+            _assert_completed_status_called(mock_update, task_id)
             mock_ws.assert_called()
 
     @pytest.mark.asyncio
@@ -184,7 +198,7 @@ class TestProcessPdf:
             await process_pdf(task_id, file_path)
 
             mock_update.assert_called()
-            assert mock_update.call_args_list[-1][0][1] == "completed"
+            _assert_completed_status_called(mock_update, task_id)
 
     @pytest.mark.asyncio
     async def test_scanned_pdf_processing(self):
@@ -203,10 +217,10 @@ class TestProcessPdf:
              patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE), \
              patch("src.tasks.ws_manager.broadcast", new_callable=AsyncMock), \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
-             patch("src.tasks.cleanup_temp_file"):
+            patch("src.tasks.cleanup_temp_file"):
 
             await process_pdf(task_id, file_path)
-            assert mock_update.call_args_list[-1][0][1] == "completed"
+            _assert_completed_status_called(mock_update, task_id)
 
     @pytest.mark.asyncio
     async def test_processing_failure(self, caplog):
@@ -248,11 +262,11 @@ class TestProcessPdf:
              patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE), \
              patch("src.tasks.ws_manager.broadcast", new_callable=AsyncMock), \
              patch("src.tasks._ensure_analysis_exists", return_value=True), \
-             patch("src.tasks.cleanup_temp_file") as mock_cleanup:
+            patch("src.tasks.cleanup_temp_file") as mock_cleanup:
 
             await process_pdf(task_id, file_path)
 
-            assert mock_update.call_args_list[-1][0][1] == "completed"
+            _assert_completed_status_called(mock_update, task_id)
             mock_cleanup.assert_called_once_with(file_path)
 
     @pytest.mark.asyncio

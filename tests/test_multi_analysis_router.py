@@ -11,11 +11,22 @@ Tests cover:
 Run: pytest tests/test_multi_analysis_router.py -v
 """
 
+import io
+import warnings
+from contextlib import contextmanager
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from hypothesis import given, settings, HealthCheck
 from hypothesis import strategies as st
+from cryptography.utils import CryptographyDeprecationWarning
+from sqlalchemy.exc import SQLAlchemyError
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"ARC4 has been moved.*",
+    category=CryptographyDeprecationWarning,
+)
 
 from src.app import app
 
@@ -32,8 +43,18 @@ def client(monkeypatch):
         mock_settings.dev_mode = True
         mock_settings.api_key = None
         
-        with TestClient(app, raise_server_exceptions=False) as test_client:
+        with TestClient(app) as test_client:
             yield test_client
+
+
+@contextmanager
+def limiter_disabled():
+    previous = app.state.limiter.enabled
+    app.state.limiter.enabled = False
+    try:
+        yield
+    finally:
+        app.state.limiter.enabled = previous
 
 
 @pytest.fixture(scope="function")
@@ -72,8 +93,8 @@ class TestPostMultiAnalysis:
     """Tests for POST /multi-analysis endpoint."""
 
     def _make_multipart(self, labels: list[str]) -> tuple[list, list]:
-        """Build files and data tuples for multipart POST."""
-        files = [("files", (f"{label}.pdf", b"%PDF-1.4 fake", "application/pdf")) for label in labels]
+        """Build multipart payload using the encoding our current httpx/TestClient stack accepts."""
+        files = [("files", (f"{label}.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")) for label in labels]
         data = {"periods": labels}
         return files, data
 
@@ -118,7 +139,7 @@ class TestPostMultiAnalysis:
 
     def test_post_multi_analysis_mismatched_files_and_periods(self, client):
         """POST with mismatched files and period labels should return 422."""
-        files = [("files", ("a.pdf", b"%PDF", "application/pdf"))]
+        files = [("files", ("a.pdf", io.BytesIO(b"%PDF"), "application/pdf"))]
         data = {"periods": ["2022", "2023"]}
 
         with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
@@ -131,7 +152,7 @@ class TestPostMultiAnalysis:
         Test 2.5: POST with period_label > 20 chars should return 422.
         """
         long_label = "This label is way too long"
-        files = [("files", ("a.pdf", b"%PDF", "application/pdf"))]
+        files = [("files", ("a.pdf", io.BytesIO(b"%PDF"), "application/pdf"))]
         data = {"periods": [long_label]}
 
         response = client.post("/multi-analysis", files=files, data=data)
@@ -140,7 +161,7 @@ class TestPostMultiAnalysis:
 
     def test_post_multi_analysis_empty_label(self, client):
         """POST with empty period_label should return 422."""
-        files = [("files", ("a.pdf", b"%PDF", "application/pdf"))]
+        files = [("files", ("a.pdf", io.BytesIO(b"%PDF"), "application/pdf"))]
         data = {"periods": [""]}
 
         response = client.post("/multi-analysis", files=files, data=data)
@@ -149,12 +170,55 @@ class TestPostMultiAnalysis:
 
     def test_post_multi_analysis_whitespace_only_label(self, client):
         """POST with whitespace-only period_label should return 422."""
-        files = [("files", ("a.pdf", b"%PDF", "application/pdf"))]
+        files = [("files", ("a.pdf", io.BytesIO(b"%PDF"), "application/pdf"))]
         data = {"periods": ["   "]}
 
         response = client.post("/multi-analysis", files=files, data=data)
 
         assert response.status_code == 422
+
+    def test_post_multi_analysis_cleans_temp_files_on_validation_failure(self, client):
+        files, data = self._make_multipart(["2022", "   "])
+
+        temp_a = MagicMock()
+        temp_a.name = "/tmp/period-a.pdf"
+        temp_b = MagicMock()
+        temp_b.name = "/tmp/period-b.pdf"
+
+        with patch("src.routers.multi_analysis.tempfile.NamedTemporaryFile", side_effect=[temp_a, temp_b]):
+            with patch("src.routers.multi_analysis.os.remove") as mock_remove:
+                response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 422
+        assert mock_remove.call_count == 2
+        mock_remove.assert_any_call("/tmp/period-a.pdf")
+        mock_remove.assert_any_call("/tmp/period-b.pdf")
+
+    def test_post_multi_analysis_cleans_temp_files_on_db_failure(self):
+        files, data = self._make_multipart(["2022", "2023"])
+
+        temp_a = MagicMock()
+        temp_a.name = "/tmp/period-a.pdf"
+        temp_b = MagicMock()
+        temp_b.name = "/tmp/period-b.pdf"
+
+        with patch("src.core.auth.app_settings") as mock_settings:
+            mock_settings.dev_mode = True
+            mock_settings.api_key = None
+            with TestClient(app, raise_server_exceptions=False) as client:
+                with patch("src.routers.multi_analysis.tempfile.NamedTemporaryFile", side_effect=[temp_a, temp_b]):
+                    with patch(
+                        "src.routers.multi_analysis.create_multi_session",
+                        new_callable=AsyncMock,
+                        side_effect=SQLAlchemyError("db down"),
+                    ):
+                        with patch("src.routers.multi_analysis.os.remove") as mock_remove:
+                            response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 500
+        assert mock_remove.call_count == 2
+        mock_remove.assert_any_call("/tmp/period-a.pdf")
+        mock_remove.assert_any_call("/tmp/period-b.pdf")
 
 
 # =============================================================================
@@ -380,48 +444,45 @@ class TestRoundTrip:
             valid_labels = ["2023"]  # Fallback
 
         files = [
-            ("files", (f"{label}.pdf", b"%PDF-1.4 fake", "application/pdf"))
+            ("files", (f"{label}.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf"))
             for label in valid_labels[:5]
         ]
         data = {"periods": valid_labels[:5]}
 
         # Step 1: Create session
-        app.state.limiter.enabled = False
-        try:
+        with limiter_disabled():
             with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
                 with patch("src.routers.multi_analysis.process_multi_analysis", new_callable=AsyncMock):
                     with patch("src.routers.multi_analysis.uuid4", return_value="roundtrip123"):
                         with TestClient(app) as client:
                             create_response = client.post("/multi-analysis", files=files, data=data)
 
-            if create_response.status_code != 202:
-                pytest.skip("Validation failed for generated data")
-            session_id = create_response.json()["session_id"]
+        if create_response.status_code != 202:
+            pytest.skip("Validation failed for generated data")
+        session_id = create_response.json()["session_id"]
 
-            # Step 2: Mock session data for retrieval
-            mock_session = MagicMock()
-            mock_session.status = "completed"
-            mock_session.progress = {"completed": len(valid_labels), "total": len(valid_labels)}
-            mock_session.result = {
-                "periods": [
-                    {
-                        "period_label": label,
-                        "ratios": {"current_ratio": 1.5},
-                        "score": 75.0,
-                        "risk_level": "low",
-                        "extraction_metadata": {},
-                    }
-                    for label in valid_labels
-                ]
-            }
+        # Step 2: Mock session data for retrieval
+        mock_session = MagicMock()
+        mock_session.status = "completed"
+        mock_session.progress = {"completed": len(valid_labels), "total": len(valid_labels)}
+        mock_session.result = {
+            "periods": [
+                {
+                    "period_label": label,
+                    "ratios": {"current_ratio": 1.5},
+                    "score": 75.0,
+                    "risk_level": "low",
+                    "extraction_metadata": {},
+                }
+                for label in valid_labels
+            ]
+        }
 
-            # Step 3: Get session status
-            with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
-                mock_get.return_value = mock_session
-                with TestClient(app) as client:
-                    get_response = client.get(f"/multi-analysis/{session_id}")
-        finally:
-            app.state.limiter.enabled = True
+        # Step 3: Get session status
+        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_session
+            with TestClient(app) as client:
+                get_response = client.get(f"/multi-analysis/{session_id}")
         
         assert get_response.status_code == 200
         data = get_response.json()
@@ -456,8 +517,8 @@ class TestMultiAnalysisIntegration:
         session_id = "test-flow-123"
 
         files = [
-            ("files", ("2022.pdf", b"%PDF-1.4 fake", "application/pdf")),
-            ("files", ("2023.pdf", b"%PDF-1.4 fake", "application/pdf")),
+            ("files", ("2022.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")),
+            ("files", ("2023.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")),
         ]
         data = {"periods": ["2022", "2023"]}
 

@@ -1,10 +1,18 @@
 """Tests for PDF tasks router."""
 import io
+import warnings
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException, UploadFile
+from cryptography.utils import CryptographyDeprecationWarning
 from sqlalchemy.exc import SQLAlchemyError
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"ARC4 has been moved.*",
+    category=CryptographyDeprecationWarning,
+)
 
 from src.routers.pdf_tasks import _validate_pdf_file, get_result, upload_pdf
 from src.exceptions import DatabaseError
