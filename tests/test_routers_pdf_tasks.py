@@ -4,8 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException, UploadFile
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.routers.pdf_tasks import _validate_pdf_file, get_result, upload_pdf
+from src.exceptions import DatabaseError
 
 
 class TestValidatePdfFile:
@@ -63,6 +65,7 @@ class TestUploadPdf:
         # Create a mock file that returns empty on read
         mock_file = MagicMock(spec=UploadFile)
         mock_file.content_type = "application/pdf"
+        mock_file.filename = "test.pdf"
         mock_file.file = MagicMock()
         mock_file.file.read = MagicMock(return_value=b"")
         
@@ -97,6 +100,7 @@ class TestUploadPdf:
         # Create a mock file with valid PDF header
         mock_file = MagicMock(spec=UploadFile)
         mock_file.content_type = "application/pdf"
+        mock_file.filename = "test.pdf"
         mock_file.file = MagicMock()
         
         # Simulate reading header first, then rest of file
@@ -380,3 +384,14 @@ class TestGetResult:
             assert result["status"] == "processing"
             # Non-dict results should not be merged into payload
             assert "result" not in result or result.get("result") != "some string result"
+
+    @pytest.mark.asyncio
+    async def test_db_failure_raises_database_error(self):
+        """DB lookup failures should become explicit DatabaseError instances."""
+        with patch(
+            "src.routers.pdf_tasks.get_analysis",
+            new_callable=AsyncMock,
+            side_effect=SQLAlchemyError("db down"),
+        ):
+            with pytest.raises(DatabaseError):
+                await get_result("broken-task-id")

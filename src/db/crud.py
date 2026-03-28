@@ -150,7 +150,7 @@ async def get_analysis(task_id: str) -> Analysis | None:
             return await session.scalar(stmt)
         except SQLAlchemyError as e:
             logger.error("Database error getting analysis: %s", e)
-            return None
+            raise
 
 
 async def create_multi_session(
@@ -255,4 +255,4 @@ async def get_multi_session(session_id: str) -> MultiAnalysisSession | None:
             return await session.scalar(stmt)
         except SQLAlchemyError as e:
             logger.error("Database error getting multi_analysis_session: %s", e)
-            return None
+            raise

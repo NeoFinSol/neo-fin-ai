@@ -24,10 +24,26 @@ cp .env.example .env
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
 |---|---|---|:---:|---|
 | `DATABASE_URL` | `string` | — | ✅ | PostgreSQL connection string. Формат: `postgresql+asyncpg://user:pass@host:5432/dbname` |
+| `TEST_DATABASE_URL` | `string` | — | — | Отдельный connection string для тестов. При `TESTING=1` используется вместо `DATABASE_URL`, если задан |
 | `API_KEY` | `string` | — | ✅ | Ключ аутентификации. Передаётся в заголовке `X-API-Key` |
 | `CONFIDENCE_THRESHOLD` | `float` | `0.5` | — | Минимальный confidence score для включения показателя в расчёт. Диапазон: `[0.0, 1.0]` |
 | `DEV_MODE` | `bool` | `false` | — | Режим разработки: отключает проверку `API_KEY`, разрешает CORS `*` |
 | `DEMO_MODE` | `int` | `0` | — | При `1` — маскирует числовые данные в ответах API |
+
+### Database pool
+
+| Переменная | Тип | По умолчанию | Обязательная | Описание |
+|---|---|---|:---:|---|
+| `DB_POOL_SIZE` | `int` | `5` | — | Базовый размер async connection pool |
+| `DB_MAX_OVERFLOW` | `int` | `10` | — | Дополнительные burst-connections сверх `DB_POOL_SIZE` |
+| `DB_POOL_TIMEOUT` | `int` | `30` | — | Сколько секунд ждать свободное соединение перед ошибкой пула |
+| `DB_POOL_RECYCLE` | `int` | `3600` | — | Через сколько секунд пересоздавать stale pooled connections |
+| `DB_POOL_PRE_PING` | `bool` | `true` | — | Проверять соединение перед выдачей из пула |
+
+Поведение:
+- `DB_POOL_TIMEOUT` и `DB_POOL_RECYCLE` реально прокидываются в `create_async_engine()`
+- при невалидных значениях применяются безопасные defaults и логируется `WARNING`
+- при `TESTING=1` с заданным `TEST_DATABASE_URL` pool создаётся поверх тестовой БД, а не production/local `DATABASE_URL`
 
 ---
 

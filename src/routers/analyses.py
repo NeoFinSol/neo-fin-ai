@@ -9,9 +9,11 @@ import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.auth import get_api_key
 from src.db.crud import get_analyses_list, get_analysis
+from src.exceptions import DatabaseError
 from src.models.schemas import (
     AnalysisDetailResponse,
     AnalysisListResponse,
@@ -34,7 +36,11 @@ async def list_analyses(
     _api_key: str = Depends(get_api_key),
 ) -> AnalysisListResponse:
     """Return paginated list of analyses ordered by created_at DESC."""
-    items, total = await get_analyses_list(page, page_size)
+    try:
+        items, total = await get_analyses_list(page, page_size)
+    except SQLAlchemyError as exc:
+        logger.error("Failed to list analyses: %s", exc)
+        raise DatabaseError("Database operation failed") from exc
     demo = _is_demo_mode()
 
     summary_items: list[AnalysisSummaryResponse] = []
@@ -69,7 +75,11 @@ async def get_analysis_detail(
     _api_key: str = Depends(get_api_key),
 ) -> AnalysisDetailResponse:
     """Return full analysis data for a given task_id."""
-    analysis = await get_analysis(task_id)
+    try:
+        analysis = await get_analysis(task_id)
+    except SQLAlchemyError as exc:
+        logger.error("Failed to load analysis detail for %s: %s", task_id, exc)
+        raise DatabaseError("Database operation failed") from exc
     if analysis is None:
         raise HTTPException(status_code=404, detail="Analysis not found")
 

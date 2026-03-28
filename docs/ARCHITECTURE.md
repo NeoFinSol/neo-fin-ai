@@ -400,7 +400,7 @@ ai_service.invoke(prompt)
 
 ## 9. Хранение данных
 
-Реляционные поля хранят идентификаторы и статусы (`task_id`, `status`, `created_at`). Результаты анализа хранятся в JSONB — это позволяет расширять структуру ответа без изменения схемы таблиц.
+Реляционные поля хранят идентификаторы и статусы (`task_id`, `status`, `created_at`). Результаты анализа хранятся в JSONB — это позволяет расширять структуру ответа без изменения схемы таблиц. При этом критичные lifecycle-инварианты теперь дополнительно закреплены check constraints и operational indexes на уровне БД.
 
 ### Таблица `analyses`
 
@@ -415,6 +415,9 @@ CREATE TABLE analyses (
 
 CREATE INDEX idx_analyses_task_id    ON analyses(task_id);
 CREATE INDEX idx_analyses_created_at ON analyses(created_at DESC);
+ALTER TABLE analyses
+  ADD CONSTRAINT ck_analyses_status_valid
+  CHECK (status IN ('uploading', 'processing', 'completed', 'failed', 'cancelled'));
 ```
 
 **Структура `result` (JSONB):**
@@ -472,10 +475,16 @@ CREATE TABLE multi_analysis_sessions (
 
 CREATE INDEX idx_multi_sessions_session_id  ON multi_analysis_sessions(session_id);
 CREATE INDEX idx_multi_sessions_created_at  ON multi_analysis_sessions(created_at DESC);
+CREATE INDEX idx_multi_sessions_status_updated_at
+  ON multi_analysis_sessions(status, updated_at);
+ALTER TABLE multi_analysis_sessions
+  ADD CONSTRAINT ck_multi_sessions_status_valid
+  CHECK (status IN ('processing', 'completed', 'failed'));
 ```
 
 - **`progress`**: `{"completed": 2, "total": 3}` — обновляется после каждого обработанного периода
 - **`result`**: `{"periods": [PeriodResult, ...]}` — заполняется при `status="completed"`
+- **`updated_at`**: обновляется ORM-слоем на каждом `update_multi_session()`, а composite index ускоряет operational queries по lifecycle state
 
 ### Миграции
 
@@ -483,10 +492,18 @@ CREATE INDEX idx_multi_sessions_created_at  ON multi_analysis_sessions(created_a
 
 ```
 migrations/versions/
-├── 0001_initial.py                      — базовая схема
-├── 0002_add_analyses.py                 — таблица analyses + индексы
-└── 0003_add_multi_analysis_sessions.py  — таблица multi_analysis_sessions
+├── 0001_create_analyses.py                       — таблица analyses
+├── 0002_add_status_created_at_indexes.py         — индексы analyses
+├── 0003_add_multi_analysis_sessions.py           — таблица multi_analysis_sessions
+└── 0004_harden_db_status_constraints.py          — status constraints + lifecycle index
 ```
+
+### Runtime notes for persistence
+
+- `src/db/database.py` применяет `DB_POOL_TIMEOUT` и `DB_POOL_RECYCLE` в реальный async engine config, а не только логирует их.
+- При `TESTING=1` engine предпочитает `TEST_DATABASE_URL`, чтобы не смешивать test traffic с основной БД.
+- FastAPI lifespan вызывает `dispose_engine()` на shutdown, чтобы не оставлять stale pooled connections при restart/test teardown.
+- Router boundary (`analyses`, `pdf_tasks`, `multi_analysis`) переводит SQLAlchemy read/write failures в явный `DatabaseError`, а не в `None`/ложный `404`.
 
 ---
 

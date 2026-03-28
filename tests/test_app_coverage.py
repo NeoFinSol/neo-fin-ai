@@ -44,6 +44,18 @@ class TestLifespanCoverage:
             async with lifespan(mock_app):
                 pass
 
+    @pytest.mark.asyncio
+    async def test_lifespan_disposes_engine_on_shutdown(self):
+        """Shutdown should dispose the SQLAlchemy engine to avoid leaked connections."""
+        from src.app import lifespan
+
+        mock_app = MagicMock()
+        with patch("src.app.dispose_engine", new_callable=AsyncMock) as mock_dispose:
+            async with lifespan(mock_app):
+                pass
+
+        mock_dispose.assert_awaited_once()
+
 
 class TestCorsConfigFallback:
     """Tests for CORS ValueError fallback — covers lines 169-204."""

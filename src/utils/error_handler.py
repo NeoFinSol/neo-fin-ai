@@ -329,9 +329,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     Args:
         app: FastAPI application instance
     """
-    # Global catch-all handler
-    app.add_exception_handler(Exception, app_exception_handler)
-    
     # FastAPI validation errors
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     
@@ -346,5 +343,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     
     # SQLAlchemy errors
     app.add_exception_handler(SQLAlchemyError, sqlalchemy_error_handler)
+
+    # Global catch-all handler must be registered last so specific handlers win.
+    app.add_exception_handler(Exception, app_exception_handler)
     
     logger.info("Exception handlers registered")

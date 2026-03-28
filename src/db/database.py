@@ -50,8 +50,11 @@ def get_engine() -> AsyncEngine:
             )
 
         # Use default for testing if DATABASE_URL not set
-        db_url = DATABASE_URL
-        if is_testing and not db_url:
+        db_url = os.getenv("DATABASE_URL") or DATABASE_URL
+        test_db_url = os.getenv("TEST_DATABASE_URL")
+        if is_testing and test_db_url:
+            db_url = test_db_url
+        elif is_testing and not db_url:
             db_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin_test"
 
         # Connection pool settings from app_settings
@@ -93,8 +96,9 @@ def get_engine() -> AsyncEngine:
                 # If these cause TypeError, asyncpg will use its internal pooling
                 pool_size=pool_size,
                 max_overflow=max_overflow,
+                pool_timeout=pool_timeout,
+                pool_recycle=pool_recycle,
                 pool_pre_ping=pool_pre_ping,
-                # Note: pool_timeout and pool_recycle may be ignored by asyncpg
             )
             AsyncSessionLocal = async_sessionmaker(
                 _engine,

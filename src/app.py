@@ -18,6 +18,7 @@ import src.routers.analyses as analyses_router
 import src.routers.multi_analysis as multi_analysis_router
 import src.routers.websocket as websocket_router
 from src.core.ai_service import ai_service
+from src.db.database import dispose_engine
 from src.utils.logging_config import setup_logging, get_logger
 from src.utils.error_handler import register_exception_handlers
 
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    await dispose_engine()
     logger.info("Application shutdown complete")
 
 
@@ -226,50 +228,31 @@ async def log_requests(request: Request, call_next):
         },
     )
     
-    try:
-        response = await call_next(request)
-        
-        # Calculate duration
-        duration_ms = (time.monotonic() - start_time) * 1000
-        
-        # Log response
-        log_level = logging.WARNING if response.status_code >= 400 else logging.INFO
-        logger.log(
-            log_level,
-            "%s %s completed",
-            request.method,
-            request.url.path,
-            extra={
-                "task_id": task_id,
-                "duration_ms": duration_ms,
-                "extra_data": {
-                    "method": request.method,
-                    "path": request.url.path,
-                    "status_code": response.status_code,
-                    "duration_ms": round(duration_ms, 2),
-                }
-            },
-        )
-        
-        return response
-    except Exception as exc:
-        duration_ms = (time.monotonic() - start_time) * 1000
-        logger.error(
-            "%s %s failed",
-            request.method,
-            request.url.path,
-            exc_info=True,
-            extra={
-                "task_id": task_id,
-                "duration_ms": duration_ms,
-                "extra_data": {
-                    "method": request.method,
-                    "path": request.url.path,
-                    "error": str(exc),
-                }
-            },
-        )
-        raise
+    response = await call_next(request)
+
+    # Calculate duration
+    duration_ms = (time.monotonic() - start_time) * 1000
+
+    # Error handlers are responsible for logging exception details.
+    log_level = logging.WARNING if response.status_code >= 400 else logging.INFO
+    logger.log(
+        log_level,
+        "%s %s completed",
+        request.method,
+        request.url.path,
+        extra={
+            "task_id": task_id,
+            "duration_ms": duration_ms,
+            "extra_data": {
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": round(duration_ms, 2),
+            }
+        },
+    )
+
+    return response
 
 
 # Routers (must be added after middleware)

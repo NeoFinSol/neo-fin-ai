@@ -2,8 +2,8 @@
 
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
-- **Последний коммит**: `fix(pdf): harden OCR fallback extraction`
-- **Последняя сессия**: 2026-03-28 — продолжена третья волна product-аудита: после LLM/NLP compaction и OCR hardening добавлен corpus-driven regression pack для сложных table layouts (year columns, note columns, RSBU line codes, garbled labels, OCR pseudo-tables).
+- **Последний зафиксированный коммит до текущей волны**: `test(pdf): add corpus regression pack for complex table layouts`
+- **Последняя сессия**: 2026-03-28 — продолжена третья волна product-аудита: после LLM/NLP compaction и PDF corpus pack выполнен DB hardening persistence/runtime path.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -49,6 +49,13 @@
   - `tests/test_pdf_extractor.py` покрывает anti-merge и fallback page-cap regressions
   - `src/analysis/pdf_extractor.py` пропускает year markers в `_extract_first_numeric_cell()`, чтобы multi-period rows не превращали `2023` в extracted metric
   - `tests/data/pdf_regression_corpus.json` и `tests/test_pdf_regression_corpus.py` фиксируют corpus pack для сложных table layouts
+✅ **Audit Wave 3B — DB hardening**:
+  - `src/db/database.py` теперь реально применяет `DB_POOL_TIMEOUT` / `DB_POOL_RECYCLE` и предпочитает `TEST_DATABASE_URL` при `TESTING=1`
+  - `src/app.py` вызывает `dispose_engine()` на shutdown, чтобы не оставлять висящие pooled connections
+  - `src/db/models.py` + миграция `0004_harden_db_status_constraints.py` добавляют status constraints и lifecycle index `(status, updated_at)` для `multi_analysis_sessions`
+  - `src/db/crud.py` больше не маскирует read failures БД под `None`
+  - router boundary (`analyses`, `pdf_tasks`, `multi_analysis`) переводит SQLAlchemy failures в явный `DatabaseError`
+  - `src/utils/error_handler.py` регистрирует catch-all handler последним, чтобы специализированные DB handlers не деградировали в generic 500
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
@@ -68,7 +75,7 @@
 ✅ **Masking** — `src/utils/masking.py`: чистая функция `mask_analysis_data(data, demo_mode)`, применяется во всех трёх эндпоинтах при `DEMO_MODE=1`
 ✅ **AnalysisHistory.tsx** — подключена к реальному API (`GET /analyses`), пагинация Mantine, skeleton/error states
 ✅ **DetailedReport.tsx** — BarChart из реальных `result.ratios`, цветовое кодирование по порогам, WebSocket-синхронизация
-✅ **БД** — PostgreSQL 16, SQLAlchemy async, 2 миграции Alembic (`analyses` + индексы)
+✅ **БД** — PostgreSQL 16, SQLAlchemy async, 4 миграции Alembic (`analyses`, индексы, `multi_analysis_sessions`, DB hardening constraints/indexes)
 ✅ **Auth.tsx** — pre-flight `GET /api/analyses` с введённым ключом
 ✅ **CI/CD** — GitHub Actions: lint → test → security → build
 ✅ **Docker** — backend, frontend/nginx, db, db_test, ollama
@@ -79,6 +86,7 @@
   - `tests/test_llm_extractor.py`, `tests/test_llm_extractor_properties.py`, `tests/test_nlp_analysis.py`, `tests/test_nlp_analysis_coverage.py`, `tests/test_recommendations.py` → 128 passed
   - после PDF hardening: `tests/test_pdf_extractor.py` → 8 passed; `tests/test_scoring.py tests/test_pdf_extractor.py tests/test_api.py` → 21 passed
   - после corpus/regression dataset: `tests/test_pdf_regression_corpus.py` → 7 passed; `tests/test_pdf_extractor.py tests/test_pdf_regression_corpus.py tests/test_scoring.py tests/test_api.py` → 28 passed
+  - после DB hardening: `tests/test_api.py tests/test_analyses_router.py tests/test_routers_pdf_tasks.py tests/test_multi_analysis_db_errors.py tests/test_db_database.py tests/test_db_crud.py tests/test_app_coverage.py -q` → 75 passed
   - legacy `tests/test_tasks_coverage.py` остаётся устаревшим compatibility-suite и не отражает текущий product contract
 ✅ **Production Docker** — `Dockerfile.backend` (multi-stage), `Dockerfile.frontend` (multi-stage), `docker-compose.prod.yml`, `nginx.conf`, `scripts/deploy-prod.sh`
 ✅ **Production Frontend Image** — compose собирает frontend/Nginx образ сам, без внешнего `frontend/dist`

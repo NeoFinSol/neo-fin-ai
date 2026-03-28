@@ -69,6 +69,39 @@
 
 ## Решённые проблемы
 
+### DB read failures маскировались под `None`/ложный `404`, а pool-настройки применялись не полностью
+**Статус**: Решено ✅
+**Дата решения**: 2026-03-28
+**Корневая причина**:
+1. `get_analysis()` и `get_multi_session()` глотали `SQLAlchemyError` и возвращали `None`, после чего routers трактовали это как обычное отсутствие записи.
+2. `DB_POOL_TIMEOUT` и `DB_POOL_RECYCLE` логировались, но не передавались в `create_async_engine()`.
+3. FastAPI lifespan не вызывал `dispose_engine()`, поэтому pooled connections могли переживать shutdown/test teardown дольше, чем ожидалось.
+
+**Решение**:
+```python
+# src/db/crud.py
+except SQLAlchemyError:
+    raise
+
+# src/db/database.py
+create_async_engine(..., pool_timeout=pool_timeout, pool_recycle=pool_recycle)
+
+# src/app.py
+await dispose_engine()
+```
+
+**Где смотреть**:
+- `src/db/database.py`
+- `src/db/crud.py`
+- `src/db/models.py`
+- `migrations/versions/0004_harden_db_status_constraints.py`
+- `src/routers/analyses.py`
+- `src/routers/pdf_tasks.py`
+- `src/routers/multi_analysis.py`
+
+**Проверка**:
+- `python -m pytest tests/test_api.py tests/test_analyses_router.py tests/test_routers_pdf_tasks.py tests/test_multi_analysis_db_errors.py tests/test_db_database.py tests/test_db_crud.py tests/test_app_coverage.py -q`
+
 ### OCR helper мог склеивать числа через переносы строк и обходить page cap в fallback path
 **Статус**: Решено ✅
 **Дата решения**: 2026-03-28

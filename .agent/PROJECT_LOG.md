@@ -1,5 +1,45 @@
 # Project Log
 
+## 2026-03-28 — fix(db): harden persistence runtime and schema guards
+
+**Изменения:**
+- `src/db/database.py`:
+  - engine теперь реально применяет `DB_POOL_TIMEOUT` и `DB_POOL_RECYCLE`
+  - при `TESTING=1` предпочитает `TEST_DATABASE_URL`, чтобы не смешивать test/runtime traffic
+- `src/app.py`:
+  - lifespan вызывает `dispose_engine()` на shutdown
+  - request logging middleware больше не перехватывает exception flow поверх специализированных handlers
+- `src/db/models.py` + `migrations/versions/0004_harden_db_status_constraints.py`:
+  - status check constraints для `analyses` и `multi_analysis_sessions`
+  - lifecycle index `ix_multi_sessions_status_updated_at`
+  - ORM `updated_at` получил `onupdate=func.now()`
+- `src/db/crud.py`:
+  - `get_analysis()` и `get_multi_session()` больше не глотают SQLAlchemy read failures и не возвращают ложный `None`
+- router boundary:
+  - `src/routers/analyses.py`
+  - `src/routers/pdf_tasks.py`
+  - `src/routers/multi_analysis.py`
+  - SQLAlchemy failures переводятся в явный `DatabaseError`
+- `src/utils/error_handler.py`:
+  - catch-all handler регистрируется последним, чтобы специализированные DB handlers не деградировали в generic 500
+- Обновлены и расширены tests:
+  - `tests/test_db_database.py`
+  - `tests/test_db_crud.py`
+  - `tests/test_app_coverage.py`
+  - `tests/test_analyses_router.py`
+  - `tests/test_routers_pdf_tasks.py`
+  - `tests/test_multi_analysis_db_errors.py`
+- Обновлены документы:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `docs/CONFIGURATION.md`
+  - `.agent/overview.md`
+  - `.agent/local_notes.md`
+
+**Верификация:**
+- `python -m pytest tests/test_db_crud.py -q` → `12 passed`
+- `python -m pytest tests/test_api.py tests/test_analyses_router.py tests/test_routers_pdf_tasks.py tests/test_multi_analysis_db_errors.py tests/test_db_database.py tests/test_db_crud.py tests/test_app_coverage.py -q` → `75 passed`
+
 ## 2026-03-28 — test(pdf): add corpus regression pack for complex table layouts
 
 **Изменения:**

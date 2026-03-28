@@ -6,10 +6,12 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.auth import get_api_key
 from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
 from src.db.crud import create_analysis, get_analysis
+from src.exceptions import DatabaseError
 from src.tasks import process_pdf, cancel_task
 from src.utils.masking import mask_analysis_data
 
@@ -128,9 +130,13 @@ async def upload_pdf(
     task_id = str(uuid.uuid4())
     try:
         await create_analysis(task_id, "processing", {"filename": file.filename})
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.exception("Failed to create analysis record: %s", exc)
         # Clean up temp file if DB operation fails
+        await _cleanup_temp_file(tmp_path)
+        raise DatabaseError("Database operation failed") from exc
+    except Exception as exc:
+        logger.exception("Failed to create analysis record: %s", exc)
         await _cleanup_temp_file(tmp_path)
         raise HTTPException(status_code=500, detail="Failed to create analysis record")
 
@@ -145,7 +151,11 @@ async def get_result(
     api_key: str = Depends(get_api_key),
     request: Request = None  # keyword-only, not used directly (rate limiting via middleware)
 ):
-    analysis = await get_analysis(task_id)
+    try:
+        analysis = await get_analysis(task_id)
+    except SQLAlchemyError as exc:
+        logger.error("Failed to load result for task %s: %s", task_id, exc)
+        raise DatabaseError("Database operation failed") from exc
     if analysis is None:
         raise HTTPException(status_code=404, detail="Task not found")
     result = analysis.result if analysis.result and isinstance(analysis.result, dict) else {}
@@ -162,7 +172,11 @@ async def cancel_analysis(
     api_key: str = Depends(get_api_key),
 ):
     """Cancel an in-progress analysis task."""
-    analysis = await get_analysis(task_id)
+    try:
+        analysis = await get_analysis(task_id)
+    except SQLAlchemyError as exc:
+        logger.error("Failed to load task %s for cancellation: %s", task_id, exc)
+        raise DatabaseError("Database operation failed") from exc
     if analysis is None:
         raise HTTPException(status_code=404, detail="Task not found")
     if analysis.status not in ("processing", "uploading"):

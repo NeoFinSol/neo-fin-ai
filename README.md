@@ -26,6 +26,7 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 - **OCR Fallback**: автоматическое переключение на Tesseract при обнаружении сканов или невидимых текстовых слоёв
 - **OCR Hardening**: multiline-safe numeric extraction не склеивает соседние строки, а fallback OCR-batch соблюдает `MAX_OCR_PAGES`
 - **Regression Corpus**: сложные table layouts (note columns, year columns, RSBU line codes, garbled labels, OCR pseudo-tables) зафиксированы corpus-driven тестами
+- **DB Hardening**: async engine применяет pool timeout/recycle, тестовый runtime предпочитает `TEST_DATABASE_URL`, а persistence-boundary больше не маскирует DB failures под `not found`
 - Вычисляет 13 коэффициентов: ликвидность, рентабельность, финансовая устойчивость, деловая активность
 - Формирует интегральный скоринг 0–100 с оценкой достоверности (**Confidence Score**) и факторами влияния
 
@@ -60,6 +61,12 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 - **Token-aware compaction**: перед LLM удаляются page/year noise, дубли строк и low-signal OCR-фрагменты; narrative и recommendation prompts ужимаются до budget-friendly контекста
 - **Ресурсная эффективность**: Singleton-управление сессиями для AI-провайдеров, предотвращение port exhaustion
 - Поддерживаемые провайдеры: GigaChat, DeepSeek (HuggingFace), Ollama (offline)
+
+### Persistence и runtime hardening
+
+- `analyses` и `multi_analysis_sessions` защищены status constraints на уровне схемы; для lifecycle multi-session добавлен индекс `(status, updated_at)`
+- FastAPI lifespan теперь гарантированно вызывает `dispose_engine()` на shutdown, чтобы не оставлять висящие DB connections
+- Router boundary переводит ошибки чтения/записи БД в явный service-level failure вместо тихого `404`
 
 ### Многопериодный анализ
 
@@ -293,8 +300,11 @@ docker-compose -f docker-compose.prod.yml up -d --build
 | Переменная | По умолчанию | Описание |
 |---|---|---|
 | `DATABASE_URL` | — | PostgreSQL connection string (обязательно) |
+| `TEST_DATABASE_URL` | — | Отдельная БД для тестов; при `TESTING=1` имеет приоритет над `DATABASE_URL` |
 | `API_KEY` | — | Ключ доступа к API (обязательно) |
 | `CONFIDENCE_THRESHOLD` | `0.5` | Порог надёжности: показатели ниже исключаются из расчётов |
+| `DB_POOL_TIMEOUT` | `30` | Сколько ждать свободное DB connection из пула |
+| `DB_POOL_RECYCLE` | `3600` | Через сколько секунд пересоздавать stale connections |
 | `GIGACHAT_CLIENT_ID` | — | Client ID для GigaChat |
 | `GIGACHAT_CLIENT_SECRET` | — | Client Secret для GigaChat |
 | `HF_TOKEN` | — | HuggingFace API токен (DeepSeek) |

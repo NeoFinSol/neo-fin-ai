@@ -10,9 +10,11 @@ import tempfile
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.auth import get_api_key
 from src.db.crud import create_multi_session, get_multi_session
+from src.exceptions import DatabaseError
 from src.models.schemas import (
     MultiAnalysisAcceptedResponse,
     MultiAnalysisCompletedResponse,
@@ -51,7 +53,11 @@ async def start_multi_analysis(
         period_inputs.append(PeriodInput(period_label=label, file_path=tmp.name))
 
     session_id = str(uuid4())
-    await create_multi_session(session_id)
+    try:
+        await create_multi_session(session_id)
+    except SQLAlchemyError as exc:
+        logger.error("Failed to create multi-analysis session %s: %s", session_id, exc)
+        raise DatabaseError("Database operation failed") from exc
     background_tasks.add_task(process_multi_analysis, session_id, period_inputs)
     return MultiAnalysisAcceptedResponse(session_id=session_id, status="processing")
 
@@ -65,7 +71,11 @@ async def get_multi_analysis_status(
     _api_key: str = Depends(get_api_key),
 ) -> MultiAnalysisProcessingResponse | MultiAnalysisCompletedResponse:
     """Return current status of a multi-period analysis session."""
-    session = await get_multi_session(session_id)
+    try:
+        session = await get_multi_session(session_id)
+    except SQLAlchemyError as exc:
+        logger.error("Failed to load multi-analysis session %s: %s", session_id, exc)
+        raise DatabaseError("Database operation failed") from exc
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 

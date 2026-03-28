@@ -4,7 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from src.db.crud import create_analysis, get_analysis, update_analysis
+from src.db.crud import (
+    create_analysis,
+    create_multi_session,
+    get_analysis,
+    get_multi_session,
+    update_analysis,
+)
 
 
 class TestCreateAnalysis:
@@ -14,6 +20,7 @@ class TestCreateAnalysis:
     async def test_successful_creation(self):
         """Test successful analysis creation."""
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
         mock_session.refresh = AsyncMock()
         
@@ -46,6 +53,7 @@ class TestCreateAnalysis:
     async def test_creation_with_result(self):
         """Test creating analysis with result data."""
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
         mock_session.refresh = AsyncMock()
         
@@ -71,6 +79,7 @@ class TestCreateAnalysis:
     async def test_sqlalchemy_error_handling(self):
         """Test SQLAlchemyError handling."""
         mock_session = AsyncMock()
+        mock_session.add = MagicMock()
         mock_session.commit = AsyncMock(side_effect=SQLAlchemyError("Database connection failed"))
         mock_session.rollback = AsyncMock()
         
@@ -226,8 +235,8 @@ class TestGetAnalysis:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_sqlalchemy_error_returns_none(self):
-        """Test SQLAlchemyError returns None (graceful degradation)."""
+    async def test_get_sqlalchemy_error_raises(self):
+        """DB read errors should bubble up instead of masquerading as missing rows."""
         mock_session = AsyncMock()
         mock_session.scalar = AsyncMock(side_effect=SQLAlchemyError("Connection error"))
         
@@ -238,7 +247,46 @@ class TestGetAnalysis:
         mock_session_maker.return_value = mock_context_manager
         
         with patch('src.db.crud.get_session_maker', return_value=mock_session_maker):
-            result = await get_analysis("test-123")
-            
-            # get_analysis swallows exceptions and returns None
-            assert result is None
+            with pytest.raises(SQLAlchemyError):
+                await get_analysis("test-123")
+
+
+class TestMultiSessionCrud:
+    """Tests for multi-session CRUD helpers."""
+
+    @pytest.mark.asyncio
+    async def test_create_multi_session_defaults_to_processing(self):
+        """New sessions should start with processing status and zeroed progress."""
+        mock_session = AsyncMock()
+        mock_session.add = MagicMock()
+        mock_session.commit = AsyncMock()
+        mock_session.refresh = AsyncMock()
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            await create_multi_session("session-123")
+
+        created_obj = mock_session.add.call_args[0][0]
+        assert created_obj.status == "processing"
+        assert created_obj.progress == {"completed": 0, "total": 0}
+
+    @pytest.mark.asyncio
+    async def test_get_multi_session_sqlalchemy_error_raises(self):
+        """Session lookup must not hide DB failures behind 404 behaviour."""
+        mock_session = AsyncMock()
+        mock_session.scalar = AsyncMock(side_effect=SQLAlchemyError("Connection error"))
+
+        mock_session_maker = MagicMock()
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_context_manager.__aexit__ = AsyncMock(return_value=None)
+        mock_session_maker.return_value = mock_context_manager
+
+        with patch("src.db.crud.get_session_maker", return_value=mock_session_maker):
+            with pytest.raises(SQLAlchemyError):
+                await get_multi_session("session-123")

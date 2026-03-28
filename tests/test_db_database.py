@@ -50,7 +50,7 @@ class TestGetEngine:
             with pytest.raises(RuntimeError, match="Failed to create database engine"):
                 get_engine()
 
-    def test_default_database_url(self):
+    def test_default_database_url(self, monkeypatch):
         """Test get_engine uses DATABASE_URL from environment."""
         expected_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin"
 
@@ -59,6 +59,9 @@ class TestGetEngine:
         original_url = db_module.DATABASE_URL
         db_module._engine = None  # Reset to force re-creation
         db_module.DATABASE_URL = expected_url
+        monkeypatch.delenv("TESTING", raising=False)
+        monkeypatch.delenv("TEST_DATABASE_URL", raising=False)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
 
         try:
             with patch("src.db.database.create_async_engine") as mock_create:
@@ -69,6 +72,52 @@ class TestGetEngine:
                 assert call_args[0][0] == expected_url
         finally:
             db_module._engine = original_engine  # Restore
+            db_module.DATABASE_URL = original_url
+
+    def test_testing_prefers_test_database_url(self, monkeypatch):
+        """TESTING=1 should prefer TEST_DATABASE_URL to isolate test traffic."""
+        expected_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin_test"
+
+        import src.db.database as db_module
+        original_engine = db_module._engine
+        original_url = db_module.DATABASE_URL
+        db_module._engine = None
+        db_module.DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin"
+
+        monkeypatch.setenv("TESTING", "1")
+        monkeypatch.setenv("TEST_DATABASE_URL", expected_url)
+
+        try:
+            with patch("src.db.database.create_async_engine") as mock_create:
+                mock_create.return_value = MagicMock()
+                get_engine()
+                assert mock_create.call_args[0][0] == expected_url
+        finally:
+            db_module._engine = original_engine
+            db_module.DATABASE_URL = original_url
+
+    def test_engine_uses_pool_timeout_and_recycle(self):
+        """Configured pool timeout/recycle must be applied to the async engine."""
+        import src.db.database as db_module
+
+        original_engine = db_module._engine
+        original_url = db_module.DATABASE_URL
+        db_module._engine = None
+        db_module.DATABASE_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin"
+
+        try:
+            with patch("src.db.database.create_async_engine") as mock_create, \
+                 patch("src.db.database.async_sessionmaker") as mock_maker:
+                mock_create.return_value = MagicMock()
+
+                get_engine()
+
+                kwargs = mock_create.call_args.kwargs
+                assert kwargs["pool_timeout"] == 30
+                assert kwargs["pool_recycle"] == 3600
+                mock_maker.assert_called_once()
+        finally:
+            db_module._engine = original_engine
             db_module.DATABASE_URL = original_url
 
 

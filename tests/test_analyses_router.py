@@ -11,9 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.app import app
 from src.core.auth import get_api_key
+from src.exceptions import DatabaseError
+from src.routers.analyses import get_analysis_detail
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -94,6 +97,16 @@ class TestAnalysesDetail:
 
         assert response.status_code == 404
         assert response.json()["detail"] == "Analysis not found"
+
+    @pytest.mark.asyncio
+    async def test_db_failure_raises_database_error(self):
+        with patch(
+            "src.routers.analyses.get_analysis",
+            new_callable=AsyncMock,
+            side_effect=SQLAlchemyError("db down"),
+        ):
+            with pytest.raises(DatabaseError):
+                await get_analysis_detail("broken-task-id", _api_key=VALID_API_KEY)
 
 
 # ---------------------------------------------------------------------------
