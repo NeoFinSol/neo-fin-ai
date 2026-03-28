@@ -10,8 +10,8 @@ class TestHealthCheck:
     """Tests for GET /system/health."""
 
     def test_health_returns_ok(self):
-        client = TestClient(app)
-        response = client.get("/system/health")
+        with TestClient(app) as client:
+            response = client.get("/system/health")
         assert response.status_code == 200
         data = response.json()
         assert "status" in data
@@ -34,8 +34,8 @@ class TestHealthzCheck:
         with patch("src.routers.system.get_engine", return_value=mock_engine), \
              patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = True
-            client = TestClient(app)
-            response = client.get("/system/healthz")
+            with TestClient(app) as client:
+                response = client.get("/system/healthz")
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "healthy"
@@ -46,8 +46,8 @@ class TestHealthzCheck:
         with patch("src.routers.system.get_engine", side_effect=Exception("DB down")), \
              patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = False
-            client = TestClient(app)
-            response = client.get("/system/healthz")
+            with TestClient(app) as client:
+                response = client.get("/system/healthz")
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "degraded"
@@ -64,8 +64,8 @@ class TestHealthzCheck:
         with patch("src.routers.system.get_engine", return_value=mock_engine), \
              patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = False
-            client = TestClient(app)
-            response = client.get("/system/healthz")
+            with TestClient(app) as client:
+                response = client.get("/system/healthz")
             assert response.status_code == 200
             data = response.json()
             assert data["components"]["ai_service"] == "not_configured"
@@ -81,8 +81,8 @@ class TestHealthzCheck:
         with patch("src.routers.system.get_engine", return_value=mock_engine), \
              patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = True
-            client = TestClient(app)
-            response = client.get("/system/healthz")
+            with TestClient(app) as client:
+                response = client.get("/system/healthz")
             assert "timestamp" in response.json()
 
 
@@ -98,14 +98,14 @@ class TestReadinessCheck:
         mock_engine.connect = MagicMock(return_value=mock_conn)
 
         with patch("src.routers.system.get_engine", return_value=mock_engine):
-            client = TestClient(app)
-            response = client.get("/system/ready")
+            with TestClient(app) as client:
+                response = client.get("/system/ready")
             assert response.status_code == 200
             assert response.json() == {"status": "ready"}
 
     def test_not_ready_when_db_unavailable(self):
         with patch("src.routers.system.get_engine", side_effect=Exception("DB unavailable")):
-            client = TestClient(app)
-            response = client.get("/system/ready")
+            with TestClient(app) as client:
+                response = client.get("/system/ready")
             assert response.status_code == 503
             assert "not ready" in response.json()["detail"]

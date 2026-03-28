@@ -6,10 +6,13 @@ Requirements: 2.5, 2.9, 2.10, 2.11
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi.encoders import jsonable_encoder
+from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.auth import get_api_key
@@ -50,7 +53,17 @@ async def start_multi_analysis(
         content = await file.read()
         tmp.write(content)
         tmp.close()
-        period_inputs.append(PeriodInput(period_label=label, file_path=tmp.name))
+        try:
+            period_inputs.append(PeriodInput(period_label=label, file_path=tmp.name))
+        except ValidationError as exc:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                logger.warning("Failed to remove temp file after period validation error: %s", tmp.name)
+            raise HTTPException(
+                status_code=422,
+                detail=jsonable_encoder(exc.errors()),
+            ) from exc
 
     session_id = str(uuid4())
     try:

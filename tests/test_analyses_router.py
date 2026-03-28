@@ -64,8 +64,8 @@ class TestAnalysesAuth:
         app.dependency_overrides[get_api_key] = _auth_deny
         try:
             with patch("src.routers.analyses.get_analyses_list", new_callable=AsyncMock, return_value=([], 0)):
-                client = TestClient(app, raise_server_exceptions=False)
-                response = client.get("/analyses")
+                with TestClient(app, raise_server_exceptions=False) as client:
+                    response = client.get("/analyses")
         finally:
             app.dependency_overrides.pop(get_api_key, None)
         assert response.status_code == 401
@@ -74,8 +74,8 @@ class TestAnalysesAuth:
         app.dependency_overrides[get_api_key] = _auth_deny
         try:
             with patch("src.routers.analyses.get_analysis", new_callable=AsyncMock, return_value=None):
-                client = TestClient(app, raise_server_exceptions=False)
-                response = client.get("/analyses/some-task-id")
+                with TestClient(app, raise_server_exceptions=False) as client:
+                    response = client.get("/analyses/some-task-id")
         finally:
             app.dependency_overrides.pop(get_api_key, None)
         assert response.status_code == 401
@@ -93,8 +93,8 @@ class TestAnalysesDetail:
         app.dependency_overrides[get_api_key] = _auth_ok
         try:
             with patch("src.routers.analyses.get_analysis", new_callable=AsyncMock, return_value=None):
-                client = TestClient(app)
-                response = client.get("/analyses/nonexistent-id")
+                with TestClient(app) as client:
+                    response = client.get("/analyses/nonexistent-id")
         finally:
             app.dependency_overrides.pop(get_api_key, None)
 
@@ -129,8 +129,8 @@ class TestAnalysesTypedSummaryFallback:
                 new_callable=AsyncMock,
                 return_value=([analysis], 1),
             ):
-                client = TestClient(app)
-                response = client.get("/analyses?page=1&page_size=20")
+                with TestClient(app) as client:
+                    response = client.get("/analyses?page=1&page_size=20")
         finally:
             app.dependency_overrides.pop(get_api_key, None)
 
@@ -152,8 +152,8 @@ class TestAnalysesValidation:
     def test_page_non_integer_returns_422(self):
         app.dependency_overrides[get_api_key] = _auth_ok
         try:
-            client = TestClient(app)
-            response = client.get("/analyses?page=abc")
+            with TestClient(app) as client:
+                response = client.get("/analyses?page=abc")
         finally:
             app.dependency_overrides.pop(get_api_key, None)
         assert response.status_code == 422
@@ -161,8 +161,8 @@ class TestAnalysesValidation:
     def test_page_size_over_100_returns_422(self):
         app.dependency_overrides[get_api_key] = _auth_ok
         try:
-            client = TestClient(app)
-            response = client.get("/analyses?page_size=101")
+            with TestClient(app) as client:
+                response = client.get("/analyses?page_size=101")
         finally:
             app.dependency_overrides.pop(get_api_key, None)
         assert response.status_code == 422
@@ -220,8 +220,8 @@ def test_analyses_list_response_structure(analyses):
             new_callable=AsyncMock,
             return_value=(analyses, total),
         ):
-            client = TestClient(app)
-            response = client.get("/analyses?page=1&page_size=50")
+            with TestClient(app) as client:
+                response = client.get("/analyses?page=1&page_size=50")
     finally:
         app.dependency_overrides.pop(get_api_key, None)
         app.state.limiter.enabled = True
@@ -306,8 +306,8 @@ def test_analyses_sorted_by_created_at_desc(analyses):
             new_callable=AsyncMock,
             return_value=(analyses, total),
         ):
-            client = TestClient(app)
-            response = client.get(f"/analyses?page=1&page_size={total}")
+            with TestClient(app) as client:
+                response = client.get(f"/analyses?page=1&page_size={total}")
     finally:
         app.dependency_overrides.pop(get_api_key, None)
         app.state.limiter.enabled = True
@@ -388,8 +388,8 @@ def test_get_analysis_detail_roundtrip(analysis):
         ):
             # Ensure DEMO_MODE is off for a clean round-trip check
             with patch.dict("os.environ", {"DEMO_MODE": "0"}, clear=False):
-                client = TestClient(app)
-                response = client.get(f"/analyses/{analysis.task_id}")
+                with TestClient(app) as client:
+                    response = client.get(f"/analyses/{analysis.task_id}")
     finally:
         app.dependency_overrides.pop(get_api_key, None)
         app.state.limiter.enabled = True
