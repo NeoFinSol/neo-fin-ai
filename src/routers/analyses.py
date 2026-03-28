@@ -80,5 +80,5 @@ async def get_analysis_detail(
         task_id=analysis.task_id,
         status=analysis.status,
         created_at=analysis.created_at,
-        data=masked or None,
+        data=masked.get("data") if isinstance(masked, dict) else None,
     )

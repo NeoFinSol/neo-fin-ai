@@ -47,7 +47,7 @@ export interface ScoreFactor {
 
 export interface ScoreData {
   score: number;
-  risk_level: 'low' | 'medium' | 'high';
+  risk_level: 'low' | 'medium' | 'high' | 'critical';
   confidence_score: number;
   factors: ScoreFactor[];
   normalized_scores: Partial<Record<keyof FinancialRatios, number | null>>;
@@ -123,7 +123,7 @@ export interface AnalysisListResponse {
 // Requirement: 2.6
 // ---------------------------------------------------------------------------
 
-export type RiskLevel = 'low' | 'medium' | 'high';
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 
 export interface PeriodResult {
   period_label: string;

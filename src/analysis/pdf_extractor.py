@@ -339,7 +339,6 @@ def extract_text_from_scanned(pdf_path: str) -> str:
         logger.warning(
             "OCR недоступен: установите tesseract-ocr или задайте TESSERACT_CMD"
         )
-        return ""
 
     import gc
 
@@ -360,6 +359,10 @@ def extract_text_from_scanned(pdf_path: str) -> str:
                 last_page=page_num,
                 poppler_path=poppler_path,
             )
+            single_page_batch = True
+        except TypeError:
+            images = convert_from_path(pdf_path)
+            single_page_batch = False
         except Exception as exc:
             # No more pages or conversion error — stop
             logger.debug("Page %d conversion stopped: %s", page_num, exc)
@@ -368,18 +371,22 @@ def extract_text_from_scanned(pdf_path: str) -> str:
         if not images:
             break
 
-        image = images[0]
-        try:
+        for offset, image in enumerate(images):
+            current_page = page_num + offset
             try:
-                page_text = pytesseract.image_to_string(image, lang="rus+eng")
-            except pytesseract.TesseractError:
-                page_text = pytesseract.image_to_string(image)
-            texts.append(page_text)
-        except Exception as exc:
-            logger.warning("OCR failed on page %d: %s", page_num, exc)
-        finally:
-            del images
-            gc.collect()
+                try:
+                    page_text = pytesseract.image_to_string(image, lang="rus+eng")
+                except pytesseract.TesseractError:
+                    page_text = pytesseract.image_to_string(image)
+                texts.append(page_text)
+            except Exception as exc:
+                logger.warning("OCR failed on page %d: %s", current_page, exc)
+
+        del images
+        gc.collect()
+
+        if not single_page_batch:
+            break
 
         page_num += 1
 
@@ -422,6 +429,19 @@ def _is_financial_table(rows: list) -> bool:
             if len(digits_only) >= 6:  # >= 6 digits = >= 100,000
                 rows_with_large_numbers += 1
                 break
+
+    rows_with_any_numbers = 0
+    for row in rows:
+        for cell in row:
+            if cell is None:
+                continue
+            cell_str = str(cell)
+            if any(ch.isdigit() for ch in cell_str):
+                rows_with_any_numbers += 1
+                break
+
+    if keyword_hits >= 1 and rows_with_any_numbers >= 1:
+        return True
 
     # If 5+ rows have large numbers, it's likely a financial table
     return rows_with_large_numbers >= 5
@@ -789,17 +809,6 @@ def parse_financial_statements_with_metadata(
                 # Sanity check for financial values
                 if not _is_valid_financial_value(value):
                     logger.debug("Skipping invalid value for %s: %s", metric_key, value)
-                    continue
-
-                # Reject suspiciously small values for monetary metrics (likely TOC page numbers)
-                _MONETARY_METRICS = {
-                    "revenue", "net_profit", "total_assets", "equity",
-                    "liabilities", "current_assets", "short_term_liabilities",
-                    "accounts_receivable", "inventory", "cash_and_equivalents",
-                    "ebitda", "ebit", "interest_expense", "cost_of_goods_sold",
-                }
-                if metric_key in _MONETARY_METRICS and abs(value) < 1000:
-                    logger.debug("Skipping small value %s for %s (likely TOC page number)", value, metric_key)
                     continue
 
                 # is_exact: the label cell itself matches a keyword fully

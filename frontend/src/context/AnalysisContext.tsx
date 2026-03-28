@@ -130,13 +130,17 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 attempts += 1;
 
                 try {
-                    const pollResponse = await apiClient.get<{ status: string; result?: AnalysisData }>(`/result/${taskId}`);
+                    const pollResponse = await apiClient.get<{
+                        status: string;
+                        data?: AnalysisData;
+                        error?: string;
+                    }>(`/result/${taskId}`);
                     const taskStatus = pollResponse.data.status;
 
                     if (cancelled || cancelledRef.current) return;
 
                     if (taskStatus === 'completed') {
-                        setResult(pollResponse.data.result ?? null);
+                        setResult(pollResponse.data.data ?? null);
                         setStatus('completed');
                         notifications.update({
                             id: 'pdf-analysis',
@@ -147,7 +151,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                             autoClose: 5000,
                         });
                     } else if (taskStatus === 'failed') {
-                        const msg = 'Задача завершилась с ошибкой';
+                        const msg = pollResponse.data.error || 'Задача завершилась с ошибкой';
                         setError(msg);
                         setStatus('failed');
                         notifications.update({

@@ -73,11 +73,11 @@ class TestTranslateRatios:
         assert result["current_ratio"] == 1.5
         assert result["roa"] == 0.08
 
-    def test_unknown_keys_kept(self, caplog):
+    def test_unknown_keys_dropped(self, caplog):
         ratios = {"Unknown Key": 42.0}
         with caplog.at_level("WARNING"):
             result = translate_ratios(ratios)
-        assert "Unknown Key" in result
+        assert result == {}
         assert "Unmapped ratio keys" in caplog.text
 
     def test_empty_dict(self):

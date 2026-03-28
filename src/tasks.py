@@ -25,7 +25,13 @@ from src.analysis.scoring import (
     build_score_payload
 )
 from src.core.ws_manager import ws_manager
-from src.db.crud import create_analysis, update_analysis, update_multi_session, AnalysisAlreadyExistsError
+from src.db.crud import (
+    AnalysisAlreadyExistsError,
+    create_analysis,
+    get_analysis,
+    update_analysis,
+    update_multi_session,
+)
 from src.models.settings import app_settings
 from src.analysis.llm_extractor import extract_with_llm, is_clean_financial_text
 from src.core.ai_service import ai_service
@@ -82,7 +88,7 @@ async def _ensure_analysis_exists(task_id: str) -> bool:
     Returns:
         bool: True if record exists/created, False if DB unavailable
     """
-    existing = await update_analysis(task_id, "processing", None)
+    existing = await get_analysis(task_id)
     if existing is not None:
         return True
     
@@ -136,6 +142,13 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             _clear_cancelled(task_id)
             return
 
+        await ws_manager.broadcast(task_id, {
+            "type": "status_update",
+            "task_id": task_id,
+            "status": "extracting",
+            "progress": 25,
+        })
+
         # 1. Extraction Phase
         extraction_results = await _run_extraction_phase(file_path, task_logger)
         text = extraction_results["text"]
@@ -150,6 +163,13 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             _clear_cancelled(task_id)
             return
 
+        await ws_manager.broadcast(task_id, {
+            "type": "status_update",
+            "task_id": task_id,
+            "status": "scoring",
+            "progress": 55,
+        })
+
         # 2. Ratios & Scoring Phase
         scoring_results = await _run_scoring_phase(metrics_filtered, task_logger)
         ratios_en = scoring_results["ratios_en"]
@@ -161,12 +181,24 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             _clear_cancelled(task_id)
             return
 
+        await ws_manager.broadcast(task_id, {
+            "type": "status_update",
+            "task_id": task_id,
+            "status": "analyzing",
+            "progress": 80,
+        })
+
         # 3. AI Analysis Phase
         nlp_result = await _run_ai_analysis_phase(text, metrics_filtered, ratios_en, task_logger)
 
         # 4. Save & Notify
         total_duration = (time.monotonic() - start_time) * 1000
+        analysis_record = await get_analysis(task_id)
+        filename = None
+        if analysis_record and isinstance(analysis_record.result, dict):
+            filename = analysis_record.result.get("filename")
         result_payload = {
+            "filename": filename,
             "data": {
                 "scanned": scanned,
                 "text": text[:5000],
@@ -329,7 +361,7 @@ async def _run_ai_analysis_phase(text: str, extracted_metrics: dict, ratios: dic
     try:
         recommendations = await asyncio.wait_for(
             generate_recommendations(extracted_metrics, ratios, nlp_result),
-            timeout=65.0
+            timeout=90.0
         )
         nlp_result["recommendations"] = recommendations
     except Exception as e:
@@ -540,7 +572,7 @@ async def process_multi_analysis(
         session_logger.error("Session failed: all %d periods failed", total, extra={"duration_ms": total_duration})
         metrics.record_task_failure()
     elif failed_count > 0:
-        final_status = "completed_with_errors"
+        final_status = "completed"
         session_logger.warning(
             "Session completed with errors: %d/%d periods failed",
             failed_count, total,

@@ -72,6 +72,7 @@ export const DetailedReport = ({ result, filename, multiSessionId }: DetailedRep
             case 'low': return '#00714d';
             case 'medium': return '#f59e0b';
             case 'high': return '#ba1a1a';
+            case 'critical': return '#8b0000';
             default: return '#6b7280';
         }
     };
@@ -81,6 +82,7 @@ export const DetailedReport = ({ result, filename, multiSessionId }: DetailedRep
             case 'low': return '#6cf8bb';
             case 'medium': return '#fef3c7';
             case 'high': return '#ffdad6';
+            case 'critical': return '#ffd7d7';
             default: return '#f3f4f6';
         }
     };
@@ -225,10 +227,16 @@ export const DetailedReport = ({ result, filename, multiSessionId }: DetailedRep
                                                 border: 'none', fontWeight: 700
                                             }}
                                         >
-                                            {result.score.risk_level === 'low' ? 'НИЗКИЙ РИСК' : result.score.risk_level === 'medium' ? 'СРЕДНИЙ РИСК' : 'ВЫСОКИЙ РИСК'}
+                                            {result.score.risk_level === 'low'
+                                                ? 'НИЗКИЙ РИСК'
+                                                : result.score.risk_level === 'medium'
+                                                    ? 'СРЕДНИЙ РИСК'
+                                                    : result.score.risk_level === 'high'
+                                                        ? 'ВЫСОКИЙ РИСК'
+                                                        : 'КРИТИЧЕСКИЙ РИСК'}
                                         </Badge>
                                         <Text c="dimmed" size="sm" ta="center" mt="md" style={{ maxWidth: 300 }}>
-                                            Компания демонстрирует {result.score.risk_level === 'low' ? 'стабильные' : 'неоднозначные'} показатели финансовой устойчивости.
+                                            Компания демонстрирует {result.score.risk_level === 'low' ? 'стабильные' : 'требующие внимания'} показатели финансовой устойчивости.
                                         </Text>
                                     </Stack>
 

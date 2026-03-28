@@ -1,5 +1,52 @@
 # Project Log
 
+## 2026-03-28 — fix(product): align contracts, ws lifecycle, pdf parsing and docker migrate image
+
+**Изменения:**
+- Синхронизированы frontend/backend контракты:
+  - `frontend/src/api/interfaces.ts` теперь учитывает `critical` risk level
+  - `frontend/src/context/AnalysisContext.tsx` читает `data` из `/result/{task_id}`, а не несуществующее `result`
+  - `frontend/src/pages/DetailedReport.tsx` и `frontend/src/pages/AnalysisHistory.tsx` корректно рендерят `critical`
+  - `src/routers/analyses.py` возвращает inner `data` payload для detail endpoint
+- Улучшен orchestration lifecycle:
+  - `src/tasks.py` шлёт промежуточные WebSocket-статусы `extracting`, `scoring`, `analyzing`
+  - `process_multi_analysis()` нормализован на `completed` даже при частичных period errors
+  - outer timeout рекомендаций в `tasks.py` выровнен до `90s`
+- Стабилизирован PDF/OCR pipeline:
+  - `src/analysis/pdf_extractor.py` поддерживает mock-friendly fallback без page kwargs
+  - ослаблен overly-strict filter для малых table-extracted monetary values
+  - эвристика `_is_financial_table()` принимает компактные финансовые таблицы с keyword + numeric row
+- Исправлен Docker migration path:
+  - `Dockerfile.backend` копирует `entrypoint.sh` и делает его executable
+- Актуализированы тесты под текущий product contract:
+  - `tests/test_scoring.py`
+  - `tests/test_tasks.py`
+  - `tests/test_analyses_router.py`
+
+**Верификация:**
+- `python -m pytest tests/test_scoring.py tests/test_pdf_extractor.py tests/test_api.py -q` → `18 passed`
+- `python -m pytest tests/test_analyses_router.py tests/test_tasks.py -q` → `27 passed`
+- `docker compose -f docker-compose.yml config`
+- `docker compose -f docker-compose.prod.yml config`
+
+## 2026-03-28 — docs(cleanup): migrate autopilot foundation to codex-autopilot
+
+**Изменения:**
+- Reusable Autopilot foundation перенесён в отдельный репозиторий
+  `E:\\codex-autopilot`.
+- Из `NeoFin AI` удалён experimental Autopilot bundle:
+  - `.agent/autopilot.py`
+  - `.agent/choose_model_for_subagent.py`
+  - `.codex/`
+  - `docs_autopilot/`
+  - legacy Autopilot tests
+- Обновлены `AGENTS.md`, `.agent/overview.md` и `.agent/subagents/README.md`,
+  чтобы `NeoFin AI` больше не выглядел source of truth для Autopilot R&D.
+
+**Верификация:**
+- reusable runtime/model-selection foundation проверен в `E:\\codex-autopilot`:
+  `python -m pytest` → `19 passed`
+
 ## 2026-03-28 — Sprint 1 / Task 1.4: full diagnostic exec mode
 
 **Изменения:**

@@ -27,6 +27,7 @@ function getStatusBadge(riskLevel: string | null) {
     low: { bg: '#6cf8bb', c: '#00714d', label: 'НИЗКИЙ', icon: <FileCheck size={12} /> },
     medium: { bg: '#fef3c7', c: '#f59e0b', label: 'СРЕДНИЙ', icon: <Hourglass size={12} /> },
     high: { bg: '#ffdad6', c: '#ba1a1a', label: 'ВЫСОКИЙ', icon: <XCircle size={12} /> },
+    critical: { bg: '#ffd7d7', c: '#8b0000', label: 'КРИТИЧЕСКИЙ', icon: <AlertCircle size={12} /> },
   };
   const cfg = riskLevel ? (labels[riskLevel] ?? labels.medium) : labels.medium;
   return (

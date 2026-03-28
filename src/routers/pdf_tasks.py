@@ -127,7 +127,7 @@ async def upload_pdf(
 
     task_id = str(uuid.uuid4())
     try:
-        await create_analysis(task_id, "processing", None)
+        await create_analysis(task_id, "processing", {"filename": file.filename})
     except Exception as exc:
         logger.exception("Failed to create analysis record: %s", exc)
         # Clean up temp file if DB operation fails

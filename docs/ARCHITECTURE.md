@@ -621,13 +621,20 @@ Nginx читает сертификаты из volume `/etc/nginx/certs`. При
 ### Запуск production
 
 ```bash
-./scripts/start-prod.sh
+./scripts/deploy-prod.sh
 # Проверяет наличие .env — завершается с ошибкой если файл отсутствует
 # docker-compose -f docker-compose.prod.yml up -d --build
-# Применяет миграции Alembic после старта backend
+# Запускает backend-migrate отдельным контейнером перед стартом backend
 ```
 
 После запуска система доступна на порту 80 без дополнительной настройки.
+
+### Операционные заметки после audit wave 1
+
+- `backend-migrate` зависит от наличия `entrypoint.sh` внутри backend image; `Dockerfile.backend` должен копировать этот файл и делать его executable.
+- `GET /analyses/{task_id}` возвращает inner payload `result.data`, а не целиком JSONB-объект результата.
+- `tasks.py` шлёт промежуточные WebSocket-статусы `extracting`, `scoring`, `analyzing` до финального `completed|failed`.
+- `process_multi_analysis()` нормализует частично успешные сессии к статусу `completed`, а ошибки отдельных периодов остаются внутри `periods[].error`.
 
 ---
 

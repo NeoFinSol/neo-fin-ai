@@ -2,6 +2,21 @@
 
 ## Активные проблемы
 
+### WindowsApps executables в Codex сессии могут падать с Access denied
+**Статус**: 🟡 Известно
+**Дата**: 2026-03-28
+**Проблема**: Часть бинарников, найденных в `C:\Program Files\WindowsApps\...`, существует и видна через `where.exe`/`Get-Command`, но subprocess запуск из текущей Codex desktop сессии может падать с `[WinError 5] Отказано в доступе`.
+**Где проявилось**:
+- `codex.exe --version` из experimental Autopilot spike до миграции в `E:\codex-autopilot`
+- `rg.exe` из WindowsApps при локальном exploratory search
+**Временное решение**:
+- для служебного поиска использовать PowerShell cmdlets (`Get-ChildItem`, `Select-String`) вместо проблемного бинарника
+- в `CodexCliAdapter` возвращать явную диагностическую ошибку через `availability_error()`, а не считать runtime silently available
+- если установлен standalone `npm i -g @openai/codex`, предпочитать его shim из `PATH` (`codex.cmd`) вместо WindowsApps binary
+- для `codex exec` версии `0.117.0` не передавать `-a/--ask-for-approval`: этот флаг есть у верхнего `codex`, но subcommand `exec` его не принимает
+
+---
+
 ### Celery + Redis Migration
 **Статус**: 🔵 Запланировано
 **Проблема**: Текущие `BackgroundTasks` выполняются в памяти и теряются при перезагрузке сервера.
@@ -16,7 +31,35 @@
 
 ---
 
+### BOM в `.flake8`
+**Статус**: 🟡 Известно
+**Дата**: 2026-03-28
+**Проблема**: `python -m flake8 --config=.flake8 ...` падает с `MissingSectionHeaderError`.
+**Причина**: файл `.flake8` сохранён с UTF-8 BOM, и текущий `flake8` в этой среде читает первую строку как `\ufeff[flake8]`.
+**Временное решение**: запускать `flake8` в `--isolated` режиме и явно передавать ключевые параметры CLI, например `--max-line-length=100`.
+
+---
+
+### `docker compose config` раскрывает секреты из локального `.env`
+**Статус**: 🟡 Известно
+**Дата**: 2026-03-28
+**Проблема**: команда рендерит итоговый compose c уже подставленными env-значениями, поэтому при ручной диагностике/копировании в чат легко утечь чувствительные значения.
+**Где проявилось**:
+- `docker compose -f docker-compose.yml config`
+- `docker compose -f docker-compose.prod.yml config`
+**Временное решение**:
+- не логировать полный вывод `docker compose config` в issue/чатах
+- при проверке compose смотреть только structural sections или локально фильтровать чувствительные поля
+- при будущей hardening-итерации рассмотреть `secrets`/`_FILE` pattern для production
+
+---
+
 ## Решённые проблемы
+
+### Сбой shell-команд в sandbox Codex сессии
+**Дата**: 2026-03-28
+**Проблема**: В этой сессии базовые команды PowerShell в sandbox возвращали `Exit code: 1` без вывода.
+**Решение**: Для чтения/редактирования файлов использовать команды вне sandbox (эскалация), после чего работа продолжилась штатно.
 
 ### Утечка ресурсов в GigaChat (БАГ 15)
 **Дата**: 2026-03-26

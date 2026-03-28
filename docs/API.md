@@ -377,7 +377,7 @@ curl "http://localhost:8000/analyses?page=1&page_size=10" \
 
 ### GET /analyses/{task_id}
 
-Полные данные анализа по `task_id`. Структура поля `data` аналогична ответу `GET /result/{task_id}`.
+Полные данные анализа по `task_id`. Endpoint возвращает inner analysis payload из `result.data`, без внешней обёртки `filename`/`data`.
 
 **Запрос**
 
@@ -397,6 +397,7 @@ X-API-Key: <ключ>
   "status": "completed",
   "created_at": "2024-03-15T10:30:00Z",
   "data": {
+    "scanned": false,
     "metrics": {...},
     "ratios": {...},
     "score": {...},
@@ -425,29 +426,23 @@ curl http://localhost:8000/analyses/550e8400-e29b-41d4-a716-446655440000 \
 
 ### POST /multi-analysis
 
-Запуск анализа для нескольких финансовых периодов. Принимает список меток периодов и запускает последовательную обработку в фоне.
+Запуск анализа для нескольких финансовых периодов. Принимает набор PDF-файлов и метки периодов, запускает последовательную обработку в фоне.
 
 **Запрос**
 
 ```
-Content-Type: application/json
+Content-Type: multipart/form-data
 X-API-Key: <ключ>
-```
-
-```json
-{
-  "periods": [
-    {"period_label": "2022"},
-    {"period_label": "2023"},
-    {"period_label": "Q1/2024"}
-  ]
-}
 ```
 
 | Поле | Тип | Ограничения | Описание |
 |---|---|---|---|
-| `periods` | array | 1–5 элементов | Список периодов для анализа |
-| `periods[].period_label` | string | 1–20 символов, не пустая строка | Метка периода. Рекомендуемые форматы: `YYYY` или `Q{N}/YYYY` |
+| `files` | repeated file field | 1–5 элементов | PDF-файлы отчётности, по одному на период |
+| `periods` | repeated string field | 1–5 элементов | Метки периодов в том же порядке, что и `files` |
+
+**Правила:**
+- количество `files` и `periods` должно совпадать
+- метка периода: 1–20 символов, рекомендуемые форматы `YYYY` или `Q{N}/YYYY`
 
 **Ответ `202 Accepted`**
 
@@ -463,15 +458,17 @@ X-API-Key: <ключ>
 | Код | Причина |
 |---|---|
 | `400` | Некорректный формат запроса |
-| `422` | Число периодов < 1 или > 5; `period_label` пустая строка или длиннее 20 символов |
+| `422` | Число периодов < 1 или > 5; количество `files` и `periods` не совпадает; `period_label` пустая строка или длиннее 20 символов |
 
 **Пример**
 
 ```bash
 curl -X POST http://localhost:8000/multi-analysis \
   -H "X-API-Key: secret" \
-  -H "Content-Type: application/json" \
-  -d '{"periods": [{"period_label": "2022"}, {"period_label": "2023"}]}'
+  -F "files=@report_2022.pdf" \
+  -F "files=@report_2023.pdf" \
+  -F "periods=2022" \
+  -F "periods=2023"
 ```
 
 ---

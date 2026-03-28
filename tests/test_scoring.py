@@ -35,7 +35,7 @@ def test_calculate_integral_score_empty():
     score = calculate_integral_score({})
 
     assert score["score"] == 0.0
-    assert score["risk_level"] == "высокий"
+    assert score["risk_level"] == "критический"
     assert score["details"] == {}
 
 

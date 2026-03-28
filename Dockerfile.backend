@@ -72,9 +72,11 @@ COPY --from=build /app/venv /app/venv
 COPY src ./src
 COPY alembic.ini .
 COPY migrations ./migrations
+COPY entrypoint.sh ./entrypoint.sh
 
 # Create non-root user for security (run as unprivileged user)
 RUN useradd --create-home --shell /bin/bash appuser \
+    && chmod +x /app/entrypoint.sh \
     && chown -R appuser:appuser /app
 
 # Switch to non-root user

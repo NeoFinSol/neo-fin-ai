@@ -306,7 +306,7 @@ _result_strategy = st.one_of(
             "ratios": _metrics_strategy,
             "score": st.fixed_dictionaries({
                 "score": st.floats(min_value=0.0, max_value=100.0, allow_nan=False),
-                "risk_level": st.sampled_from(["low", "medium", "high"]),
+                "risk_level": st.sampled_from(["low", "medium", "high", "critical"]),
                 "factors": st.just([]),
                 "normalized_scores": st.just({}),
             }),
@@ -356,8 +356,13 @@ def test_get_analysis_detail_roundtrip(analysis):
     assert body["task_id"] == analysis.task_id
     assert body["status"] == analysis.status
 
-    # data must equal the (unmasked) result from DB
-    expected_data = _mask(analysis.result or {}, False) or None
+    # data must equal the inner analysis payload from DB result["data"]
+    masked_result = _mask(analysis.result or {}, False) or None
+    expected_data = (
+        masked_result.get("data")
+        if isinstance(masked_result, dict)
+        else None
+    )
     if expected_data == {}:
         expected_data = None
     assert body["data"] == expected_data
