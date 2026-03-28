@@ -5,7 +5,7 @@
 Все параметры задаются через переменные окружения.
 
 - **Локально:** файл `.env` в корне репозитория
-- **Production:** переменные окружения контейнера или secrets-менеджер
+- **Продакшн:** переменные окружения контейнера или менеджер секретов
 
 ```bash
 cp .env.example .env
@@ -23,10 +23,10 @@ cp .env.example .env
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
 |---|---|---|:---:|---|
-| `DATABASE_URL` | `string` | — | ✅ | PostgreSQL connection string. Формат: `postgresql+asyncpg://user:pass@host:5432/dbname` |
-| `TEST_DATABASE_URL` | `string` | — | — | Отдельный connection string для тестов. При `TESTING=1` используется вместо `DATABASE_URL`, если задан |
+| `DATABASE_URL` | `string` | — | ✅ | Строка подключения к PostgreSQL. Формат: `postgresql+asyncpg://user:pass@host:5432/dbname` |
+| `TEST_DATABASE_URL` | `string` | — | — | Отдельная строка подключения для тестов. При `TESTING=1` используется вместо `DATABASE_URL`, если задана |
 | `API_KEY` | `string` | — | ✅ | Ключ аутентификации. Передаётся в заголовке `X-API-Key` |
-| `CONFIDENCE_THRESHOLD` | `float` | `0.5` | — | Минимальный confidence score для включения показателя в расчёт. Диапазон: `[0.0, 1.0]` |
+| `CONFIDENCE_THRESHOLD` | `float` | `0.5` | — | Минимальный уровень достоверности для включения показателя в расчёт. Диапазон: `[0.0, 1.0]` |
 | `DEV_MODE` | `bool` | `false` | — | Режим разработки: отключает проверку `API_KEY`, разрешает CORS `*` |
 | `DEMO_MODE` | `int` | `0` | — | При `1` — маскирует числовые данные в ответах API |
 
@@ -34,16 +34,16 @@ cp .env.example .env
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
 |---|---|---|:---:|---|
-| `DB_POOL_SIZE` | `int` | `5` | — | Базовый размер async connection pool |
-| `DB_MAX_OVERFLOW` | `int` | `10` | — | Дополнительные burst-connections сверх `DB_POOL_SIZE` |
+| `DB_POOL_SIZE` | `int` | `5` | — | Базовый размер пула подключений |
+| `DB_MAX_OVERFLOW` | `int` | `10` | — | Дополнительные подключения сверх `DB_POOL_SIZE` при всплеске нагрузки |
 | `DB_POOL_TIMEOUT` | `int` | `30` | — | Сколько секунд ждать свободное соединение перед ошибкой пула |
 | `DB_POOL_RECYCLE` | `int` | `3600` | — | Через сколько секунд пересоздавать stale pooled connections |
 | `DB_POOL_PRE_PING` | `bool` | `true` | — | Проверять соединение перед выдачей из пула |
 
 Поведение:
 - `DB_POOL_TIMEOUT` и `DB_POOL_RECYCLE` реально прокидываются в `create_async_engine()`
-- при невалидных значениях применяются безопасные defaults и логируется `WARNING`
-- при `TESTING=1` с заданным `TEST_DATABASE_URL` pool создаётся поверх тестовой БД, а не production/local `DATABASE_URL`
+- при невалидных значениях применяются безопасные значения по умолчанию и логируется `WARNING`
+- при `TESTING=1` с заданным `TEST_DATABASE_URL` пул создаётся поверх тестовой БД, а не основной `DATABASE_URL`
 
 ### Очистка зависших задач
 
@@ -54,8 +54,8 @@ cp .env.example .env
 | `MULTI_SESSION_STALE_HOURS` | `int` | `24` | — | Через сколько часов `multi_analysis_sessions` в `processing` считаются stale |
 
 Поведение:
-- используются `scripts/admin_cleanup.py` и maintenance-модулем как defaults
-- должны быть положительными целыми числами; при невалидных значениях применяются безопасные defaults и логируется `WARNING`
+- используются `scripts/admin_cleanup.py` и модулем обслуживания как значения по умолчанию
+- должны быть положительными целыми числами; при невалидных значениях применяются безопасные значения по умолчанию и логируется `WARNING`
 - v1 cleanup job использует только stale in-progress policy и не удаляет completed history по умолчанию
 
 ---
@@ -65,7 +65,7 @@ cp .env.example .env
 Провайдер выбирается автоматически при старте в порядке приоритета:
 
 ```
-GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degrade
+GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → мягкая деградация
 ```
 
 Если ни один провайдер не настроен — NLP-анализ отключается. Числовой анализ (коэффициенты, скоринг) продолжается в полном объёме.
@@ -106,7 +106,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
 | `LLM_URL` | `string` | `http://localhost:11434/api/generate` | — | URL Ollama API |
 | `LLM_MODEL` | `string` | `llama3` | — | Имя модели: `deepseek-r1:7b`, `llama3`, `mistral` и др. |
 
-Условие активации: задан `LLM_URL`. Работает полностью offline без внешних зависимостей.
+Условие активации: задан `LLM_URL`. Работает полностью локально, без внешних зависимостей.
 
 ---
 
@@ -118,7 +118,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
 | `API_PORT` | `int` | `8000` | — | Порт FastAPI |
 | `RATE_LIMIT` | `string` | `100/minute` | — | Лимит запросов. Формат: `<N>/<second\|minute\|hour\|day>` |
 | `LOG_LEVEL` | `string` | `INFO` | — | Уровень логирования: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
-| `LOG_FORMAT` | `string` | `text` | — | Формат логов: `text` (dev) или `json` (production) |
+| `LOG_FORMAT` | `string` | `text` | — | Формат логов: `text` (локально) или `json` (продакшн) |
 
 ---
 
@@ -147,10 +147,10 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
    → Использовать HuggingFace (Qwen/Qwen3.5-9B-Instruct)
 
 3. LLM_URL задан?
-   → Использовать Ollama (offline)
+   → Использовать Ollama (локальный режим)
 
 4. Ни один провайдер не настроен?
-   → NLP-анализ отключён (graceful degrade)
+   → NLP-анализ отключён (мягкая деградация)
       Возвращаются пустые списки: risks=[], recommendations=[]
       Числовой анализ продолжается без изменений
 ```
@@ -171,7 +171,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
 
 **Правило фильтрации:** `confidence >= threshold` → показатель включается в расчёт. Иначе — подставляется `None`.
 
-| Confidence | Метод извлечения | Тип источника | При пороге `0.5` |
+| Достоверность | Метод извлечения | Тип источника | При пороге `0.5` |
 |:---:|---|---|:---:|
 | `0.9` | Точное совпадение ключевого слова в таблице | `table_exact` | ✅ включается |
 | `0.7` | Частичное совпадение в таблице | `table_partial` | ✅ включается |
@@ -179,7 +179,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → graceful degr
 | `0.3` | Производный расчёт (например, обязательства = активы − капитал) | `derived` | ❌ исключается |
 
 **Важно:**
-- Исключённые показатели **не удаляются** из ответа API — они присутствуют в `extraction_metadata` с фактическим confidence score
+- Исключённые показатели **не удаляются** из ответа API — они присутствуют в `extraction_metadata` с фактическим уровнем достоверности
 - В расчёт коэффициентов вместо исключённого значения подставляется `None`
 - Коэффициент, зависящий от `None`-показателя, также принимает значение `None`
 - При невалидном значении переменной система применяет `0.5` и логирует `WARNING`
@@ -211,7 +211,7 @@ GIGACHAT_CLIENT_SECRET=your-client-secret
 HF_TOKEN=hf_your_token_here
 HF_MODEL=Qwen/Qwen3.5-9B-Instruct
 
-# ── Ollama — offline (приоритет 3) ────────────────────────
+# ── Ollama — локальный режим (приоритет 3) ─────────────────
 LLM_URL=http://ollama:11434/api/generate
 LLM_MODEL=llama3
 
@@ -222,7 +222,7 @@ RATE_LIMIT=100/minute
 LOG_LEVEL=INFO
 LOG_FORMAT=json
 
-# ── SSL (production) ──────────────────────────────────────
+# ── SSL (продакшн) ────────────────────────────────────────
 SSL_CERT_PATH=/etc/nginx/certs/cert.pem
 SSL_KEY_PATH=/etc/nginx/certs/key.pem
 ```
