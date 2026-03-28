@@ -297,6 +297,104 @@ def _build_empty_result() -> dict[str, ExtractionMetadata]:
     }
 
 
+def _line_dedup_key(line: str) -> str:
+    """Create a normalised key for line-level deduplication."""
+    return re.sub(r"\s+", " ", line).strip().lower()
+
+
+def _is_likely_noise_line(line: str) -> bool:
+    """Return True for headers/footers that add little value to the LLM prompt."""
+    compact = line.strip()
+    if not compact:
+        return True
+
+    if any(pattern.fullmatch(compact) for pattern in _NOISE_LINE_PATTERNS):
+        return True
+
+    punctuation = sum(1 for char in compact if not char.isalnum() and not char.isspace())
+    if compact and punctuation / len(compact) > 0.35:
+        return True
+
+    return False
+
+
+def _score_financial_line(line: str) -> int:
+    """Score a line by how likely it is to help extraction or narrative analysis."""
+    lowered = line.lower()
+    keyword_hits = sum(1 for keyword in _FINANCIAL_KEYWORDS if keyword in lowered)
+    digit_groups = len(re.findall(r"\d{3,}", line))
+    money_units = len(re.findall(r"\b(?:руб|тыс|млн|млрд)\.?\b", lowered))
+    structured_bonus = 2 if ":" in line or "|" in line or "\t" in line else 0
+    return keyword_hits * 4 + digit_groups * 2 + money_units * 2 + structured_bonus
+
+
+def _split_oversized_paragraph(
+    paragraph: str,
+    chunk_size: int,
+    overlap: int,
+) -> list[str]:
+    """Split a paragraph that exceeds chunk_size into overlapping slices."""
+    if len(paragraph) <= chunk_size:
+        return [paragraph]
+
+    safe_overlap = max(0, min(overlap, max(chunk_size - 1, 0)))
+    step = max(chunk_size - safe_overlap, 1)
+    chunks: list[str] = []
+
+    for start in range(0, len(paragraph), step):
+        part = paragraph[start:start + chunk_size]
+        if not part:
+            break
+        chunks.append(part)
+        if start + chunk_size >= len(paragraph):
+            break
+
+    return chunks
+
+
+def _compact_financial_lines(
+    lines: list[str],
+    max_chars: int | None,
+    max_lines: int,
+) -> list[str]:
+    """Keep the highest-signal lines while preserving document order."""
+    candidates: list[tuple[int, int, str]] = []
+    seen: set[str] = set()
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if len(stripped) < 5 or _is_likely_noise_line(stripped):
+            continue
+
+        lowered = stripped.lower()
+        has_keyword = any(keyword in lowered for keyword in _FINANCIAL_KEYWORDS)
+        has_numbers = bool(re.search(r"\d{3,}", stripped))
+        if not (has_keyword or has_numbers):
+            continue
+
+        dedup_key = _line_dedup_key(stripped)
+        if dedup_key in seen:
+            continue
+
+        seen.add(dedup_key)
+        candidates.append((_score_financial_line(stripped), index, stripped))
+
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    selected = candidates[:max_lines]
+    selected.sort(key=lambda item: item[1])
+
+    compacted: list[str] = []
+    current_chars = 0
+    for _, _, line in selected:
+        line_len = len(line) + 1
+        if max_chars is not None and compacted and current_chars + line_len > max_chars:
+            break
+        compacted.append(line)
+        current_chars += line_len
+
+    return compacted
+
+
 # ---------------------------------------------------------------------------
 # 2.7  chunk_text
 # ---------------------------------------------------------------------------
@@ -330,22 +428,49 @@ def chunk_text(
     current_len = 0
 
     for para in paragraphs:
-        para_len = len(para) + 2  # +2 for the "\n\n" separator
+        para_parts = _split_oversized_paragraph(
+            para,
+            chunk_size=chunk_size,
+            overlap=overlap,
+        )
 
-        if current_len + para_len > chunk_size and current_parts:
-            chunk = "\n\n".join(current_parts)
-            chunks.append(chunk)
+        if len(para_parts) > 1:
+            if current_parts:
+                chunks.append("\n\n".join(current_parts))
+                if len(chunks) >= max_chunks:
+                    break
+                current_parts = []
+                current_len = 0
+
+            for para_part in para_parts:
+                chunks.append(para_part)
+                if len(chunks) >= max_chunks:
+                    break
 
             if len(chunks) >= max_chunks:
                 break
+            continue
 
-            # Start next chunk with overlap from end of current chunk
-            overlap_text = chunk[-overlap:] if len(chunk) > overlap else chunk
-            current_parts = [overlap_text]
-            current_len = len(overlap_text)
+        for para_part in para_parts:
+            para_len = len(para_part) + 2  # +2 for the "\n\n" separator
 
-        current_parts.append(para)
-        current_len += para_len
+            if current_len + para_len > chunk_size and current_parts:
+                chunk = "\n\n".join(current_parts)
+                chunks.append(chunk)
+
+                if len(chunks) >= max_chunks:
+                    break
+
+                # Start next chunk with overlap from end of current chunk
+                overlap_text = chunk[-overlap:] if len(chunk) > overlap else chunk
+                current_parts = [overlap_text] if overlap_text else []
+                current_len = len(overlap_text)
+
+            current_parts.append(para_part)
+            current_len += para_len
+
+        if len(chunks) >= max_chunks:
+            break
 
     # Add remaining content as final chunk (if budget allows)
     if current_parts and len(chunks) < max_chunks:
@@ -406,19 +531,23 @@ async def extract_with_llm(
     """
     # Pre-filter: remove OCR garbage lines before sending to LLM
     # This reduces token consumption by 80-90%
-    filtered_text = clean_for_llm(text)
+    effective_budget = max(chunk_size, token_budget)
+    filtered_text = clean_for_llm(
+        text,
+        max_chars=effective_budget,
+        max_lines=max_chunks * 40,
+    )
     if not filtered_text.strip():
         logger.warning("clean_for_llm returned empty text — no financial content found")
         return None
     text = filtered_text
 
-    # Budget check BEFORE chunking (fail fast)
     if len(text) > token_budget:
-        logger.warning(
-            "PDF text length %d exceeds token_budget %d; skipping LLM extraction",
+        logger.info(
+            "LLM extraction input compacted to budget boundary: %d -> %d chars",
             len(text), token_budget,
         )
-        return None
+        text = text[:token_budget]
 
     chunks = chunk_text(text, chunk_size=chunk_size, max_chunks=max_chunks)
     if not chunks:
@@ -479,7 +608,16 @@ _FINANCIAL_KEYWORDS = [
     "выручка", "прибыль", "актив", "капитал", "руб", "тыс", "млн", "млрд",
     "баланс", "обязательств", "ликвидност", "дебитор", "кредитор", "запас",
     "revenue", "profit", "asset", "equity", "liabilit", "cash",
+    "риск", "убыт", "задолж", "снижен", "рост", "падени", "debt", "loss",
+    "risk", "decline", "growth",
 ]
+
+_NOISE_LINE_PATTERNS = (
+    re.compile(r"^\d{4}$"),
+    re.compile(r"^страница\s+\d+(\s+из\s+\d+)?$", re.IGNORECASE),
+    re.compile(r"^page\s+\d+(\s+of\s+\d+)?$", re.IGNORECASE),
+    re.compile(r"^\d+\s*/\s*\d+$"),
+)
 
 
 def is_clean_financial_text(text: str) -> bool:
@@ -495,7 +633,11 @@ def is_clean_financial_text(text: str) -> bool:
     return True
 
 
-def clean_for_llm(raw_text: str) -> str:
+def clean_for_llm(
+    raw_text: str,
+    max_chars: int | None = None,
+    max_lines: int = 120,
+) -> str:
     """Filter OCR text to keep only financially relevant lines.
 
     Reduces token consumption by 80-90% by discarding lines with no
@@ -503,23 +645,12 @@ def clean_for_llm(raw_text: str) -> str:
     """
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", raw_text)
     lines = text.split("\n")
-    filtered: list[str] = []
-    for line in lines:
-        stripped = line.strip()
-        if len(stripped) < 5:
-            continue
-        line_lower = stripped.lower()
-        has_kw = any(kw in line_lower for kw in _FINANCIAL_KEYWORDS)
-        has_numbers = bool(re.search(r"\d{3,}", stripped))
-        if has_kw or has_numbers:
-            filtered.append(stripped)
-    seen: set[str] = set()
-    deduped = []
-    for line in filtered:
-        if line not in seen:
-            seen.add(line)
-            deduped.append(line)
-    result = "\n".join(deduped)
+    compacted = _compact_financial_lines(
+        lines,
+        max_chars=max_chars,
+        max_lines=max_lines,
+    )
+    result = "\n".join(compacted)
     logger.info(
         "clean_for_llm: %d chars -> %d chars (%.0f%% reduction)",
         len(raw_text), len(result),

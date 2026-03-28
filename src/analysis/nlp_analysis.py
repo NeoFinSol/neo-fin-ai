@@ -9,6 +9,10 @@ from src.analysis.llm_extractor import clean_for_llm, is_clean_financial_text
 
 logger = logging.getLogger(__name__)
 
+_NARRATIVE_SCAN_BUDGET = 8_000
+_NARRATIVE_PROMPT_BUDGET = 4_000
+_NARRATIVE_MAX_LINES = 80
+
 
 async def analyze_narrative(full_text: str) -> dict[str, list[str]]:
     if not full_text:
@@ -19,13 +23,9 @@ async def analyze_narrative(full_text: str) -> dict[str, list[str]]:
         logger.warning("NLP analysis skipped: text quality too low (%d chars)", len(full_text))
         return _empty_result()
 
-    # Filter to financially relevant lines before extracting narrative
-    cleaned_text = clean_for_llm(full_text)
-    if not cleaned_text:
-        return _empty_result()
-    narrative_text = _extract_narrative(cleaned_text)
+    narrative_text = _prepare_narrative_for_llm(full_text)
     if not narrative_text:
-        narrative_text = cleaned_text
+        return _empty_result()
 
     try:
         response = await ai_service.invoke(
@@ -56,6 +56,16 @@ async def analyze_narrative(full_text: str) -> dict[str, list[str]]:
         return _empty_result()
 
 
+def _prepare_narrative_for_llm(full_text: str) -> str:
+    """Build a compact, high-signal narrative excerpt for the LLM."""
+    narrative_window = _extract_narrative(full_text)
+    return clean_for_llm(
+        narrative_window,
+        max_chars=_NARRATIVE_PROMPT_BUDGET,
+        max_lines=_NARRATIVE_MAX_LINES,
+    )
+
+
 def _extract_narrative(text: str) -> str:
     lowered = text.lower()
     keywords = [
@@ -74,9 +84,9 @@ def _extract_narrative(text: str) -> str:
 
     if start_index == -1:
         # No narrative section found — use beginning of text, truncated
-        return text[:6000].strip()
+        return text[:_NARRATIVE_SCAN_BUDGET].strip()
 
-    extracted = text[start_index: start_index + 6000]
+    extracted = text[start_index: start_index + _NARRATIVE_SCAN_BUDGET]
     return extracted.strip()
 
 

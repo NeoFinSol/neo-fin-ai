@@ -55,6 +55,7 @@ NeoFin AI извлекает финансовые данные из PDF-отчё
 
 - Выявляет финансовые риски и ключевые факторы через языковые модели
 - Генерирует 3–5 рекомендаций с явными ссылками на конкретные метрики
+- **Token-aware compaction**: перед LLM удаляются page/year noise, дубли строк и low-signal OCR-фрагменты; narrative и recommendation prompts ужимаются до budget-friendly контекста
 - **Ресурсная эффективность**: Singleton-управление сессиями для AI-провайдеров, предотвращение port exhaustion
 - Поддерживаемые провайдеры: GigaChat, DeepSeek (HuggingFace), Ollama (offline)
 
@@ -144,7 +145,7 @@ cp .env.example .env
 # Заполнить DATABASE_URL и API_KEY; опционально — ключи AI-провайдеров
 
 # 3. Собрать и запустить (миграции применяются автоматически)
-docker-compose up --build
+docker compose up --build
 
 # 4. Открыть: http://localhost
 ```
@@ -152,8 +153,9 @@ docker-compose up --build
 **Production:**
 
 ```bash
-./scripts/start-prod.sh
-# Проверяет .env → собирает docker-compose.prod.yml → применяет миграции
+./scripts/deploy-prod.sh
+# Проверяет .env → валидирует docker-compose.prod.yml → собирает образы
+# → применяет миграции → поднимает production stack
 # Доступно на порту 80
 ```
 
@@ -181,8 +183,12 @@ curl http://localhost/api/result/abc-123 \
 ```bash
 curl -X POST http://localhost/api/multi-analysis \
   -H "X-API-Key: your_key" \
-  -H "Content-Type: application/json" \
-  -d '{"periods": [{"period_label": "2021"}, {"period_label": "2022"}, {"period_label": "2023"}]}'
+  -F "files=@report_2021.pdf" \
+  -F "files=@report_2022.pdf" \
+  -F "files=@report_2023.pdf" \
+  -F "periods=2021" \
+  -F "periods=2022" \
+  -F "periods=2023"
 # → {"session_id": "xyz-456", "status": "processing"}
 
 curl http://localhost/api/multi-analysis/xyz-456 \
@@ -209,6 +215,7 @@ curl http://localhost/api/multi-analysis/xyz-456 \
 - Property-based тесты (Hypothesis) для проверки инвариантов
 - Mock внешних зависимостей (БД, AI-сервис)
 - **Regex fallback тесты**: извлечение метрик из текста при отсутствии таблиц
+- **LLM budget tests**: compaction, chunk-size invariants, narrative gating и compact JSON recommendation context
 
 **E2E тесты (9 тестов):**
 - Требуют внешних зависимостей (PostgreSQL, AI-сервис)

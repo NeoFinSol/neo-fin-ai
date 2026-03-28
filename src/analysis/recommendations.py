@@ -60,59 +60,31 @@ def _build_recommendations_prompt(
     Returns:
         str: Formatted prompt for LLM
     """
-    # Format metrics section
-    metrics_section = "ФИНАНСОВЫЕ ПОКАЗАТЕЛИ КОМПАНИИ:\n"
-    if metrics.get("revenue"):
-        metrics_section += f"- Выручка (Revenue): {_format_metric_value(metrics['revenue'])} ₽\n"
-    if metrics.get("net_profit") is not None:
-        metrics_section += f"- Чистая прибыль (Net Profit): {_format_metric_value(metrics['net_profit'])} ₽\n"
-    if metrics.get("total_assets"):
-        metrics_section += f"- Активы (Total Assets): {_format_metric_value(metrics['total_assets'])} ₽\n"
-    if metrics.get("equity"):
-        metrics_section += f"- Собственный капитал (Equity): {_format_metric_value(metrics['equity'])} ₽\n"
-    if metrics.get("liabilities"):
-        metrics_section += f"- Обязательства (Liabilities): {_format_metric_value(metrics['liabilities'])} ₽\n"
+    context = {
+        "metrics": {
+            key: _format_metric_value(value)
+            for key, value in metrics.items()
+            if value is not None
+        },
+        "ratios": {
+            key: _format_metric_value(value)
+            for key, value in ratios.items()
+            if value is not None
+        },
+        "risks": [str(item) for item in nlp_result.get("risks", [])[:3]],
+        "key_factors": [str(item) for item in nlp_result.get("key_factors", [])[:3]],
+    }
 
-    # Format ratios section
-    ratios_section = "\nФИНАНСОВЫЕ КОЭФФИЦИЕНТЫ:\n"
-    if ratios.get("current_ratio") is not None:
-        ratios_section += f"- Коэффициент текущей ликвидности: {_format_metric_value(ratios['current_ratio'])}\n"
-    if ratios.get("equity_ratio") is not None:
-        ratios_section += f"- Коэффициент автономии: {_format_metric_value(ratios['equity_ratio'])}\n"
-    if ratios.get("roe") is not None:
-        ratios_section += f"- ROE (рентабельность собственного капитала): {_format_metric_value(ratios['roe'])}\n"
-    if ratios.get("roa") is not None:
-        ratios_section += f"- ROA (рентабельность активов): {_format_metric_value(ratios['roa'])}\n"
-    if ratios.get("debt_to_revenue") is not None:
-        ratios_section += f"- Долговая нагрузка (Долг/Выручка): {_format_metric_value(ratios['debt_to_revenue'])}\n"
-
-    # Format NLP analysis section
-    nlp_section = "\nРЕЗУЛЬТАТЫ NLP АНАЛИЗА ПОЯСНИТЕЛЬНОЙ ЗАПИСКИ:\n"
-    risks = nlp_result.get("risks", [])
-    if risks:
-        nlp_section += f"- Выявленные риски: {', '.join(risks[:3])}\n"
-    key_factors = nlp_result.get("key_factors", [])
-    if key_factors:
-        nlp_section += f"- Ключевые факторы: {', '.join(key_factors[:3])}\n"
-
-    # Build the full prompt
-    prompt = f"""{metrics_section}{ratios_section}{nlp_section}
-ЗАДАЧА:
-Сформируй 3-5 конкретных рекомендаций для финансового директора компании.
-В каждой рекомендации обязательно ссылайся на конкретные цифры и показатели из выше приведённых данных.
-
-Примеры формата ответа:
-- "При текущем коэффициенте ликвидности 1.5 рекомендуется оптимизировать управление оборотным капиталом..."
-- "Выручка компании составила 1000000 ₽, что при чистой прибыли 150000 ₽ указывает на маржу 15%. Рекомендуется..."
-- "Коэффициент автономии на уровне 0.4 требует внимания к структуре капитала. Рекомендуется..."
-
-Требования:
-- Рекомендации должны быть практичными и действенными
-- Обязательно ссылаться на конкретные цифры
-- Ответ верни в формате JSON массива строк: {{"recommendations": ["рекомендация 1", "рекомендация 2", ...]}}
-- Минимум 3 рекомендации, максимум 5
-"""
-    return prompt
+    return (
+        "Контекст финансового анализа JSON:\n"
+        f"{json.dumps(context, ensure_ascii=False)}\n"
+        "Сформируй 3-5 практичных рекомендаций для финансового директора.\n"
+        "Каждая рекомендация должна ссылаться минимум на одно конкретное число "
+        "из metrics или ratios.\n"
+        "Не выдумывай отсутствующие значения.\n"
+        "Верни только JSON: "
+        "{\"recommendations\": [\"...\", \"...\"]}"
+    )
 
 
 async def generate_recommendations(

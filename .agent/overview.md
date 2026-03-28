@@ -2,8 +2,8 @@
 
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
-- **Последний коммит**: `refactor(core): decompose tasks.py and centralize mapping/utilities`
-- **Последняя сессия**: 2026-03-28 — выполнены первая и вторая волны product-аудита: закрыты contract/runtime bugs, а production Docker path переведён на self-contained frontend image без зависимости от локального `frontend/dist`.
+- **Последний коммит**: `chore(devops): harden production compose path`
+- **Последняя сессия**: 2026-03-28 — выполнена третья волна product-аудита: LLM/NLP pipeline переведён на budget-aware compaction, recommendation prompt ужат до compact JSON context, root `README.md` синхронизирован с фактическим product/deploy contract.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -37,6 +37,13 @@
   - `frontend/nginx.prod.conf` получил rate limiting, CSP, proxy error page и более жёсткий proxy path
   - `scripts/deploy-prod.sh` переведён на `docker compose` и добавляет `config` validation перед build
   - docs и agent-checklists синхронизированы с новым deploy path
+✅ **Audit Wave 3** — LLM token optimization and test hardening:
+  - `src/analysis/llm_extractor.py` теперь выкидывает year/page noise, дедуплицирует и ранжирует строки по финансовому сигналу
+  - `extract_with_llm()` больше не отказывается от длинного отчёта сразу: вход сначала compact-ится до token budget
+  - `chunk_text()` корректно режет монолитные oversized paragraphs
+  - `src/analysis/nlp_analysis.py` формирует компактный narrative excerpt до вызова `ai_service`
+  - `src/analysis/recommendations.py` переведён на compact JSON prompt context
+  - `tests/test_nlp_analysis.py` и связанные LLM tests синхронизированы с актуальным `ai_service` contract
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
@@ -49,6 +56,7 @@
 ✅ **NLP analysis** — риски и ключевые факторы через `ai_service.py` (GigaChat → DeepSeek → Ollama → graceful degrade)
 ✅ **AI Agents Refactoring** — внедрён `BaseAIAgent`, исправлена утечка ресурсов в GigaChat (Singleton ClientSession), внедрены экспоненциальные ретраи
 ✅ **Recommendations** — `src/analysis/recommendations.py`: 3–5 рекомендаций с явными ссылками на метрики; outer timeout 90s; fallback при недоступности AI; подключено в `tasks.py`
+✅ **LLM Prompt Budgeting** — extractor/NLP/recommendations используют deterministic prompt compaction: dedupe, ranking по signal, trimming до budget без изменения внешнего API
 ✅ **GET /analyses** — список анализов с пагинацией (page, page_size ≤ 100), сортировка по created_at DESC, auth X-API-Key
 ✅ **Masking** — `src/utils/masking.py`: чистая функция `mask_analysis_data(data, demo_mode)`, применяется во всех трёх эндпоинтах при `DEMO_MODE=1`
 ✅ **AnalysisHistory.tsx** — подключена к реальному API (`GET /analyses`), пагинация Mantine, skeleton/error states
@@ -61,6 +69,7 @@
 ✅ **Тесты** — подтверждённые локальные прогоны после audit wave 1:
   - `tests/test_scoring.py`, `tests/test_pdf_extractor.py`, `tests/test_api.py` → 18 passed
   - `tests/test_analyses_router.py`, `tests/test_tasks.py` → 27 passed
+  - `tests/test_llm_extractor.py`, `tests/test_llm_extractor_properties.py`, `tests/test_nlp_analysis.py`, `tests/test_nlp_analysis_coverage.py`, `tests/test_recommendations.py` → 128 passed
   - legacy `tests/test_tasks_coverage.py` остаётся устаревшим compatibility-suite и не отражает текущий product contract
 ✅ **Production Docker** — `Dockerfile.backend` (multi-stage), `Dockerfile.frontend` (multi-stage), `docker-compose.prod.yml`, `nginx.conf`, `scripts/deploy-prod.sh`
 ✅ **Production Frontend Image** — compose собирает frontend/Nginx образ сам, без внешнего `frontend/dist`

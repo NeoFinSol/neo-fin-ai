@@ -48,7 +48,7 @@ class TestBuildRecommendationsPrompt:
     """Tests for _build_recommendations_prompt function."""
 
     def test_prompt_includes_metrics(self):
-        """Test prompt includes all provided metrics."""
+        """Test prompt includes provided metrics in compact JSON context."""
         metrics = {
             "revenue": 1000000,
             "net_profit": 150000,
@@ -59,13 +59,15 @@ class TestBuildRecommendationsPrompt:
 
         prompt = _build_recommendations_prompt(metrics, ratios, nlp_result)
 
+        assert "\"metrics\"" in prompt
+        assert "\"revenue\": \"1,000,000\"" in prompt
         assert "1,000,000" in prompt
         assert "150,000" in prompt
         assert "2,000,000" in prompt
-        assert "ФИНАНСОВЫЕ ПОКАЗАТЕЛИ" in prompt
+        assert "Контекст финансового анализа JSON" in prompt
 
     def test_prompt_includes_ratios(self):
-        """Test prompt includes all provided ratios."""
+        """Test prompt includes provided ratios in compact JSON context."""
         metrics = {}
         ratios = {
             "current_ratio": 1.5,
@@ -76,13 +78,13 @@ class TestBuildRecommendationsPrompt:
 
         prompt = _build_recommendations_prompt(metrics, ratios, nlp_result)
 
-        assert "ликвидности" in prompt.lower()
-        assert "автономии" in prompt.lower()
+        assert "\"ratios\"" in prompt
+        assert "\"current_ratio\": \"1.50\"" in prompt
         assert "1.50" in prompt
         assert "0.40" in prompt
 
     def test_prompt_includes_nlp_results(self):
-        """Test prompt includes NLP analysis results."""
+        """Test prompt includes compact NLP findings."""
         metrics = {}
         ratios = {}
         nlp_result = {
@@ -95,15 +97,16 @@ class TestBuildRecommendationsPrompt:
         assert "high debt" in prompt
         assert "low profitability" in prompt
         assert "market conditions" in prompt
-        assert "АНАЛИЗА ПОЯСНИТЕЛЬНОЙ" in prompt
+        assert "\"risks\"" in prompt
+        assert "\"key_factors\"" in prompt
 
     def test_prompt_handles_empty_inputs(self):
         """Test prompt handles empty metrics/ratios/nlp gracefully."""
         prompt = _build_recommendations_prompt({}, {}, {})
 
-        assert "ФИНАНСОВЫЕ ПОКАЗАТЕЛИ" in prompt
-        assert "ФИНАНСОВЫЕ КОЭФФИЦИЕНТЫ" in prompt
-        assert "NLP" in prompt
+        assert "\"metrics\": {}" in prompt
+        assert "\"ratios\": {}" in prompt
+        assert "\"risks\": []" in prompt
 
 
 class TestParseRecommendationsResponse:

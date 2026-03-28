@@ -12,6 +12,8 @@ from src.analysis.nlp_analysis import (
 
 
 class TestAnalyzeNarrative:
+    VALID_TEXT = ("Выручка компании составила 5 000 000 рублей, активы 10 000 000. " * 4)
+
     @pytest.mark.asyncio
     async def test_empty_text_returns_empty(self):
         result = await analyze_narrative("")
@@ -23,7 +25,7 @@ class TestAnalyzeNarrative:
         payload = {"risks": ["risk1"], "key_factors": ["factor1"], "recommendations": ["rec1"]}
         with patch("src.analysis.nlp_analysis.ai_service") as mock_ai:
             mock_ai.invoke = AsyncMock(return_value=json.dumps(payload))
-            result = await analyze_narrative("Some financial text here")
+            result = await analyze_narrative(self.VALID_TEXT)
             assert result["risks"] == ["risk1"]
             assert result["key_factors"] == ["factor1"]
             assert result["recommendations"] == ["rec1"]
@@ -32,21 +34,21 @@ class TestAnalyzeNarrative:
     async def test_ai_returns_none_gives_empty(self):
         with patch("src.analysis.nlp_analysis.ai_service") as mock_ai:
             mock_ai.invoke = AsyncMock(return_value=None)
-            result = await analyze_narrative("Some text")
+            result = await analyze_narrative(self.VALID_TEXT)
             assert result == {"risks": [], "key_factors": [], "recommendations": []}
 
     @pytest.mark.asyncio
     async def test_ai_returns_invalid_json_gives_empty(self):
         with patch("src.analysis.nlp_analysis.ai_service") as mock_ai:
             mock_ai.invoke = AsyncMock(return_value="not json at all !!!")
-            result = await analyze_narrative("Some text")
+            result = await analyze_narrative(self.VALID_TEXT)
             assert result == {"risks": [], "key_factors": [], "recommendations": []}
 
     @pytest.mark.asyncio
     async def test_ai_exception_gives_empty(self):
         with patch("src.analysis.nlp_analysis.ai_service") as mock_ai:
             mock_ai.invoke = AsyncMock(side_effect=Exception("AI down"))
-            result = await analyze_narrative("Some text")
+            result = await analyze_narrative(self.VALID_TEXT)
             assert result == {"risks": [], "key_factors": [], "recommendations": []}
 
     @pytest.mark.asyncio
@@ -56,7 +58,7 @@ class TestAnalyzeNarrative:
             mock_ai.invoke = AsyncMock(
                 return_value='Here is the analysis: {"risks": ["r1"], "key_factors": [], "recommendations": []}'
             )
-            result = await analyze_narrative("Some text")
+            result = await analyze_narrative(self.VALID_TEXT)
             assert result["risks"] == ["r1"]
 
 

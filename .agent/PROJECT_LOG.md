@@ -1,5 +1,35 @@
 # Project Log
 
+## 2026-03-28 — perf(llm): compact prompts and harden NLP/LLM tests
+
+**Изменения:**
+- `src/analysis/llm_extractor.py`:
+  - добавлены ranking/dedup helpers для финансовых строк
+  - удаляются year/page noise и low-signal OCR lines перед LLM
+  - `extract_with_llm()` теперь compact-ит вход до token budget вместо fail-fast skip
+  - `chunk_text()` корректно режет oversized single-paragraph inputs
+- `src/analysis/nlp_analysis.py`:
+  - добавлен `_prepare_narrative_for_llm()`
+  - narrative excerpt ограничивается budget-aware compacted контекстом
+- `src/analysis/recommendations.py`:
+  - длинный prose prompt заменён на compact JSON context
+- `src/core/prompts.py`:
+  - `LLM_ANALYSIS_PROMPT` сокращён и выровнен с фактическим narrative input
+- Обновлены тесты:
+  - `tests/test_llm_extractor.py`
+  - `tests/test_llm_extractor_properties.py`
+  - `tests/test_nlp_analysis.py`
+  - `tests/test_nlp_analysis_coverage.py`
+  - `tests/test_recommendations.py`
+- Обновлены документы:
+  - `README.md`
+  - `docs/ARCHITECTURE.md`
+  - `.agent/overview.md`
+
+**Верификация:**
+- `python -m pytest tests/test_llm_extractor.py tests/test_nlp_analysis.py tests/test_nlp_analysis_coverage.py tests/test_recommendations.py -q` → `106 passed`
+- `python -m pytest tests/test_llm_extractor_properties.py -q` → `22 passed`
+
 ## 2026-03-28 — chore(devops): harden production compose frontend path
 
 **Изменения:**
