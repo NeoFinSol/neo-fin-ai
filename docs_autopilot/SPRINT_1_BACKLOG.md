@@ -14,6 +14,20 @@
 
 Подготовить execution layer автопилота к регулярному использованию без неструктурированных ответов и без разрозненной логики обработки ошибок.
 
+## Граница Sprint 1
+
+Sprint 1 остаётся foundational-спринтом. Он должен завершить contract/runtime слой,
+но сознательно не включает:
+
+- reviewer / validator agent
+- retry controller
+- memory / state layer
+- execution graph
+- mode policy `cheap` / `full` / `safe`
+
+Эти направления вынесены в следующие спринты, чтобы не смешивать завершение execution contract
+с новой orchestration architecture.
+
 ## Основной результат спринта
 
 К концу Sprint 1 любой реальный subagent execution path должен возвращать:
@@ -77,6 +91,8 @@
 - определить минимальный `SubagentFinalOutput` contract
 - добавить schema builder для full subagent execution
 - добавить strict local validation
+- сделать contract review-ready, чтобы его можно было позже
+  подавать в reviewer loop без повторного redesign
 
 **Минимальный contract v1:**
 - `subagent`
@@ -118,7 +134,8 @@
 - не вызывать planner pipeline
 
 **Результат:**
-- появляется мост между diagnostic modes и будущим `run_safe`
+- появляется мост между diagnostic modes и будущими
+  `run_safe`, reviewer loop и graph execution path
 
 ### 6. Обновить CLI surface для Sprint 1
 

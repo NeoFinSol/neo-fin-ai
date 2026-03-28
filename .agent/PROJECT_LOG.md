@@ -1,5 +1,34 @@
 # Project Log
 
+## 2026-03-28 — Autopilot roadmap refresh: reviewer/state/graph/modes
+
+**Изменения:**
+- Обновлены документы планирования в `docs_autopilot/`:
+  - `README.md`
+  - `SPRINTS.md`
+  - `VERSIONS.md`
+  - `SPRINT_1_BACKLOG.md`
+  - `TASKS_SPRINT_1.md`
+- План пересобран вокруг новых архитектурных направлений:
+  - reviewer / validator loop
+  - retry controller
+  - memory / state layer
+  - execution graph
+  - mode policy `cheap` / `full` / `safe`
+- Sprint 1 зафиксирован как foundational execution-contract sprint,
+  без расширения scope на reviewer/state/graph layers
+- Следующие этапы теперь разделены так:
+  - Sprint 2 / V6 — state + execution graph
+  - Sprint 3 / V7 — reviewer loop + controlled retries
+  - Sprint 4 / V8 — execution modes and safe default
+  - Sprint 5 / V9-V10 — observability, performance, reliability, UX
+
+**Верификация:**
+- документация внутри `docs_autopilot/` больше не смешивает
+  execution contract foundation с future orchestration architecture
+- `Task 1.3` и `Task 1.4` переопределены как review-ready bridge,
+  а не попытка впихнуть reviewer/state/graph в Sprint 1
+
 ## 2026-03-28 — Sprint 1 / Task 1.2: unified runtime helpers
 
 **Изменения:**

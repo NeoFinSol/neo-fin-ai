@@ -3,7 +3,7 @@
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
 - **Последний коммит**: `refactor(core): decompose tasks.py and centralize mapping/utilities`
-- **Последняя сессия**: 2026-03-28 — Sprint 1 / Task 1.2 завершён: diagnostic exec paths в Autopilot переведены на общую runtime/validation base; добавлены helpers для temp workspace, schema file, one-shot `codex exec`, output reading и typed success/failure envelopes. Тесты: `41/41` зелёные.
+- **Последняя сессия**: 2026-03-28 — roadmap Autopilot пересобран: Sprint 1 зафиксирован как execution-contract foundation, а reviewer loop, retry controller, memory/state layer, execution graph и mode policy `cheap/full/safe` вынесены в следующие спринты.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -33,6 +33,12 @@
   - `exec_smoke_test_runtime()` и `mini_subagent_exec_test()`
     используют один one-shot execution flow
   - покрыты stdout fallback и missing output scenarios
+✅ **Autopilot roadmap refresh** — в [README.md](E:/neo-fin-ai/docs_autopilot/README.md), [SPRINTS.md](E:/neo-fin-ai/docs_autopilot/SPRINTS.md), [VERSIONS.md](E:/neo-fin-ai/docs_autopilot/VERSIONS.md), [SPRINT_1_BACKLOG.md](E:/neo-fin-ai/docs_autopilot/SPRINT_1_BACKLOG.md) и [TASKS_SPRINT_1.md](E:/neo-fin-ai/docs_autopilot/TASKS_SPRINT_1.md) пересобран план развития:
+  - Sprint 1 ограничен execution contract foundation
+  - Sprint 2 выделен под state + execution graph
+  - Sprint 3 выделен под reviewer loop и controlled retries
+  - Sprint 4 выделен под `cheap` / `full` / `safe` modes
+  - Sprint 5 выделен под observability, performance и reliability polish
 ✅ **Config-driven model chooser** — `.agent/choose_model_for_subagent.py` теперь использует `.codex/config.toml` как источник model settings и per-subagent overrides, а `.codex/agents/*.toml` как source of truth для профилей субагентов.
 ✅ **Autopilot tests** — обновлены `tests/test_agent_autopilot.py` и `tests/test_choose_model_for_subagent.py`: покрытие config loading, `.codex` registry loading, registry validation, classification trace, execution plan, explainability, Codex subprocess adapter, zero-cost smoke-test, real-exec smoke-test, mini subagent exec test, execution backend, stdout fallback, missing output и helper-level contract validation. 41/41 тест зелёный.
 

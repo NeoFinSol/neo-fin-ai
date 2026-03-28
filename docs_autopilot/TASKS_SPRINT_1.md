@@ -4,6 +4,19 @@
 
 Задачи ниже расположены в рекомендуемом порядке реализации.
 
+## Что не входит в Sprint 1
+
+Чтобы не расползался scope, Sprint 1 сознательно не включает:
+
+- reviewer / validator agent
+- retry controller
+- memory / state layer
+- execution graph
+- mode policy `cheap` / `full` / `safe`
+
+Эти слои теперь относятся к следующим спринтам и не должны
+маскироваться под “мелкие доработки” внутри Task 1.3/1.4.
+
 ## Task 1.1 — Typed Failure Model
 
 ### Статус
@@ -110,7 +123,7 @@
 
 ### Цель
 
-Подготовить contract-driven path для реального subagent execution.
+Подготовить contract-driven и review-ready path для реального subagent execution.
 
 ### Файлы
 
@@ -123,6 +136,8 @@
 - schema builder для full exec
 - strict validator
 - минимальный structured output contract
+- форма результата должна быть пригодна для будущего reviewer loop
+  без второго redesign контракта
 
 ### Обязательные тесты
 
@@ -135,6 +150,7 @@
 ### Выход задачи
 
 - full subagent execution имеет стабильный машинно-валидируемый контракт
+- contract совместим с будущим reviewer/state/graph layer
 
 ## Task 1.4 — Full Diagnostic Exec Mode
 
@@ -165,7 +181,8 @@
 
 ### Выход задачи
 
-- есть безопасный diagnostic bridge между mini mode и будущим `run_safe`
+- есть безопасный diagnostic bridge между mini mode,
+  будущим `run_safe` и future reviewer loop
 
 ## Порядок выполнения
 
