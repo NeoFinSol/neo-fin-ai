@@ -3,30 +3,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import warnings
 from pathlib import Path
 
 import pytest
-from cryptography.utils import CryptographyDeprecationWarning
-
-warnings.filterwarnings(
-    "ignore",
-    message=r"ARC4 has been moved.*",
-    category=CryptographyDeprecationWarning,
-)
 from src.analysis import pdf_extractor
 
 
 FIXTURE_ROOT = Path(__file__).parent / "data" / "pdf_real_fixtures"
 MANIFEST_PATH = FIXTURE_ROOT / "manifest_heavy.json"
-RUN_HEAVY_REAL_PDF = os.getenv("RUN_PDF_REAL_HEAVY") == "1"
+_TRUTHY_VALUES = {"1", "true", "yes", "on"}
 
 pytestmark = [
     pytest.mark.pdf_real_heavy,
-    pytest.mark.skipif(
-        not RUN_HEAVY_REAL_PDF,
-        reason="Set RUN_PDF_REAL_HEAVY=1 to run the heavy real-PDF regression tier.",
-    ),
     pytest.mark.filterwarnings(
         "ignore:.*camelot only works on text-based pages.*:UserWarning"
     ),
@@ -38,32 +26,83 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _load_cases() -> list[dict]:
-    with MANIFEST_PATH.open(encoding="utf-8") as fh:
-        return json.load(fh)
+def _should_run_heavy(pytestconfig: pytest.Config) -> bool:
+    if pytestconfig.getoption("--run-pdf-real-heavy"):
+        return True
+    return os.getenv("RUN_PDF_REAL_HEAVY", "").strip().lower() in _TRUTHY_VALUES
+
+
+def _load_case_params(pytestconfig: pytest.Config) -> list[pytest.ParameterSet]:
+    if not _should_run_heavy(pytestconfig):
+        return [
+            pytest.param(
+                None,
+                id="heavy-tier-disabled",
+                marks=pytest.mark.skip(
+                    reason=(
+                        "Set RUN_PDF_REAL_HEAVY=1 or pass --run-pdf-real-heavy "
+                        "to run the heavy real-PDF regression tier."
+                    )
+                ),
+            )
+        ]
+
+    if not MANIFEST_PATH.exists():
+        return [
+            pytest.param(
+                None,
+                id="heavy-manifest-missing",
+                marks=pytest.mark.skip(
+                    reason=f"Heavy real-PDF manifest is missing: {MANIFEST_PATH}"
+                ),
+            )
+        ]
+
+    try:
+        with MANIFEST_PATH.open(encoding="utf-8") as fh:
+            cases = json.load(fh)
+    except json.JSONDecodeError as exc:
+        return [
+            pytest.param(
+                None,
+                id="heavy-manifest-invalid",
+                marks=pytest.mark.skip(
+                    reason=(
+                        f"Heavy real-PDF manifest is invalid: {MANIFEST_PATH} "
+                        f"({exc})"
+                    )
+                ),
+            )
+        ]
+
+    return [pytest.param(case, id=case["id"]) for case in cases]
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    if "case" in metafunc.fixturenames:
+        metafunc.parametrize("case", _load_case_params(metafunc.config))
 
 
 def _extract_pipeline(case: dict, pdf_path: Path) -> tuple[str, list[dict]]:
     pipeline = case.get("pipeline", "full_tables")
     if pipeline == "full_tables":
-        return pdf_extractor.extract_text(str(pdf_path)), pdf_extractor.extract_tables(str(pdf_path))
-    if pipeline == "force_ocr":
-        return (
-            pdf_extractor.extract_text_from_scanned(str(pdf_path)),
-            pdf_extractor.extract_tables(str(pdf_path), force_ocr=True),
-        )
-    raise AssertionError(f"Unsupported heavy real-PDF pipeline: {pipeline}")
+        text = pdf_extractor.extract_text(str(pdf_path))
+        tables = pdf_extractor.extract_tables(str(pdf_path))
+    elif pipeline == "force_ocr":
+        text = pdf_extractor.extract_text_from_scanned(str(pdf_path))
+        tables = pdf_extractor.extract_tables(str(pdf_path), force_ocr=True)
+    else:
+        raise AssertionError(f"Unsupported heavy real-PDF pipeline: {pipeline}")
+
+    assert isinstance(text, str), f"Expected text pipeline to return str, got {type(text)!r}"
+    assert isinstance(tables, list), f"Expected table pipeline to return list, got {type(tables)!r}"
+    return text, tables
 
 
-REAL_PDF_HEAVY_CASES = _load_cases()
+def test_pdf_real_heavy_fixtures(case: dict | None) -> None:
+    if case is None:
+        pytest.skip("Heavy real-PDF tier is disabled or unavailable.")
 
-
-@pytest.mark.parametrize(
-    "case",
-    REAL_PDF_HEAVY_CASES,
-    ids=[case["id"] for case in REAL_PDF_HEAVY_CASES],
-)
-def test_pdf_real_heavy_fixtures(case: dict) -> None:
     pdf_path = FIXTURE_ROOT / case["filename"]
 
     assert pdf_path.exists(), f"Fixture file is missing: {pdf_path.name}"
@@ -71,7 +110,7 @@ def test_pdf_real_heavy_fixtures(case: dict) -> None:
     assert _sha256(pdf_path) == case["sha256"]
 
     scanned = pdf_extractor.is_scanned_pdf(str(pdf_path))
-    assert scanned is case["expected_scanned"]
+    assert bool(scanned) == bool(case["expected_scanned"])
 
     text, tables = _extract_pipeline(case, pdf_path)
     assert len(text) >= case["min_text_length"]

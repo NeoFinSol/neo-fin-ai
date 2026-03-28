@@ -1,17 +1,9 @@
 from __future__ import annotations
 
 import json
-import warnings
 from pathlib import Path
 
 import pytest
-from cryptography.utils import CryptographyDeprecationWarning
-
-warnings.filterwarnings(
-    "ignore",
-    message=r"ARC4 has been moved.*",
-    category=CryptographyDeprecationWarning,
-)
 from src.analysis import pdf_extractor
 
 
