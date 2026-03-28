@@ -1,5 +1,56 @@
 # Project Log
 
+## 2026-03-28 — docs(agent): add lean subagent manifests and orchestration policy
+
+**Изменения:**
+- Добавлены human-readable manifests в `.agent/subagents/*.toml` для субагентов:
+  - `code_review`
+  - `contracts_guardian`
+  - `debug_investigator`
+  - `devops_release`
+  - `docs_keeper`
+  - `planner_guardian`
+  - `policy_guardian`
+  - `runtime_guardian`
+  - `security_guardian`
+  - `solution_designer`
+  - `test_planner`
+  - `performance_guardian`
+  - `deployment_guardian`
+  - `audit_guardian`
+  - `integration_guardian`
+  - `compliance_guardian`
+  - `usability_guardian`
+  - `data_integrity_guardian`
+  - `backup_guardian`
+  - `feature_flag_guardian`
+  - `api_versioning_guardian`
+  - `error_monitoring_guardian`
+  - `dependency_guardian`
+- Каждый manifest содержит:
+  - preferred model
+  - reasoning effort
+  - phase
+  - auto-triggers
+  - skip-triggers
+  - orchestration prompt
+- `AGENTS.md` обновлён:
+  - добавлена lean orchestration policy
+  - запрещён анти-паттерн “запускать всех субагентов на high-risk задачу”
+  - добавлены phase-based rules и max fan-out
+- `.agent/subagents/README.md` переписан:
+  - теперь фиксирует core / product-domain / governance категории
+  - описывает default bundles и anti-rules
+  - отдельно поясняет, что `.toml` — это orchestration manifests, а не возврат Autopilot runtime
+- Обновлён `README.md`:
+  - добавлены ссылки на `AGENTS.md` и `.agent/subagents/README.md` как часть human-readable workflow docs
+- Обновлён `.agent/overview.md`:
+  - зафиксирован новый orchestration status проекта
+
+**Верификация:**
+- ручная проверка структуры `.agent/subagents/*.toml`
+- manual consistency check: модели, trigger bundles и phase rules согласованы между `AGENTS.md` и `.agent/subagents/README.md`
+
 ## 2026-03-28 — fix(db): harden persistence runtime and schema guards
 
 **Изменения:**

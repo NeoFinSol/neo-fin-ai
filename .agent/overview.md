@@ -2,8 +2,8 @@
 
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
-- **Последний зафиксированный коммит до текущей волны**: `test(pdf): add corpus regression pack for complex table layouts`
-- **Последняя сессия**: 2026-03-28 — продолжена третья волна product-аудита: после LLM/NLP compaction и PDF corpus pack выполнен DB hardening persistence/runtime path.
+- **Последний зафиксированный коммит до текущей волны**: `fix(db): harden persistence runtime and schema guards`
+- **Последняя сессия**: 2026-03-28 — после DB hardening оформлена lean multi-agent orchestration policy: добавлены human-readable `.toml` manifests для субагентов, модели, prompt-ы, auto-triggers и ограничения fan-out.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -56,6 +56,12 @@
   - `src/db/crud.py` больше не маскирует read failures БД под `None`
   - router boundary (`analyses`, `pdf_tasks`, `multi_analysis`) переводит SQLAlchemy failures в явный `DatabaseError`
   - `src/utils/error_handler.py` регистрирует catch-all handler последним, чтобы специализированные DB handlers не деградировали в generic 500
+✅ **Agent Workflow Hardening**:
+  - `AGENTS.md` и `.agent/subagents/README.md` переведены на lean orchestration policy вместо fan-out “запускать всех”
+  - стартовый default bundle ограничен `1 primary + 1 optional` domain specialist
+  - `test_planner`, `code_review`, `docs_keeper` переведены в phase-based late-stage agents
+  - добавлены `.agent/subagents/*.toml` manifests с preferred model, prompt, auto-triggers и anti-triggers
+  - система разделена на core orchestration, product-domain specialists и rare governance/release guards
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`

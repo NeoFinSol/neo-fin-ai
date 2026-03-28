@@ -322,6 +322,8 @@ docker-compose -f docker-compose.prod.yml up -d --build
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layered-архитектура, data flow, AI pipeline, explainability |
 | [`docs/API.md`](docs/API.md) | Все эндпоинты, форматы запросов/ответов, curl-примеры |
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Все переменные окружения с типами и значениями по умолчанию |
+| [`AGENTS.md`](AGENTS.md) | Правила работы агента, orchestration policy и update ritual |
+| [`.agent/subagents/README.md`](.agent/subagents/README.md) | Human-readable система субагентов, trigger bundles и max fan-out |
 
 ---
 
