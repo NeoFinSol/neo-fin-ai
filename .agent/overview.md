@@ -2,8 +2,8 @@
 
 ## Статус
 - **Фаза**: Phase 1 (MVP) — neofin-competition-release завершён; фича llm-financial-extraction реализована полностью
-- **Последний зафиксированный коммит до текущей волны**: `test(pdf): track real-fixture harness`
-- **Последняя сессия**: 2026-03-28 — начат scheduled/admin cleanup job: добавлен bounded CLI `scripts/admin_cleanup.py` поверх cleanup helper’ов, delete-path получил status/age re-checks, а v1 policy ограничена stale in-progress rows без удаления completed history по умолчанию.
+- **Последний зафиксированный коммит до текущей волны**: `docs(agent): harden invocation protocol and synthesis`
+- **Последняя сессия**: 2026-03-28 — после DB schema evolution и bounded admin cleanup job зафиксирован новый execution plan: `cleanup operationalization` → `test hygiene` → `optional heavy/OCR real-PDF tier` → `persistent runtime` → `production hardening`.
 - **Последнее обновление документации**: 2026-03-28 — из `AGENTS.md` вынесены операционные блоки в `.agent/architecture.md`, `.agent/checklists.md`, `.agent/modes.md`
 - **Контекст**: Полная архитектура в `.agent/architecture.md` и `docs/ARCHITECTURE.md`. Читать перед любой разработкой.
 
@@ -94,6 +94,15 @@
   - добавлен deep synthesis ladder для very-complex cross-layer задач вместо хаотичного fan-out
   - добавлен failure diagnostics path для invalid/contradictory/timeouted orchestration passes
   - adaptive review loop зафиксирован как manual documentation hardening, без скрытого runtime-слоя
+✅ **Execution Plan Refresh**:
+  - `docs/ROADMAP.md` переведён из общего wishlist в актуальный execution plan
+  - ближайший порядок работ зафиксирован так:
+    - cleanup job operationalization
+    - test hygiene / warning cleanup
+    - optional heavy/OCR real-PDF tier
+    - persistent runtime вместо in-process `BackgroundTasks`
+    - production hardening (VPS smoke, HTTPS, backup/restore)
+  - root `README.md` синхронизирован с текущей повесткой, чтобы roadmap был виден не только в agent docs
 
 ## Что работает
 ✅ **POST /upload** — валидация PDF (magic header, ≤50MB), SpooledTemporaryFile, BackgroundTask, немедленный ответ с `task_id`
@@ -202,12 +211,12 @@
 ---
 
 ## Что будет дальше
-❌ Celery + Redis вместо BackgroundTasks (для персистентности задач при рестарте)
-❌ Интерактивные правки OCR (позволить пользователю корректировать извлечённые данные)
-❌ Сравнение с бенчмарками отраслей (OKVED)
-❌ Переезд на S3/MinIO для хранения временных PDF
-❌ Тестирование production-деплоя на VPS
-❌ Настройка HTTPS (SSL-сертификаты)
+❌ Cleanup job operationalization: cron/Task Scheduler runbook, retention review, safe first-run checklist
+❌ Test hygiene: `pytest-asyncio` config, unclosed `aiohttp` session path, warning cleanup, triage legacy `tests/test_tasks_coverage.py`
+❌ Optional heavy/OCR real-PDF tier: отдельный медленный regression-layer вне fast CI path
+❌ Persistent runtime: уход от in-process `BackgroundTasks` к persistent job runner с recovery semantics
+❌ Production hardening: VPS smoke, HTTPS, backup/restore flow
+❌ Дальше по roadmap: interactive OCR corrections, S3/MinIO, отраслевые benchmarks/OKVED
 
 ---
 

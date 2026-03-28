@@ -1,5 +1,27 @@
 # Project Log
 
+## 2026-03-28 — docs(roadmap): fix current execution plan and priorities
+
+**Изменения:**
+- `docs/ROADMAP.md`:
+  - переведён из частично устаревшего wishlist в актуальный execution plan
+  - зафиксированы три горизонта:
+    - ближайший: cleanup operationalization, test hygiene, heavy/OCR real-PDF tier
+    - следующий: persistent runtime, production hardening, PDF accuracy wave 2
+    - дальнейший: S3/MinIO, interactive OCR corrections, industry benchmarks, API-first surface
+  - добавлены критерии готовности и активный технический долг
+- `README.md`:
+  - добавлена краткая секция `Текущая повестка`
+  - таблица документации теперь явно указывает на `docs/ROADMAP.md` как основной execution plan
+- `.agent/overview.md`:
+  - синхронизирован ближайший порядок работ после завершённых PDF/DB/orchestration волн
+
+**Верификация:**
+- manual consistency check:
+  - `docs/ROADMAP.md`
+  - `README.md`
+  - `.agent/overview.md`
+
 ## 2026-03-28 — docs(agent): add hard invocation protocol and synthesis ladder
 
 **Изменения:**

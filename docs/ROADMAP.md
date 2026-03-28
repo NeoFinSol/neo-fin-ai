@@ -1,195 +1,191 @@
 # NeoFin AI — Roadmap (Планы развития)
 
 **Дата создания**: 2026-03-25  
+**Последнее обновление**: 2026-03-28  
 **Приоритеты**: HIGH → MEDIUM → LOW
 
 ---
 
-## 🚀 Ближайшие спринты (1-4 недели)
+## Контекст на сегодня
 
-### Task 6.1 — Scoring Model Refinement [HIGH] ✅ COMPLETED
-**Статус**: Завершено 2026-03-27
+К моменту этого обновления уже закрыты опорные волны стабилизации:
 
-**Реализовано**:
-- ✅ Добавлен уровень риска "critical" (score < 35)
-- ✅ Пороги риска: 75 (low) / 55 (medium) / 35 (high) / <35 (critical)
-- ✅ Функция `_build_factor_description()` генерирует осмысленные описания с ссылками на бенчмарки
-- ✅ Нормализация улучшена: `_normalize_positive` и `_normalize_inverse` корректно обрабатывают граничные случаи
-- ✅ `RiskLevel` enum в schemas.py синхронизирован с scoring.py
+- `Audit Wave 1-3D`: product-contract fixes, LLM token compaction, PDF regression corpus, real-PDF smoke pack, DB hardening, DB schema evolution, bounded admin cleanup job
+- production Docker path выровнен и не зависит от локального `frontend/dist`
+- human-readable orchestration усилен: role-binding, hard invocation protocol, deep synthesis ladder
 
-**Результат**: Скоринг теперь предоставляет пользователям контекст вместо просто "Значение: 1.23"
+Следующий этап уже не про хаотичный cleanup, а про последовательное добивание accuracy, runtime и ops-hardening.
 
 ---
 
-### Task 6.2 — OCR Performance Optimization [HIGH]
-**Проблема**: OCR 80 страниц = 3-5 минут (pdf2image + tesseract)
+## 🚀 Execution Plan — ближайший горизонт (1-3 недели)
 
-**Решения**:
-- [ ] Кэширование OCR результатов по hash(PDF)
-- [ ] Параллельная обработка страниц (multiprocessing)
-- [ ] Снижение DPI для текстовых PDF (200 вместо 300)
-- [ ] Прогресс-бар для frontend (WebSocket/SSE)
+### EP-1 — Cleanup job operationalization [HIGH]
+**Цель**: довести `scripts/admin_cleanup.py` до реального эксплуатационного сценария.
 
-**Ожидаемый эффект**: 80 страниц за 30-60 секунд
+**Уже есть**:
+- bounded cleanup helpers в `src/db/crud.py`
+- orchestration layer в `src/maintenance/cleanup_jobs.py`
+- admin CLI с `dry_run` по умолчанию
 
----
+**Что осталось**:
+- [ ] описать production runbook для cron / Windows Task Scheduler
+- [ ] зафиксировать retention policy и batch strategy для ops
+- [ ] добавить checklist безопасного first-run (`dry_run` → review → `--execute`)
+- [ ] определить, нужен ли отдельный ops smoke-report для cleanup job
 
-### Task 6.3 — Multi-Column PDF Parsing [HIGH]
-**Проблема**: Таблицы с 2+ колонками (2022 | 2021) сливаются в одно число
-
-**Решения**:
-- [x] Базовая защита от year-column regressions: `_extract_first_numeric_cell()` пропускает year markers
-- [x] Corpus regression dataset для сложных layouts: note columns, year columns, RSBU line codes, garbled labels, OCR pseudo-tables
-- [ ] Camelot lattice с Ghostscript (уже установлен)
-- [ ] Разделение колонок по ширине символов
-- [ ] Явный выбор первой колонки (текущий год) по умолчанию для real PDFs с неоднозначной вёрсткой
-- [ ] Явное указание периода в API
-
-**Ожидаемый эффект**: revenue=2.3 трлн вместо 2022
+**Критерий готовности**:
+- cleanup job можно безопасно запускать по расписанию без риска удаления completed history
 
 ---
 
-### Task 6.4 — Confidence Score Unit Tests [MEDIUM]
-**Файлы**: `tests/test_confidence.py`
+### EP-2 — Test hygiene и warning cleanup [HIGH]
+**Проблема**: часть тестового контура уже зелёная, но среда шумит и скрывает реальные регрессии.
 
-**Тесты**:
-- [ ] `test_confidence_levels()` — проверка мапы источников
-- [ ] `test_filter_by_confidence()` — пороговая фильтрация
-- [ ] `test_build_metric()` — создание метрик
-- [ ] Property-based: `test_confidence_range()` — [0.0, 1.0]
+**Что сделать**:
+- [ ] зафиксировать `pytest-asyncio` loop-scope конфиг без warning’ов
+- [ ] убрать существующий путь с unclosed `aiohttp` session
+- [ ] триажнуть legacy `tests/test_tasks_coverage.py` и решить: обновить или удалить как устаревший compatibility suite
+- [ ] сократить шум deprecation warning’ов вокруг `pypdf` / `ARC4`, где это контролируется кодом или зависимостями
 
-**Deadline**: 2026-04-03
-
----
-
-## 📅 Среднесрочные планы (1-3 месяца)
-
-### Task 7.1 — Celery + Redis [HIGH]
-**Проблема**: BackgroundTasks in-process → задачи теряются при рестарте
-
-**Решение**:
-- [ ] Celery worker для обработки PDF
-- [ ] Redis как broker + result backend
-- [ ] Персистентность статусов задач
-- [ ] Retry logic для упавших задач
-
-**Ожидаемый эффект**: Надёжность 99.9%, статус не зависает
+**Критерий готовности**:
+- fast regression suite остаётся зелёным и шум warning’ов больше не маскирует новые проблемы
 
 ---
 
-### Task 7.2 — WebSocket / SSE [MEDIUM]
-**Проблема**: Polling 2000ms × N пользователей = нагрузка на БД
+### EP-3 — Heavy/OCR real-PDF tier [HIGH]
+**Цель**: добавить медленный, но честный accuracy-слой поверх уже существующего real-PDF smoke pack.
 
-**Решение**:
-- [ ] WebSocket endpoint `/ws/result/{task_id}`
-- [ ] Frontend: замена polling на push-уведомления
-- [ ] Fallback на polling для старых браузеров
+**Уже есть**:
+- committed real-PDF smoke fixtures
+- synthetic corpus для сложных layouts
+- OCR fallback hardening и anti-regression tests
 
-**Ожидаемый эффект**: Снижение нагрузки на БД в 1000×
+**Что сделать**:
+- [ ] выделить optional pytest-tier для OCR-heavy / table-heavy fixtures
+- [ ] подобрать curated набор больших real PDF с многостраничными таблицами
+- [ ] определить узкие acceptance assertions: metrics, sources, confidence expectations
+- [ ] не смешивать этот tier с default fast CI path
 
----
-
-### Task 7.3 — Frontend Types Cleanup [LOW]
-**Проблема**: `types.ts` дублирует `interfaces.ts` с расхождениями
-
-**Решение**:
-- [ ] Удалить `types.ts`
-- [ ] Обновить все импорты на `interfaces.ts`
-- [ ] Добавить TypeScript strict проверку в CI
+**Критерий готовности**:
+- у проекта есть отдельный медленный regression-layer для реальных OCR-heavy отчётов
 
 ---
 
-### Task 7.4 — Production Deployment [HIGH]
-**Задачи**:
-- [ ] Аренда VPS (Selectel / Timeweb / Reg.ru)
-- [ ] Настройка Docker Compose production
-- [ ] SSL-сертификаты (Let's Encrypt)
-- [ ] Мониторинг (Prometheus + Grafana)
-- [ ] Backup БД (ежедневный)
+## 📅 Следующий горизонт (3-6 недель)
 
-**Deadline**: 2026-04-15
+### EP-4 — Persistent runtime вместо in-process BackgroundTasks [HIGH]
+**Проблема**: при рестарте backend текущие задачи теряются, а статус может зависнуть в `processing`.
 
----
+**Основной safe path**:
+- [ ] design pass для persistent job runner
+- [ ] выбрать стек: `Celery + Redis` или функционально эквивалентный persistent queue
+- [ ] вынести task lifecycle из in-process `BackgroundTasks`
+- [ ] сохранить совместимость API/status lifecycle для frontend
+- [ ] добавить retry / recovery semantics
 
-## 🔮 Долгосрочные планы (3-6 месяцев)
-
-### Task 8.1 — AI Model Fine-Tuning [MEDIUM]
-**Цель**: Улучшение качества NLP рекомендаций
-
-**Подход**:
-- [ ] Сбор датасета (1000+ отчётов с рекомендациями)
-- [ ] Fine-tuning Qwen/DeepSeek
-- [ ] Evaluation метрики (relevance, diversity)
+**Критерий готовности**:
+- рестарт backend больше не ломает длинные PDF/OCR задачи
 
 ---
 
-### Task 8.2 — Industry Benchmarks [MEDIUM]
-**Цель**: Отраслевые коэффициенты для скоринга
+### EP-5 — Production hardening и deploy confidence [HIGH]
+**Что уже сделано**:
+- production compose hardening
+- self-contained frontend image
+- nginx security headers и rate limiting
 
-**Отрасли**:
-- [ ] Ритейл (FMCG)
-- [ ] Производство
-- [ ] IT / SaaS
-- [ ] Нефтегаз
+**Что осталось**:
+- [ ] deploy smoke на реальной VPS/production-like среде
+- [ ] HTTPS / SSL termination path
+- [ ] backup / restore runbook
+- [ ] health-check / alerting baseline
 
-**Источник**: Росстат, отраслевые отчёты
-
----
-
-### Task 8.3 — API-First / White-Label [LOW]
-**Цель**: B2B2C модель для банков
-
-**Возможности**:
-- [ ] Публичный API документация (Swagger/OpenAPI)
-- [ ] Sandbox среда для разработчиков
-- [ ] White-label интеграции
-- [ ] Tarification (pay-per-call)
+**Критерий готовности**:
+- production deployment воспроизводим и проходит минимальный operational smoke
 
 ---
 
-### Task 8.4 — Mobile App [LOW]
-**Платформы**: iOS + Android (React Native / Flutter)
+### EP-6 — PDF accuracy wave 2 [MEDIUM]
+**Фокус**: качество парсинга после появления heavy-tier regression base.
 
-**Функции**:
-- [ ] Загрузка PDF с телефона
-- [ ] Push-уведомления о готовности
-- [ ] Offline режим (кэширование результатов)
+**Что сделать**:
+- [ ] multi-column extraction heuristics для real ambiguous layouts
+- [ ] Camelot lattice / fallback strategy для сложных таблиц
+- [ ] OCR batching / caching / performance profiling
+- [ ] при необходимости расширить API явным period disambiguation
+
+**Критерий готовности**:
+- меньше silent-misparse на annual reports со сложной вёрсткой
+
+---
+
+## 🔮 Дальше по roadmap (6+ недель)
+
+### EP-7 — S3/MinIO для временных PDF [MEDIUM]
+- [ ] уйти от локального временного хранения файлов
+- [ ] подготовить path для multi-instance runtime
+
+### EP-8 — Интерактивные OCR corrections [MEDIUM]
+- [ ] дать пользователю возможность поправлять извлечённые значения
+- [ ] сохранить explainability между raw extraction и user-adjusted values
+
+### EP-9 — Industry benchmarks / OKVED layer [MEDIUM]
+- [ ] добавить отраслевые нормативы и сравнение по секторам
+- [ ] расширить scoring explainability отраслевым контекстом
+
+### EP-10 — API-first / white-label surface [LOW]
+- [ ] более формализованный публичный API
+- [ ] sandbox / partner integration path
+
+---
+
+## ✅ Уже выполнено и больше не является ближайшим блокером
+
+- [x] `critical` risk level и scoring-factor explainability
+- [x] contract alignment между backend, frontend и WebSocket lifecycle
+- [x] LLM token optimization без смены внешнего API
+- [x] OCR fallback hardening и anti-merge numeric guards
+- [x] complex-layout synthetic PDF corpus
+- [x] real-PDF smoke fixture pack
+- [x] DB hardening: pool/runtime/schema guards
+- [x] DB schema evolution с typed summary columns
+- [x] bounded admin cleanup CLI
+- [x] human-readable subagent manifests и hard invocation protocol
 
 ---
 
 ## 📊 Метрики успеха
 
-| Метрика | Сейчас | Цель (Q2 2026) |
+| Метрика | Сейчас | Ближайшая цель |
 |---------|--------|----------------|
-| **Тесты backend** | 578 passed | 700+ passed |
-| **Тесты frontend** | 78 passed | 150+ passed |
-| **Coverage backend** | 85% | 90%+ |
-| **Coverage frontend** | 55% | 75%+ |
-| **OCR время (80 стр.)** | 180 сек | 30 сек |
-| **API latency (p95)** | 2 сек | 500 мс |
-| **Uptime** | N/A | 99.9% |
+| Fast regression suite | Стабильно зелёная на целевых наборах | Минимум warning noise |
+| Real-PDF coverage | Smoke-level fixtures + synthetic corpus | Heavy/OCR optional tier |
+| Task runtime надёжность | In-process | Persistent queue/runtime |
+| Cleanup safety | Manual/admin bounded CLI | Scheduled safe operational path |
+| Production confidence | Compose hardening завершён | VPS smoke + HTTPS + backup flow |
 
 ---
 
-## 🐛 Известные баги (Technical Debt)
+## 🐛 Активный технический долг
 
-| Баг | Приоритет | ETA |
-|-----|-----------|-----|
-| Multi-column parsing | HIGH | 1 неделя |
-| OCR performance | HIGH | 2 недели |
-| BackgroundTasks restart | MEDIUM | 1 месяц |
-| Polling → WebSocket | MEDIUM | 1 месяц |
-| types.ts дублирование | LOW | 2 месяца |
-
----
-
-## 📚 Документация к обновлению
-
-- [ ] `README.md` — добавить секцию про OCR и confidence scoring
-- [ ] `docs/ARCHITECTURE.md` — обновить diagram с pdf_extractor_pro
-- [ ] `docs/API.md` — документировать новые поля confidence
-- [ ] `INSTALL_WINDOWS.md` — актуализировать версии зависимостей
+| Тема | Приоритет | Комментарий |
+|------|-----------|-------------|
+| In-process `BackgroundTasks` | HIGH | Главный runtime-risk при рестартах |
+| Heavy OCR regressions | HIGH | Нет отдельного медленного боевого regression-tier |
+| Test warning noise | HIGH | Мешает видеть реальные проблемы |
+| Multi-column / ambiguous layouts | HIGH | Требует wave 2 после heavy-tier |
+| Production backup/restore | MEDIUM | Нужен operational runbook |
 
 ---
 
-*Документ обновляется каждые 2 недели (спринт-планирование).*
+## 📚 Документация, которая должна идти в ногу с roadmap
+
+- [x] `README.md` — зафиксирован текущий execution plan и состояние продукта
+- [ ] `docs/API.md` — обновить только если появятся новые product-поля или period disambiguation
+- [ ] `docs/ARCHITECTURE.md` — обновить при переходе на persistent runtime / queue
+- [ ] `docs/CONFIGURATION.md` — обновить при добавлении runtime queue, backup или OCR cache settings
+
+---
+
+*Документ обновляется после каждой завершённой логической волны, а не только по календарю.*

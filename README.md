@@ -342,8 +342,23 @@ docker-compose -f docker-compose.prod.yml up -d --build
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layered-архитектура, data flow, AI pipeline, explainability |
 | [`docs/API.md`](docs/API.md) | Все эндпоинты, форматы запросов/ответов, curl-примеры |
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Все переменные окружения с типами и значениями по умолчанию |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Актуальный execution plan: cleanup operationalization, test hygiene, heavy/OCR real-PDF tier, persistent runtime и production hardening |
 | [`AGENTS.md`](AGENTS.md) | Правила работы агента, orchestration policy и update ritual |
 | [`.agent/subagents/README.md`](.agent/subagents/README.md) | Human-readable система субагентов, invocation budget, hard invocation protocol, deep synthesis ladder и separation между project-role и runtime carrier |
+
+---
+
+## Текущая повестка
+
+Ближайший execution plan после завершённых PDF/DB hardening волн такой:
+
+1. Довести `scripts/admin_cleanup.py` до реального scheduled/ops-сценария.
+2. Почистить test hygiene: `pytest-asyncio`, warning noise, legacy coverage-suite.
+3. Добавить optional heavy/OCR real-PDF tier отдельно от fast CI path.
+4. Подготовить переход с in-process `BackgroundTasks` на persistent runtime.
+5. Закрыть production hardening: VPS smoke, HTTPS, backup/restore flow.
+
+Подробный план с горизонтом и критериями готовности — в [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
