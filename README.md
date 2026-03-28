@@ -199,8 +199,14 @@ git clone https://github.com/your-org/neofin-ai.git && cd neofin-ai
 cp .env.example .env
 # Заполнить DATABASE_URL и API_KEY; при необходимости — ключи ИИ-провайдеров
 
-# 3. Собрать и запустить (миграции применяются автоматически)
+# 3. Собрать и запустить локальный стек
 docker compose up --build
+
+# Дополнительно:
+#   --profile test    → поднять отдельную test БД
+#   --profile ollama  → поднять локальную LLM Ollama
+# Пример:
+# docker compose --profile test --profile ollama up --build
 
 # 4. Открыть: http://localhost
 ```

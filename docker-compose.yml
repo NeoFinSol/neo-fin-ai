@@ -1,4 +1,4 @@
-﻿services:
+services:
   backend:
     build:
       context: .
@@ -10,6 +10,7 @@
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       TEST_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db_test:5432/neofin_test
+      TESTING: 0
       DB_WAIT_RETRIES: 30
       DB_WAIT_SECONDS: 2
       TASK_RUNTIME: celery
@@ -19,12 +20,16 @@
     depends_on:
       db:
         condition: service_healthy
-      db_test:
-        condition: service_healthy
       redis:
         condition: service_healthy
       backend-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     networks:
       - neofin-net
 
@@ -36,6 +41,7 @@
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      TESTING: 0
       TASK_RUNTIME: celery
       TASK_QUEUE_BROKER_URL: redis://redis:6379/0
       TASK_QUEUE_RESULT_BACKEND: redis://redis:6379/1
@@ -60,6 +66,7 @@
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      TESTING: 0
       DB_WAIT_RETRIES: 30
       DB_WAIT_SECONDS: 2
     depends_on:
@@ -78,6 +85,9 @@
         VITE_API_BASE: http://localhost:8000
     ports:
       - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
     networks:
       - neofin-net
 
@@ -91,9 +101,10 @@
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
@@ -101,6 +112,8 @@
 
   db_test:
     image: postgres:16-alpine
+    profiles:
+      - test
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -109,32 +122,36 @@
       - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d neofin_test"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     volumes:
       - postgres-test-data:/var/lib/postgresql/data
     networks:
       - neofin-net
 
+  redis:
+    image: redis:8.6-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - neofin-net
+
   ollama:
-    image: ollama/ollama
+    image: ollama/ollama:latest
     profiles:
       - ollama
     ports:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
-    networks:
-      - neofin-net
-
-  redis:
-    image: redis:7-alpine
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
     networks:
       - neofin-net
 

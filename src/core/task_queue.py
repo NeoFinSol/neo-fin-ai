@@ -44,6 +44,7 @@ def _build_celery_app() -> Celery | None:
         task_always_eager=app_settings.task_queue_eager,
         task_eager_propagates=app_settings.task_queue_eager,
         worker_hijack_root_logger=False,
+        broker_connection_retry_on_startup=True,
     )
     return app
 
