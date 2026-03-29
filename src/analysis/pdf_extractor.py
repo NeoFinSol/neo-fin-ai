@@ -114,15 +114,30 @@ def apply_confidence_filter(
 
 # ---------------------------------------------------------------------------
 
-# Matches numbers with Russian-style grouping (spaces/dots between digit groups)
-# Uses [ \t\xa0] instead of \s to avoid matching newlines (which causes OCR number merging)
-_NUMBER_PATTERN = re.compile(r"[-(]?\d{1,3}(?:[ \t\xa0]\d{3})+(?:[.,]\d+)?|[-(]?\d+(?:[.,]\d+)?")
+# Matches financial numbers with non-newline thousand separators.
+# Supports spaces/NBSP, commas and dots as grouping chars while still avoiding
+# cross-line OCR merges.
+_NUMBER_PATTERN = re.compile(
+    r"[-(]?\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?\)?"
+    r"|[-(]?\$?\d{1,3}(?:[ \t\xa0]\d{3})+(?:[.,]\d+)?\)?"
+    r"|[-(]?\$?\d{1,3}(?:\.\d{3})+(?:,\d+)?\)?"
+    r"|[-(]?\$?\d+(?:[.,]\d+)?\)?"
+)
+_NUMBER_REGEX_FRAGMENT = (
+    r"[-(]?\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?\)?"
+    r"|[-(]?\$?\d{1,3}(?:[ \t\xa0]\d{3})+(?:[.,]\d+)?\)?"
+    r"|[-(]?\$?\d{1,3}(?:\.\d{3})+(?:,\d+)?\)?"
+    r"|[-(]?\$?\d+(?:[.,]\d+)?\)?"
+)
 
 _METRIC_KEYWORDS = {
     "revenue": [
         "выручка от реализации",
         "выручка",
+        "revenues",
         "revenue",
+        "total revenues",
+        "total revenue",
         "sales revenue",
         "net sales",
         "доходы от реализации",
@@ -132,6 +147,8 @@ _METRIC_KEYWORDS = {
         "чистая прибыль (убыток)",
         "чистая прибыль",
         "net profit",
+        "net income",
+        "net loss",
         "profit for the year",
         "profit (loss)",
         "прибыль после налогообложения",
@@ -148,25 +165,34 @@ _METRIC_KEYWORDS = {
         "итого по разделу iii",
         "итого капитала",
         "капитал и резервы",
+        "total stockholders' equity",
+        "stockholders' equity",
+        "total stockholders’ equity",
+        "stockholders’ equity",
+        "total shareholders' equity",
+        "shareholders' equity",
+        "total shareholders’ equity",
+        "shareholders’ equity",
         "total equity",
         "собственный капитал",
     ],
     "liabilities": [
         "итого обязательств",
         "total liabilities",
-        "liabilities",
     ],
     "current_assets": [
+        "total current assets",
+        "current assets total",
         "итого оборотных активов",
         "оборотные активы всего",
-        "current assets",
         "итого по разделу ii",
     ],
     "short_term_liabilities": [
         "итого краткосрочных обязательств",
         "краткосрочные обязательства всего",
+        "total current liabilities",
+        "current liabilities total",
         "short-term liabilities",
-        "current liabilities",
         "итого по разделу v",
     ],
     "accounts_receivable": [
@@ -179,7 +205,6 @@ _METRIC_KEYWORDS = {
         "запасы",
         "товарно-материальные ценности",
         "inventory",
-        "stock",
         "merchandise",
     ],
     "cash_and_equivalents": [
@@ -187,7 +212,6 @@ _METRIC_KEYWORDS = {
         "наличные",
         "cash and equivalents",
         "cash and cash equivalents",
-        "cash",
     ],
     "ebitda": [
         "ebitda",
@@ -512,18 +536,45 @@ def _detect_scale_factor(text: str) -> float:
         "in billions",
     ]
 
-    for p in patterns_billions:
-        if p in text_lower:
-            logger.info("Scale detected: billions (×1,000,000,000)")
-            return 1_000_000_000.0
-    for p in patterns_millions:
-        if p in text_lower:
-            logger.info("Scale detected: millions (×1,000,000)")
-            return 1_000_000.0
-    for p in patterns_thousands:
-        if p in text_lower:
-            logger.info("Scale detected: thousands (×1,000)")
-            return 1_000.0
+    statement_markers = (
+        "consolidated balance sheets",
+        "consolidated statements of operations",
+        "consolidated statements of income",
+        "consolidated statements of stockholders",
+        "statement of financial position",
+        "balance sheet",
+        "отчет о финансовом положении",
+        "бухгалтерский баланс",
+        "отчет о прибылях и убытках",
+    )
+
+    statement_windows: list[str] = []
+    lines = [line.strip() for line in text_lower.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        for marker in statement_markers:
+            if not line.startswith(marker):
+                continue
+            if len(line) > len(marker) + 24:
+                continue
+            window = "\n".join(lines[max(0, index - 1): index + 6])
+            statement_windows.append(window)
+            break
+
+    search_regions = statement_windows or [text_lower[:1500]]
+
+    for region in search_regions:
+        for p in patterns_billions:
+            if p in region:
+                logger.info("Scale detected: billions (×1,000,000,000)")
+                return 1_000_000_000.0
+        for p in patterns_millions:
+            if p in region:
+                logger.info("Scale detected: millions (×1,000,000)")
+                return 1_000_000.0
+        for p in patterns_thousands:
+            if p in region:
+                logger.info("Scale detected: thousands (×1,000)")
+                return 1_000.0
 
     return 1.0  # no scale indicator found
 
@@ -629,10 +680,10 @@ def _source_priority(match_type: str, is_exact: bool) -> int:
     """
     if match_type == "table" and is_exact:
         return 3  # table_exact
-    if match_type == "table":
-        return 2  # table_partial
     if match_type == "text_regex":
-        return 1
+        return 2  # text_regex
+    if match_type == "table":
+        return 1  # table_partial
     return 0  # derived
 
 
@@ -829,51 +880,62 @@ def parse_financial_statements_with_metadata(
     text_lower = (text or "").lower()
     # Strict number pattern: groups of 1-3 digits separated by non-newline spaces
     # Prevents merging numbers from adjacent lines (OCR artifact)
-    num_pattern = r"(\d{1,3}(?:[ \t\xa0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
+    num_pattern = rf"({_NUMBER_REGEX_FRAGMENT})"
     
     for metric_key, keywords in _METRIC_KEYWORDS.items():
-        if metric_key in raw:
+        if metric_key in raw and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2:
             continue
 
-        # Try each keyword with context window (50 chars before number)
-        for keyword in keywords:
-            # Pattern: keyword followed by number within 50 chars
-            pattern = rf"{keyword}[^0-9]{{0,50}}{num_pattern}"
-            match = re.search(pattern, text_lower, re.IGNORECASE)
-            if match:
-                value = _normalize_number(match.group(1))
-                if _is_valid_financial_value(value):
-                    _raw_set(raw, metric_key, value, "text_regex", False)
-                    logger.debug("[EXTRACT] %s = %s (source=text_regex, keyword=%s)", metric_key, value, keyword)
-                    break
+        value = _extract_best_line_value(text, keywords)
+        if _is_valid_financial_value(value):
+            _raw_set(raw, metric_key, value, "text_regex", False)
+            logger.debug("[EXTRACT] %s = %s (source=text_regex, line_match)", metric_key, value)
 
     # Pass 3: broad regex patterns
     broad_patterns: dict[str, list[str]] = {
         "revenue": [
+            r"total revenues\s*\|\s*" + num_pattern,
+            r"revenues\s*\|\s*" + num_pattern,
             r"выручка от реализации\s*\|\s*" + num_pattern,
             r"выручка[^\d]{0,80}" + num_pattern,
+            r"total revenues[^\d]{0,80}" + num_pattern,
+            r"revenues[^\d]{0,80}" + num_pattern,
         ],
         "net_profit": [
             r"чистая прибыль\s*\|\s*" + num_pattern,
             r"чистая прибыль[^\d]{0,60}" + num_pattern,
             r"прибыль после налогообложения[^\d]{0,80}" + num_pattern,
+            r"net income\s*\|\s*" + num_pattern,
+            r"net income[^\d]{0,80}" + num_pattern,
+            r"net loss\s*\|\s*" + num_pattern,
+            r"net loss[^\d]{0,80}" + num_pattern,
         ],
         "total_assets": [
+            r"total assets\s*\|\s*" + num_pattern,
             r"итого активов\s*\|\s*" + num_pattern,
             r"итого активов[^\d]{0,60}" + num_pattern,
             r"баланс\s*\|\s*" + num_pattern,
+            r"total assets[^\d]{0,80}" + num_pattern,
         ],
         "equity": [
             r"итого капитала\s*\|\s*" + num_pattern,
             r"итого капитала[^\d]{0,60}" + num_pattern,
             r"собственный капитал\s*\|\s*" + num_pattern,
             r"капитал и резервы\s*\|\s*" + num_pattern,
+            r"total stockholders['’] equity\s*\|\s*" + num_pattern,
+            r"total stockholders['’] equity[^\d]{0,80}" + num_pattern,
+            r"stockholders['’] equity[^\d]{0,80}" + num_pattern,
+            r"total shareholders['’] equity[^\d]{0,80}" + num_pattern,
         ],
         "current_assets": [
+            r"total current assets\s*\|\s*" + num_pattern,
+            r"total current assets[^\d]{0,80}" + num_pattern,
             r"итого оборотных активов\s*\|\s*" + num_pattern,
             r"итого оборотных активов[^\d]{0,60}" + num_pattern,
         ],
         "short_term_liabilities": [
+            r"total current liabilities\s*\|\s*" + num_pattern,
+            r"total current liabilities[^\d]{0,80}" + num_pattern,
             r"итого краткосрочных обязательств\s*\|\s*" + num_pattern,
             r"итого краткосрочных обязательств[^\d]{0,80}" + num_pattern,
         ],
@@ -883,7 +945,7 @@ def parse_financial_statements_with_metadata(
         ],
     }
     for metric_key, pattern_list in broad_patterns.items():
-        if metric_key in raw:
+        if metric_key in raw and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2:
             continue
         for pattern in pattern_list:
             match = re.search(pattern, text_lower)
@@ -985,7 +1047,7 @@ def extract_metrics_regex(text: str) -> dict[str, float | None]:
     """
     # Strict number pattern: groups of 1-3 digits separated by non-newline spaces
     # Prevents merging numbers from adjacent lines (OCR artifact)
-    num_group = r"(\d{1,3}(?:[ \t\xa0]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
+    num_group = rf"({_NUMBER_REGEX_FRAGMENT})"
     
     patterns = {
         "revenue": [
@@ -1191,6 +1253,116 @@ def _extract_number_near_keywords(text: str, keywords: list[str]) -> float | Non
     return None
 
 
+_LINE_NOISE_HINTS = (
+    "increase",
+    "decrease",
+    "decline",
+    "growth",
+    "represented more than",
+    "customer accounted",
+    "future",
+    "may ",
+    "could ",
+    "price",
+    "market value",
+    "equity compensation",
+    "risk",
+    "table of contents",
+)
+
+
+def _extract_best_line_value(text: str, keywords: list[str]) -> float | None:
+    """Pick the most statement-like line candidate for the requested metric."""
+    best_score: int | None = None
+    best_value: float | None = None
+    ordered_keywords = sorted(keywords, key=len, reverse=True)
+
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.split())
+        if not line:
+            continue
+
+        lower_line = line.lower()
+        matched_keyword = next((kw for kw in ordered_keywords if kw in lower_line), None)
+        if matched_keyword is None:
+            continue
+
+        value = _extract_number_after_keyword(line, matched_keyword)
+        if value is None:
+            continue
+
+        score = _score_metric_line(lower_line, matched_keyword, line)
+        if (
+            best_score is None
+            or score > best_score
+            or (score == best_score and abs(value) > abs(best_value or 0.0))
+        ):
+            best_score = score
+            best_value = value
+
+    return best_value
+
+
+def _extract_number_after_keyword(line: str, keyword: str) -> float | None:
+    keyword_index = line.lower().find(keyword)
+    if keyword_index == -1:
+        return None
+
+    window = line[keyword_index + len(keyword):]
+    match = _NUMBER_PATTERN.search(window)
+    if match:
+        return _normalize_number(match.group(0))
+
+    return None
+
+
+def _score_metric_line(lower_line: str, keyword: str, line: str) -> int:
+    """Prefer short statement rows over narrative sentences and headers."""
+    score = 0
+    keyword_index = lower_line.find(keyword)
+    number_count = len(_NUMBER_PATTERN.findall(line))
+
+    if keyword_index == 0:
+        score += 5
+    elif keyword_index < 12:
+        score += 3
+    elif keyword_index < 32:
+        score += 1
+    else:
+        score -= 1
+
+    if "$" in line:
+        score += 2
+
+    if 2 <= number_count <= 4:
+        score += 2
+    elif number_count == 1:
+        score += 1
+    elif number_count > 6:
+        score -= 2
+
+    if len(lower_line) <= 120:
+        score += 1
+    elif len(lower_line) > 220:
+        score -= 2
+
+    if "%" in line:
+        score -= 3
+
+    if any(hint in lower_line for hint in _LINE_NOISE_HINTS):
+        score -= 5
+
+    if keyword == "total liabilities" and (
+        "stockholders' equity" in lower_line
+        or "stockholders’ equity" in lower_line
+        or "shareholders' equity" in lower_line
+        or "shareholders’ equity" in lower_line
+    ):
+        score -= 4
+
+    return score
+
+
 def _normalize_number(raw_value: str) -> float | None:
     if raw_value is None:
         return None
@@ -1206,7 +1378,7 @@ def _normalize_number(raw_value: str) -> float | None:
     cleaned = raw_value.replace("\u00a0", "").replace(" ", "").replace("\t", "")
     # Replace Unicode minus with ASCII minus before stripping non-numeric chars
     cleaned = cleaned.replace("\u2212", "-")
-    cleaned = cleaned.replace(",", ".")
+    cleaned = _normalize_numeric_separators(cleaned)
     cleaned = re.sub(r"[^0-9.\-]", "", cleaned)
     cleaned = cleaned.strip()
 
@@ -1228,3 +1400,43 @@ def _normalize_number(raw_value: str) -> float | None:
         return -abs(value)
 
     return value
+
+
+def _normalize_numeric_separators(raw_value: str) -> str:
+    """Normalize grouped numeric separators into a float-friendly string."""
+    cleaned = raw_value.strip()
+    if not cleaned:
+        return cleaned
+
+    comma_count = cleaned.count(",")
+    dot_count = cleaned.count(".")
+
+    if comma_count and dot_count:
+        last_comma = cleaned.rfind(",")
+        last_dot = cleaned.rfind(".")
+        if last_dot > last_comma:
+            return cleaned.replace(",", "")
+        return cleaned.replace(".", "").replace(",", ".")
+
+    if comma_count > 1:
+        return cleaned.replace(",", "")
+
+    if dot_count > 1:
+        return cleaned.replace(".", "")
+
+    if comma_count == 1:
+        left, right = cleaned.rsplit(",", 1)
+        normalized_right = right.rstrip(")")
+        normalized_left = left.replace("-", "").replace("(", "")
+        if normalized_right.isdigit() and len(normalized_right) == 3 and normalized_left.isdigit():
+            return left + normalized_right
+        return cleaned.replace(",", ".")
+
+    if dot_count == 1:
+        left, right = cleaned.rsplit(".", 1)
+        normalized_right = right.rstrip(")")
+        normalized_left = left.replace("-", "").replace("(", "")
+        if normalized_right.isdigit() and len(normalized_right) == 3 and normalized_left.isdigit():
+            return left + normalized_right
+
+    return cleaned

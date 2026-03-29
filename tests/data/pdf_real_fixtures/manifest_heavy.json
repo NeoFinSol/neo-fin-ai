@@ -14,16 +14,21 @@
     "min_table_count": 8,
     "allowed_flavors": ["stream"],
     "expected_values": {
-      "total_assets": 393923.0,
-      "liabilities": 191747.0,
-      "current_assets": 71329.0,
-      "revenue": 10000.0
+      "revenue": 718562000.0,
+      "net_profit": 66365000.0,
+      "equity": 202176000.0,
+      "total_assets": 393923000.0,
+      "liabilities": 191747000.0,
+      "current_assets": 243770000.0
     },
     "expected_sources": {
+      "revenue": ["text_regex"],
+      "net_profit": ["text_regex"],
+      "equity": ["text_regex"],
       "total_assets": ["text_regex"],
       "liabilities": ["text_regex"],
       "current_assets": ["text_regex"],
-      "revenue": ["table_partial"]
+      "revenue": ["text_regex"]
     },
     "notes": "Heavy tier verifies that the full pipeline still discovers real tables on CorVel and preserves a narrow manually verified subset of extracted values."
   },
@@ -42,11 +47,17 @@
     "min_table_count": 10,
     "allowed_flavors": ["stream"],
     "expected_values": {
-      "cash_and_equivalents": 86900.0,
-      "current_assets": 5400.0,
-      "liabilities": 1996.0
+      "revenue": 1296745000.0,
+      "net_profit": -183949000.0,
+      "equity": 763047000.0,
+      "cash_and_equivalents": 86864000.0,
+      "current_assets": 1983077000.0,
+      "liabilities": 1996720000.0
     },
     "expected_sources": {
+      "revenue": ["text_regex"],
+      "net_profit": ["text_regex"],
+      "equity": ["text_regex"],
       "cash_and_equivalents": ["text_regex"],
       "current_assets": ["text_regex"],
       "liabilities": ["text_regex"]

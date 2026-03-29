@@ -22,6 +22,7 @@ _extract_metrics_with_regex = extract_metrics_regex
 from src.analysis.ratios import calculate_ratios, translate_ratios
 from src.analysis.recommendations import generate_recommendations
 from src.analysis.scoring import (
+    apply_data_quality_guardrails,
     calculate_integral_score, 
     build_score_payload
 )
@@ -390,6 +391,7 @@ async def _run_scoring_phase(metrics_filtered: dict, logger: logging.Logger) -> 
     
     ratios_en = translate_ratios(ratios_ru)
     score_payload = build_score_payload(raw_score, ratios_en)
+    score_payload = apply_data_quality_guardrails(score_payload, metrics_filtered)
     
     logger.info("Scoring completed", extra={"duration_ms": (time.monotonic() - start) * 1000})
     return {"ratios_en": ratios_en, "score_payload": score_payload}
@@ -587,6 +589,7 @@ async def _process_single_period(period_label: str, file_path: str, session_id: 
 
         ratios_en = translate_ratios(ratios_ru)
         score_payload = build_score_payload(raw_score, ratios_en)
+        score_payload = apply_data_quality_guardrails(score_payload, metrics)
 
         return {
             "period_label": period_label,

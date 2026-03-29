@@ -6,6 +6,7 @@ from src.analysis.scoring import (
     _normalize_positive,
     _risk_level,
     _to_number,
+    apply_data_quality_guardrails,
     calculate_integral_score,
 )
 
@@ -50,7 +51,7 @@ class TestCalculateIntegralScore:
         result = calculate_integral_score({})
 
         assert result["score"] == 0.0
-        assert result["risk_level"] == "высокий"
+        assert result["risk_level"] == "критический"
         assert result["details"] == {}
 
     def test_all_none_ratios(self):
@@ -114,6 +115,29 @@ class TestCalculateIntegralScore:
         # Unknown ratio should return None
         result = _normalize_ratio("Unknown Ratio Name", 5.0)
         assert result is None
+
+    def test_data_quality_guardrails_cap_sparse_score(self):
+        payload = {
+            "score": 100.0,
+            "risk_level": "low",
+            "confidence_score": 0.25,
+            "factors": [],
+            "normalized_scores": {},
+        }
+        metrics = {
+            "total_assets": 393923000.0,
+            "liabilities": 191747000.0,
+            "current_assets": 243770000.0,
+            "short_term_liabilities": 167887000.0,
+            "revenue": None,
+            "net_profit": None,
+            "equity": None,
+        }
+
+        guarded = apply_data_quality_guardrails(payload, metrics)
+
+        assert guarded["score"] == 39.99
+        assert guarded["risk_level"] == "high"
 
 
 class TestNormalizePositive:
@@ -183,17 +207,17 @@ class TestRiskLevel:
         assert _risk_level(100.0) == "низкий"
 
     def test_medium_risk(self):
-        """Test medium risk threshold (50–74.9)."""
-        assert _risk_level(50.0) == "средний"
+        """Test medium risk threshold (55–74.9)."""
+        assert _risk_level(55.0) == "средний"
         assert _risk_level(60.0) == "средний"
         assert _risk_level(74.9) == "средний"
 
     def test_high_risk(self):
-        """Test high risk threshold (< 50)."""
-        assert _risk_level(0.0) == "высокий"
-        assert _risk_level(30.0) == "высокий"
-        assert _risk_level(49.9) == "высокий"
-        assert _risk_level(-10.0) == "высокий"
+        """Test high and critical risk thresholds below medium band."""
+        assert _risk_level(54.9) == "высокий"
+        assert _risk_level(35.0) == "высокий"
+        assert _risk_level(34.9) == "критический"
+        assert _risk_level(0.0) == "критический"
 
 
 class TestToNumber:

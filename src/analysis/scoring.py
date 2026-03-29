@@ -5,6 +5,15 @@ from src.analysis.ratios import RATIO_KEY_MAP
 
 logger = logging.getLogger(__name__)
 
+_CORE_SCORE_KEYS = (
+    "revenue",
+    "total_assets",
+    "liabilities",
+    "current_assets",
+    "short_term_liabilities",
+)
+_SUPPORTING_SCORE_KEYS = ("net_profit", "equity")
+
 # Human-readable names for frontend display
 FRIENDLY_NAMES: dict[str, str] = {
     "Коэффициент текущей ликвидности": "Текущая ликвидность",
@@ -163,6 +172,42 @@ def build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
         "factors": factors,
         "normalized_scores": normalized_scores,
     }
+
+
+def apply_data_quality_guardrails(
+    score_payload: dict[str, Any],
+    metrics: dict[str, Any],
+) -> dict[str, Any]:
+    """Downgrade overconfident scores when critical extraction coverage is weak."""
+    adjusted = dict(score_payload)
+    current_score = float(adjusted.get("score", 0.0) or 0.0)
+    confidence_score = float(adjusted.get("confidence_score", 0.0) or 0.0)
+
+    missing_core = [key for key in _CORE_SCORE_KEYS if metrics.get(key) is None]
+    missing_supporting = [key for key in _SUPPORTING_SCORE_KEYS if metrics.get(key) is None]
+
+    capped_score = current_score
+    if missing_core:
+        capped_score = min(capped_score, 39.99)
+    elif missing_supporting:
+        capped_score = min(capped_score, 54.99)
+    elif confidence_score < 0.4:
+        capped_score = min(capped_score, 59.99)
+
+    if capped_score != current_score:
+        logger.warning(
+            "Score downgraded by data-quality guardrail: score=%s -> %s, "
+            "missing_core=%s, missing_supporting=%s, confidence=%s",
+            current_score,
+            capped_score,
+            missing_core,
+            missing_supporting,
+            confidence_score,
+        )
+        adjusted["score"] = round(capped_score, 2)
+        adjusted["risk_level"] = translate_risk_level(_risk_level(capped_score))
+
+    return adjusted
 
 
 def translate_risk_level(ru: str) -> str:

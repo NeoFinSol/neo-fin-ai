@@ -172,3 +172,33 @@ def test_extract_section_total_uses_safe_keyword_window():
     )
 
     assert value == 361751.0
+
+
+def test_normalize_number_supports_grouped_english_and_negative_values():
+    assert pdf_extractor._normalize_number("1,296,745") == 1296745.0
+    assert pdf_extractor._normalize_number("(183,949)") == -183949.0
+
+
+def test_text_statement_row_overrides_partial_table_noise():
+    tables = [
+        {"rows": [["Revenue growth", "10,000"]]},
+    ]
+    text = "\n".join(
+        [
+            "CONSOLIDATED STATEMENTS OF OPERATIONS",
+            "Revenues $718,562,000 $646,230,000 $552,644,000",
+            "Net income $66,365,000 $66,410,000 $46,356,000",
+            "Total stockholders' equity 202,176,000 212,395,000",
+            "Total assets $ 393,923,000 $ 415,246,000",
+            "Total liabilities 191,747,000 202,851,000",
+            "Total current assets 243,770,000 264,994,000",
+            "Total current liabilities 167,887,000 171,370,000",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
+
+    assert metadata["revenue"].value == 718562000.0
+    assert metadata["revenue"].source == "text_regex"
+    assert metadata["net_profit"].value == 66365000.0
+    assert metadata["equity"].value == 202176000.0
