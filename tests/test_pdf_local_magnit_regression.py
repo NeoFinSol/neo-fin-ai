@@ -41,9 +41,9 @@ def _load_case_params() -> list[pytest.ParameterSet]:
                 "cash_and_equivalents": 1448897000.0,
                 "equity": 209475516000.0,
                 "liabilities": 226183995000.0,
+                "short_term_liabilities": 192460146000.0,
             },
             "expected_none": [
-                "short_term_liabilities",
                 "inventory",
                 "accounts_receivable",
             ],
