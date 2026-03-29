@@ -135,6 +135,26 @@ def test_extract_text_from_scanned_stops_early_on_financial_signal(monkeypatch):
     assert seen_pages == ["img1", "img2", "img3", "img4", "img5"]
 
 
+def test_extract_layout_section_total_lines_from_ocr_layout(monkeypatch):
+    fake_data = {
+        "text": ["Итого", "по", "разделу", "Ш", "209", "475", "516", "foo"],
+        "block_num": [1, 1, 1, 1, 2, 2, 2, 3],
+        "par_num": [1, 1, 1, 1, 1, 1, 1, 1],
+        "line_num": [1, 1, 1, 1, 1, 1, 1, 1],
+        "top": [100, 100, 100, 100, 102, 102, 102, 160],
+        "left": [10, 70, 100, 160, 600, 650, 700, 30],
+    }
+
+    def fake_image_to_data(_image, lang=None, output_type=None):
+        return fake_data
+
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_data", fake_image_to_data)
+
+    lines = pdf_extractor._extract_layout_section_total_lines(object(), "Итого по разделу Ш")
+
+    assert lines == ["Итого по разделу Ш 209 475 516"]
+
+
 def test_extract_tables(monkeypatch):
     class FakeValues:
         def __init__(self, rows):
@@ -333,6 +353,22 @@ def test_extract_value_near_text_codes_supports_scanned_russian_forms():
 
 def test_extract_preferred_ocr_numeric_match_supports_four_digit_group_prefix():
     assert pdf_extractor._extract_preferred_ocr_numeric_match("1348 503 1339 235") == 1348503.0
+
+
+def test_extract_form_section_total_prefers_same_line_number():
+    text = "\n".join(
+        [
+            "Итого по разделу Ш 209 475 516 208 127 013",
+            "ТУ. ДОЛГОСРОЧНЫЕ ОБЯЗАТЕЛЬСТВА",
+        ]
+    )
+
+    value = pdf_extractor._extract_form_section_total(
+        text,
+        ("итого по разделу ш", "итого по разделу iii"),
+    )
+
+    assert value == 209475516.0
 
 
 def test_text_statement_row_overrides_partial_table_noise():

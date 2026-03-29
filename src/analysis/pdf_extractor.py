@@ -8,6 +8,7 @@ import camelot
 from pdf2image import convert_from_path
 import PyPDF2
 import pytesseract
+from pytesseract import Output
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +420,9 @@ def extract_text_from_scanned(pdf_path: str) -> str:
                     page_text = pytesseract.image_to_string(image, lang="rus+eng")
                 except pytesseract.TesseractError:
                     page_text = pytesseract.image_to_string(image)
+                layout_totals = _extract_layout_section_total_lines(image, page_text)
+                if layout_totals:
+                    page_text = "\n".join([page_text, *layout_totals])
                 texts.append(page_text)
             except Exception as exc:
                 logger.warning("OCR failed on page %d: %s", current_page, exc)
@@ -441,6 +445,58 @@ def extract_text_from_scanned(pdf_path: str) -> str:
         page_num += 1
 
     return "\n".join(texts).strip()
+
+
+def _extract_layout_section_total_lines(image: object, page_text: str) -> list[str]:
+    text_lower = (page_text or "").lower()
+    if "итого по разделу" not in text_lower:
+        return []
+
+    try:
+        data = pytesseract.image_to_data(image, lang="rus+eng", output_type=Output.DICT)
+    except Exception:
+        return []
+
+    row_map: dict[tuple[int, int, int], dict[str, object]] = {}
+    for i, raw_text in enumerate(data.get("text", [])):
+        token = (raw_text or "").strip()
+        if not token:
+            continue
+        key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+        row = row_map.setdefault(key, {"tokens": [], "top": data["top"][i]})
+        row["tokens"].append((data["left"][i], token))
+        row["top"] = min(int(row["top"]), int(data["top"][i]))
+
+    marker_rows: list[tuple[str, int]] = []
+    for row in row_map.values():
+        tokens = sorted(row["tokens"], key=lambda x: x[0])
+        line_text = " ".join(token for _, token in tokens)
+        if "итого по разделу" in line_text.lower():
+            marker_rows.append((line_text, int(row["top"])))
+
+    synthesized: list[str] = []
+    seen: set[str] = set()
+    for marker_text, top in marker_rows:
+        near_numbers: list[tuple[int, str]] = []
+        for i, raw_text in enumerate(data.get("text", [])):
+            token = (raw_text or "").strip()
+            if not token or not any(ch.isdigit() for ch in token):
+                continue
+            token_top = int(data["top"][i])
+            if abs(token_top - top) > 18:
+                continue
+            near_numbers.append((int(data["left"][i]), token))
+
+        if not near_numbers:
+            continue
+
+        near_numbers.sort(key=lambda x: x[0])
+        synthesized_line = f"{marker_text} {' '.join(token for _, token in near_numbers)}"
+        if synthesized_line not in seen:
+            synthesized.append(synthesized_line)
+            seen.add(synthesized_line)
+
+    return synthesized
 
 
 def _should_stop_scanned_ocr(text: str, processed_pages: int) -> bool:
@@ -1120,6 +1176,18 @@ def parse_financial_statements_with_metadata(
                     _raw_set(raw, metric_key, value, "text_regex", False)
                     break
 
+    # Pass 3.5: OCR section totals from Russian scanned balance forms.
+    if text_is_form_like and not tables and "equity" not in raw:
+        equity_value = _extract_form_section_total(
+            text,
+            ("итого по разделу ш", "итого по разделу iii"),
+            lookback_lines=8,
+            lookahead_lines=1,
+        )
+        if _is_valid_financial_value(equity_value):
+            _raw_set(raw, "equity", equity_value, "text_regex", True)
+            logger.debug("[EXTRACT] equity = %s (source=form_section_total)", equity_value)
+
     # Pass 4: derive missing metrics
     if "liabilities" not in raw:
         long_term = None
@@ -1136,11 +1204,18 @@ def parse_financial_statements_with_metadata(
             logger.debug("Derived liabilities = IV(%s) + V(%s) = %s", long_term, short_term, derived)
             raw["liabilities"] = (derived, "derived", False)
         elif total_assets is not None and equity is not None and not (
-            text_is_form_like and not tables and "equity" in raw and raw["equity"][1] == "text_regex"
+            text_is_form_like
+            and not tables
+            and "equity" in raw
+            and raw["equity"][1] == "text_regex"
+            and not raw["equity"][2]
         ):
             derived = total_assets - equity
-            logger.debug("Derived liabilities = assets - equity = %s", derived)
-            raw["liabilities"] = (derived, "derived", False)
+            if total_assets > 0:
+                ratio = derived / total_assets
+                if 0.02 <= ratio <= 0.98:
+                    logger.debug("Derived liabilities = assets - equity = %s", derived)
+                    raw["liabilities"] = (derived, "derived", False)
 
     # Derive current_assets from known components if still missing
     if "current_assets" not in raw:
@@ -1571,6 +1646,56 @@ def _extract_number_near_keywords(text: str, keywords: list[str]) -> float | Non
                 return value
 
             start = index + len(keyword)
+    return None
+
+
+def _extract_form_section_total(
+    text: str,
+    section_markers: tuple[str, ...],
+    lookback_lines: int = 8,
+    lookahead_lines: int = 1,
+) -> float | None:
+    lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+
+    lower_markers = tuple(marker.lower() for marker in section_markers)
+    noise_tokens = ("поясне", "форма 07", "руководитель", "подпись", "итого по разделу")
+
+    marker_indices: list[int] = []
+    same_line_candidates: list[float] = []
+    for idx, line in enumerate(lines):
+        lower_line = line.lower()
+        if not any(marker in lower_line for marker in lower_markers):
+            continue
+        marker_indices.append(idx)
+
+        same_line_value = _extract_preferred_ocr_numeric_match(line)
+        if _is_valid_financial_value(same_line_value):
+            same_line_candidates.append(same_line_value)
+
+    if same_line_candidates:
+        return max(same_line_candidates)
+
+    for idx in marker_indices:
+        candidate_values: list[float] = []
+        start = max(0, idx - lookback_lines)
+        end = min(len(lines), idx + lookahead_lines + 1)
+        for pos in range(start, end):
+            if pos == idx:
+                continue
+            candidate_line = lines[pos]
+            candidate_lower = candidate_line.lower()
+            if any(token in candidate_lower for token in noise_tokens):
+                continue
+
+            value = _extract_preferred_ocr_numeric_match(candidate_line)
+            if _is_valid_financial_value(value) and value is not None and value >= 1000:
+                candidate_values.append(value)
+
+        if candidate_values:
+            return max(candidate_values)
+
     return None
 
 
