@@ -1177,6 +1177,26 @@ def parse_financial_statements_with_metadata(
                     break
 
     # Pass 3.5: OCR section totals from Russian scanned balance forms.
+    if text_is_form_like and not tables and "short_term_liabilities" not in raw:
+        short_term_value = _extract_form_section_total(
+            text,
+            (
+                "итого по разделу v",
+                "итого по разделу у",
+                "итого краткосрочных обязательств",
+            ),
+            lookback_lines=8,
+            lookahead_lines=1,
+        )
+        if _is_valid_financial_value(short_term_value):
+            _raw_set(
+                raw, "short_term_liabilities", short_term_value, "text_regex", True
+            )
+            logger.debug(
+                "[EXTRACT] short_term_liabilities = %s (source=form_section_total)",
+                short_term_value,
+            )
+
     if text_is_form_like and not tables and "equity" not in raw:
         equity_value = _extract_form_section_total(
             text,
@@ -1274,6 +1294,8 @@ def parse_financial_statements_with_metadata(
     if text_is_form_like:
         total_assets_meta = result["total_assets"]
         current_assets_meta = result["current_assets"]
+        liabilities_meta = result["liabilities"]
+        short_term_meta = result["short_term_liabilities"]
 
         if (
             total_assets_meta.value is not None
@@ -1291,6 +1313,15 @@ def parse_financial_statements_with_metadata(
                 and component_meta.value > current_assets_meta.value
             ):
                 result[component_key] = ExtractionMetadata(value=None, confidence=0.0, source="derived")
+
+        if (
+            liabilities_meta.value is not None
+            and short_term_meta.value is not None
+            and short_term_meta.value > liabilities_meta.value
+        ):
+            result["short_term_liabilities"] = ExtractionMetadata(
+                value=None, confidence=0.0, source="derived"
+            )
 
     return result
 
@@ -1715,6 +1746,14 @@ _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] =
     ),
     "total_assets": (("1600", "1700"), None),
     "current_assets": (("1200",), None),
+    "short_term_liabilities": (
+        ("1500",),
+        (
+            "краткосрочные обязательства",
+            "итого краткосрочных обязательств",
+            "total current liabilities",
+        ),
+    ),
     "cash_and_equivalents": (("1250",), ("денежные средства", "cash and cash equivalents")),
 }
 
