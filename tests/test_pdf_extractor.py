@@ -155,6 +155,42 @@ def test_extract_layout_section_total_lines_from_ocr_layout(monkeypatch):
     assert lines == ["Итого по разделу Ш 209 475 516"]
 
 
+def test_extract_layout_metric_value_lines_recovers_inventory(monkeypatch):
+    class FakeImage:
+        size = (1653, 2339)
+
+        def crop(self, _box):
+            return self
+
+    fake_data = {
+        "text": ["Бухгалтерский", "баланс", "Запасы"],
+        "block_num": [1, 1, 2],
+        "par_num": [1, 1, 1],
+        "line_num": [1, 1, 1],
+        "top": [120, 120, 1044],
+        "left": [100, 220, 292],
+        "width": [90, 80, 61],
+        "height": [20, 20, 14],
+    }
+
+    def fake_image_to_data(_image, lang=None, output_type=None):
+        return fake_data
+
+    def fake_image_to_string(_image, lang=None, config=None):
+        assert "whitelist" in (config or "")
+        return "1210 21 42 153"
+
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_data", fake_image_to_data)
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_string", fake_image_to_string)
+
+    lines = pdf_extractor._extract_layout_metric_value_lines(
+        FakeImage(),
+        "Бухгалтерский баланс\nЗапасы",
+    )
+
+    assert lines == ["Запасы 21 42 153"]
+
+
 def test_extract_tables(monkeypatch):
     class FakeValues:
         def __init__(self, rows):

@@ -421,8 +421,10 @@ def extract_text_from_scanned(pdf_path: str) -> str:
                 except pytesseract.TesseractError:
                     page_text = pytesseract.image_to_string(image)
                 layout_totals = _extract_layout_section_total_lines(image, page_text)
-                if layout_totals:
-                    page_text = "\n".join([page_text, *layout_totals])
+                layout_metric_lines = _extract_layout_metric_value_lines(image, page_text)
+                synthesized_layout_lines = [*layout_totals, *layout_metric_lines]
+                if synthesized_layout_lines:
+                    page_text = "\n".join([page_text, *synthesized_layout_lines])
                 texts.append(page_text)
             except Exception as exc:
                 logger.warning("OCR failed on page %d: %s", current_page, exc)
@@ -495,6 +497,134 @@ def _extract_layout_section_total_lines(image: object, page_text: str) -> list[s
         if synthesized_line not in seen:
             synthesized.append(synthesized_line)
             seen.add(synthesized_line)
+
+    return synthesized
+
+
+def _extract_ocr_row_value_tail(
+    image: object,
+    row_left: int,
+    row_top: int,
+    row_right: int,
+    row_bottom: int,
+    expected_code: str | None = None,
+) -> str | None:
+    image_size = getattr(image, "size", None)
+    if not image_size or len(image_size) != 2:
+        return None
+
+    width, height = image_size
+    x0 = max(int(width * 0.45), int(row_right + 16), int(row_left + width * 0.05))
+    x1 = min(width, int(width * 0.995))
+    y0 = max(0, row_top - 10)
+    y1 = min(height, row_bottom + 18)
+    if x1 <= x0 or y1 <= y0:
+        return None
+
+    try:
+        cropped = image.crop((x0, y0, x1, y1))
+    except Exception:
+        return None
+
+    ocr_configs = (
+        "--psm 6 -c tessedit_char_whitelist=0123456789,.-() ",
+        "--psm 7 -c tessedit_char_whitelist=0123456789,.-() ",
+        "--psm 11 -c tessedit_char_whitelist=0123456789,.-() ",
+    )
+    best_candidate: str | None = None
+    best_score = -1
+    for config in ocr_configs:
+        try:
+            raw = pytesseract.image_to_string(cropped, lang="rus+eng", config=config)
+        except Exception:
+            continue
+
+        digit_groups = re.findall(r"\d+", raw or "")
+        if expected_code and digit_groups and digit_groups[0] == expected_code:
+            digit_groups = digit_groups[1:]
+        while len(digit_groups) >= 3 and len(digit_groups[-1]) == 1:
+            digit_groups = digit_groups[:-1]
+        if not digit_groups:
+            continue
+
+        candidate = _split_grouped_period_values(" ".join(digit_groups))
+        value = _normalize_number(candidate)
+        if value is None or abs(value) < 1000:
+            continue
+        if _is_valid_financial_value(value):
+            digit_count = len("".join(ch for ch in candidate if ch.isdigit()))
+            score = digit_count
+            if score > best_score:
+                best_candidate = candidate
+                best_score = score
+
+    return best_candidate
+
+
+def _extract_layout_metric_value_lines(image: object, page_text: str) -> list[str]:
+    text_lower = (page_text or "").lower()
+    if "запас" not in text_lower:
+        return []
+    if "бухгалтерский баланс" not in text_lower and "1200" not in text_lower:
+        return []
+
+    try:
+        data = pytesseract.image_to_data(image, lang="rus+eng", output_type=Output.DICT)
+    except Exception:
+        return []
+
+    row_map: dict[tuple[int, int, int], dict[str, object]] = {}
+    for i, raw_text in enumerate(data.get("text", [])):
+        token = (raw_text or "").strip()
+        if not token:
+            continue
+        key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+        left = int(data["left"][i])
+        top = int(data["top"][i])
+        width = int(data["width"][i])
+        height = int(data["height"][i])
+
+        row = row_map.setdefault(
+            key,
+            {
+                "tokens": [],
+                "left": left,
+                "right": left + width,
+                "top": top,
+                "bottom": top + height,
+            },
+        )
+        row["tokens"].append((left, token))
+        row["left"] = min(int(row["left"]), left)
+        row["right"] = max(int(row["right"]), left + width)
+        row["top"] = min(int(row["top"]), top)
+        row["bottom"] = max(int(row["bottom"]), top + height)
+
+    synthesized: list[str] = []
+    seen: set[str] = set()
+    for row in row_map.values():
+        tokens = sorted(row["tokens"], key=lambda x: x[0])
+        line_text = " ".join(token for _, token in tokens)
+        lower_line = line_text.lower()
+        if "запас" not in lower_line:
+            continue
+
+        numeric_tail = _extract_ocr_row_value_tail(
+            image,
+            row_left=int(row["left"]),
+            row_top=int(row["top"]),
+            row_right=int(row["right"]),
+            row_bottom=int(row["bottom"]),
+            expected_code="1210",
+        )
+        if not numeric_tail:
+            continue
+
+        synthesized_line = f"Запасы {numeric_tail}"
+        if synthesized_line in seen:
+            continue
+        synthesized.append(synthesized_line)
+        seen.add(synthesized_line)
 
     return synthesized
 
