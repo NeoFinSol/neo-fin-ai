@@ -136,6 +136,101 @@ def test_extract_tables(monkeypatch):
     assert tables[0]["rows"][0] == ["Выручка", "1000"]
 
 
+def test_extract_tables_prefers_stream_before_lattice(monkeypatch):
+    class FakeValues:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def tolist(self):
+            return self._rows
+
+    class FakeDF:
+        def __init__(self, rows):
+            self.values = FakeValues(rows)
+            self.empty = False
+
+    class FakeTable:
+        def __init__(self, rows):
+            self.df = FakeDF(rows)
+
+    class FakeTables(list):
+        @property
+        def n(self):
+            return len(self)
+
+    calls: list[str] = []
+
+    def fake_read_pdf(_path, pages, flavor):
+        calls.append(flavor)
+        if flavor == "stream":
+            return FakeTables([FakeTable([["Выручка", "1000"], ["Итого активы", "2000"]])])
+        return FakeTables([FakeTable([["Should not be reached", "1"]])])
+
+    monkeypatch.setattr(pdf_extractor.camelot, "read_pdf", fake_read_pdf)
+
+    tables = pdf_extractor.extract_tables("dummy.pdf")
+
+    assert calls == ["stream"]
+    assert tables[0]["flavor"] == "stream"
+
+
+def test_extract_tables_keeps_statement_tables_when_many_tables_found(monkeypatch):
+    class FakeValues:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def tolist(self):
+            return self._rows
+
+    class FakeDF:
+        def __init__(self, rows):
+            self.values = FakeValues(rows)
+            self.empty = False
+
+    class FakeTable:
+        def __init__(self, rows):
+            self.df = FakeDF(rows)
+
+    class FakeTables(list):
+        @property
+        def n(self):
+            return len(self)
+
+    narrative_row = [
+        "Выручка по договорам с покупателями",
+        "65",
+        "Описание учетной политики и раскрытия информации",
+    ]
+    noisy_tables = [
+        FakeTable([narrative_row for _ in range(40)])
+        for _ in range(24)
+    ]
+    statement_table = FakeTable(
+        [
+            ["Выручка", "24", "2 351 996 423", "1 856 078 950"],
+            ["Прибыль за год", "", "27 932 517", "48 118 154"],
+            ["Итого активы", "", "1 395 998 440", "1 209 760 255"],
+            ["Итого обязательства", "", "1 188 616 136", "1 030 762 784"],
+        ]
+    )
+
+    def fake_read_pdf(_path, pages, flavor):
+        if flavor == "stream":
+            return FakeTables(noisy_tables + [statement_table])
+        return FakeTables([])
+
+    monkeypatch.setattr(pdf_extractor.camelot, "read_pdf", fake_read_pdf)
+
+    tables = pdf_extractor.extract_tables("dummy.pdf")
+
+    assert len(tables) == 10
+    assert any(
+        any("2 351 996 423" in str(cell) for cell in row)
+        for table in tables
+        for row in table["rows"]
+    )
+
+
 def test_parse_financial_statements():
     tables = [
         {"rows": [["Выручка", "1000"], ["Чистая прибыль", "50"]]},
@@ -179,6 +274,11 @@ def test_normalize_number_supports_grouped_english_and_negative_values():
     assert pdf_extractor._normalize_number("(183,949)") == -183949.0
 
 
+def test_extract_preferred_numeric_match_skips_note_references():
+    assert pdf_extractor._extract_preferred_numeric_match(" 24 2 351 996 423 1 856 078 950") == 2351996423.0
+    assert pdf_extractor._extract_preferred_numeric_match(" 23 1 673 223 617 1 460 058 332") == 1673223617.0
+
+
 def test_text_statement_row_overrides_partial_table_noise():
     tables = [
         {"rows": [["Revenue growth", "10,000"]]},
@@ -202,3 +302,32 @@ def test_text_statement_row_overrides_partial_table_noise():
     assert metadata["revenue"].source == "text_regex"
     assert metadata["net_profit"].value == 66365000.0
     assert metadata["equity"].value == 202176000.0
+
+
+def test_russian_statement_rows_with_note_numbers_prefer_actual_values():
+    tables = [
+        {
+            "rows": [
+                ["Выручка", "24", "2 351 996 423", "1 856 078 950"],
+                ["Прибыль за год", "", "27 932 517", "48 118 154"],
+                ["Итого активы", "", "1 395 998 440", "1 209 760 255"],
+                ["Итого обязательства", "", "1 188 616 136", "1 030 762 784"],
+            ]
+        }
+    ]
+    text = "\n".join(
+        [
+            "(в тысячах рублей)",
+            "Выручка 24 2 351 996 423 1 856 078 950",
+            "Прибыль за год 27 932 517 48 118 154",
+            "Итого активы 1 395 998 440 1 209 760 255",
+            "Итого обязательства 1 188 616 136 1 030 762 784",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
+
+    assert metadata["revenue"].value == 2351996423000.0
+    assert metadata["revenue"].source == "table_exact"
+    assert metadata["net_profit"].value == 27932517000.0
+    assert metadata["net_profit"].source == "table_exact"

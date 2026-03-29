@@ -146,10 +146,13 @@ _METRIC_KEYWORDS = {
     "net_profit": [
         "чистая прибыль (убыток)",
         "чистая прибыль",
+        "прибыль за период",
+        "прибыль за год",
         "net profit",
         "net income",
         "net loss",
         "profit for the year",
+        "profit for the period",
         "profit (loss)",
         "прибыль после налогообложения",
     ],
@@ -479,6 +482,66 @@ def _is_financial_table(rows: list) -> bool:
     return rows_with_large_numbers >= 5
 
 
+def _table_financial_signal_score(rows: list[list[Any]]) -> tuple[int, int, int]:
+    """Score how likely a parsed table is to contain statement-like financial rows."""
+    strong_row_keywords = (
+        "выручка",
+        "прибыль за год",
+        "прибыль за период",
+        "чистая прибыль",
+        "итого активы",
+        "итого обязательства",
+        "денежные средства",
+        "капитал",
+        "revenue",
+        "net income",
+        "net profit",
+        "total assets",
+        "total liabilities",
+        "current assets",
+        "stockholders' equity",
+    )
+    noise_hints = (
+        "содержание",
+        "аудиторское заключение",
+        "основные принципы",
+        "учетной политики",
+        "table of contents",
+        "independent auditor",
+        "notes to",
+    )
+
+    statement_rows = 0
+    keyword_hits = 0
+    numeric_rows = 0
+
+    for row in rows:
+        row_cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip()]
+        if not row_cells:
+            continue
+
+        row_text_lower = " ".join(row_cells).lower()
+        if any(hint in row_text_lower for hint in noise_hints):
+            keyword_hits -= 1
+
+        if any(kw in row_text_lower for kw in strong_row_keywords):
+            keyword_hits += 1
+
+        label_candidates = row_cells[:2]
+        label_text_lower = " ".join(label_candidates).lower()
+        values = row_cells[1:] if len(row_cells) > 1 else []
+
+        if any(kw in label_text_lower for kw in strong_row_keywords):
+            first_value = _extract_first_numeric_cell(values)
+            if _is_valid_financial_value(first_value):
+                statement_rows += 1
+
+        if _extract_first_numeric_cell(values or row_cells) is not None:
+            numeric_rows += 1
+
+    return (statement_rows, keyword_hits, numeric_rows)
+
+
 def _is_year(v: float) -> bool:
     """Check if a value looks like a year (1900–2100) using safe float comparison."""
     if isinstance(v, int):
@@ -541,20 +604,30 @@ def _detect_scale_factor(text: str) -> float:
         "consolidated statements of operations",
         "consolidated statements of income",
         "consolidated statements of stockholders",
+        "consolidated statements of cash flows",
         "statement of financial position",
         "balance sheet",
         "отчет о финансовом положении",
+        "консолидированный отчет о финансовом положении",
+        "сокращенный консолидированный отчет о финансовом положении",
+        "промежуточный сокращенный консолидированный отчет о финансовом положении",
         "бухгалтерский баланс",
         "отчет о прибылях и убытках",
+        "консолидированный отчет о прибыли и убытке",
+        "консолидированный отчет о прибыли и убытке и прочем совокупном доходе",
+        "промежуточный сокращенный консолидированный отчет о прибыли и убытке",
+        "отчет о движении денежных средств",
+        "консолидированный отчет о движении денежных средств",
+        "консолидированный отчет об изменениях в капитале",
     )
 
     statement_windows: list[str] = []
-    lines = [line.strip() for line in text_lower.splitlines() if line.strip()]
+    lines = [" ".join(line.split()) for line in text_lower.splitlines() if line.strip()]
     for index, line in enumerate(lines):
         for marker in statement_markers:
-            if not line.startswith(marker):
+            if marker not in line:
                 continue
-            if len(line) > len(marker) + 24:
+            if len(line) > len(marker) + 80:
                 continue
             window = "\n".join(lines[max(0, index - 1): index + 6])
             statement_windows.append(window)
@@ -609,13 +682,13 @@ def extract_tables(pdf_path: str, force_ocr: bool = False) -> list[dict[str, Any
     
     financial_tables_found = False
 
-    # Try lattice first (works better with Ghostscript)
-    # Limit to first 30 pages to avoid hanging on large annual reports
-    # Financial statements are almost always in the first half of the document
+    # Try stream first — for product PDFs it usually finds useful statement rows
+    # much faster than lattice. Lattice is kept as a bounded fallback.
+    # Limit to first 30 pages to avoid hanging on large reports.
     _CAMELOT_TIMEOUT = 45
     _CAMELOT_MAX_PAGES = "1-30"
 
-    for flavor in ("lattice", "stream"):
+    for flavor in ("stream", "lattice"):
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(
@@ -652,8 +725,12 @@ def extract_tables(pdf_path: str, force_ocr: bool = False) -> list[dict[str, Any
     
     # If too many tables found, keep only the most data-rich ones (not OCR fallback)
     if len(tables_data) > 20:
-        logger.info("Many tables found (%d), keeping top 10 by row count", len(tables_data))
-        tables_data = sorted(tables_data, key=lambda t: len(t.get("rows", [])), reverse=True)[:10]
+        logger.info("Many tables found (%d), keeping top 10 by financial relevance", len(tables_data))
+        tables_data = sorted(
+            tables_data,
+            key=lambda t: (_table_financial_signal_score(t.get("rows", [])), len(t.get("rows", []))),
+            reverse=True,
+        )[:10]
         financial_tables_found = True
     
     if not financial_tables_found:
@@ -747,6 +824,7 @@ def parse_financial_statements_with_metadata(
         "выручка": "revenue",
         "чистая прибыль": "net_profit",
         "прибыль за год": "net_profit",
+        "прибыль за период": "net_profit",
         "итого активов": "total_assets",
         "итого активы": "total_assets",
         "итого капитала": "equity",
@@ -1235,6 +1313,30 @@ def _extract_number_from_text(text: str) -> float | None:
     return _normalize_number(matches[-1])
 
 
+def _extract_preferred_numeric_match(text: str) -> float | None:
+    matches = _NUMBER_PATTERN.findall(text)
+    if not matches:
+        return None
+
+    parsed_candidates: list[tuple[str, float]] = []
+    for raw_match in matches:
+        value = _normalize_number(raw_match)
+        if value is None or _is_year(value):
+            continue
+        parsed_candidates.append((raw_match, value))
+
+    if not parsed_candidates:
+        return None
+
+    for raw_match, value in parsed_candidates:
+        digits_only = "".join(ch for ch in raw_match if ch.isdigit())
+        if digits_only.isdigit() and len(digits_only) <= 3 and len(parsed_candidates) > 1:
+            continue
+        return value
+
+    return parsed_candidates[-1][1]
+
+
 def _extract_number_near_keywords(text: str, keywords: list[str]) -> float | None:
     for keyword in keywords:
         start = 0
@@ -1245,9 +1347,9 @@ def _extract_number_near_keywords(text: str, keywords: list[str]) -> float | Non
 
             window_start = index + len(keyword)
             window = text[window_start: window_start + 60]
-            match = _NUMBER_PATTERN.search(window)
-            if match:
-                return _normalize_number(match.group(0))
+            value = _extract_preferred_numeric_match(window)
+            if value is not None:
+                return value
 
             start = index + len(keyword)
     return None
@@ -1309,11 +1411,7 @@ def _extract_number_after_keyword(line: str, keyword: str) -> float | None:
         return None
 
     window = line[keyword_index + len(keyword):]
-    match = _NUMBER_PATTERN.search(window)
-    if match:
-        return _normalize_number(match.group(0))
-
-    return None
+    return _extract_preferred_numeric_match(window)
 
 
 def _score_metric_line(lower_line: str, keyword: str, line: str) -> int:
