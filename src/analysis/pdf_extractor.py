@@ -501,6 +501,22 @@ def _extract_layout_section_total_lines(image: object, page_text: str) -> list[s
     return synthesized
 
 
+_LAYOUT_BALANCE_ROW_SPECS: tuple[tuple[str, tuple[str, ...], str, int, bool], ...] = (
+    ("1200", ("итого по разделу п", "итого по разделу ii"), "Итого по разделу П", 3, False),
+    ("1210", ("запас",), "Запасы", 2, False),
+    ("1230", ("дебитор",), "Дебиторская задолженность", 2, False),
+    ("1250", ("денежн",), "Денежные средства", 2, False),
+    ("1400", ("итого по разделу iv", "долгосрочн"), "Итого по разделу IV", 3, True),
+    (
+        "1500",
+        ("итого по разделу v", "итого по разделу у", "краткосрочн"),
+        "Итого по разделу V",
+        3,
+        True,
+    ),
+)
+
+
 def _extract_ocr_row_value_tail(
     image: object,
     row_left: int,
@@ -508,6 +524,7 @@ def _extract_ocr_row_value_tail(
     row_right: int,
     row_bottom: int,
     expected_code: str | None = None,
+    require_code_match: bool = False,
 ) -> str | None:
     image_size = getattr(image, "size", None)
     if not image_size or len(image_size) != 2:
@@ -540,8 +557,11 @@ def _extract_ocr_row_value_tail(
             continue
 
         digit_groups = re.findall(r"\d+", raw or "")
-        if expected_code and digit_groups and digit_groups[0] == expected_code:
-            digit_groups = digit_groups[1:]
+        if expected_code:
+            if digit_groups and digit_groups[0] == expected_code:
+                digit_groups = digit_groups[1:]
+            elif require_code_match:
+                continue
         while len(digit_groups) >= 3 and len(digit_groups[-1]) == 1:
             digit_groups = digit_groups[:-1]
         if not digit_groups:
@@ -563,9 +583,7 @@ def _extract_ocr_row_value_tail(
 
 def _extract_layout_metric_value_lines(image: object, page_text: str) -> list[str]:
     text_lower = (page_text or "").lower()
-    if "запас" not in text_lower:
-        return []
-    if "бухгалтерский баланс" not in text_lower and "1200" not in text_lower:
+    if "бухгалтерский баланс" not in text_lower and "итого по разделу" not in text_lower:
         return []
 
     try:
@@ -606,25 +624,32 @@ def _extract_layout_metric_value_lines(image: object, page_text: str) -> list[st
         tokens = sorted(row["tokens"], key=lambda x: x[0])
         line_text = " ".join(token for _, token in tokens)
         lower_line = line_text.lower()
-        if "запас" not in lower_line:
-            continue
+        for expected_code, markers, label, min_groups, require_code_match in _LAYOUT_BALANCE_ROW_SPECS:
+            if not any(marker in lower_line for marker in markers):
+                continue
+            if require_code_match and expected_code not in lower_line:
+                continue
 
-        numeric_tail = _extract_ocr_row_value_tail(
-            image,
-            row_left=int(row["left"]),
-            row_top=int(row["top"]),
-            row_right=int(row["right"]),
-            row_bottom=int(row["bottom"]),
-            expected_code="1210",
-        )
-        if not numeric_tail:
-            continue
+            numeric_tail = _extract_ocr_row_value_tail(
+                image,
+                row_left=int(row["left"]),
+                row_top=int(row["top"]),
+                row_right=int(row["right"]),
+                row_bottom=int(row["bottom"]),
+                expected_code=expected_code,
+                require_code_match=require_code_match,
+            )
+            if not numeric_tail:
+                continue
+            if len(re.findall(r"\d+", numeric_tail)) < min_groups:
+                continue
 
-        synthesized_line = f"Запасы {numeric_tail}"
-        if synthesized_line in seen:
-            continue
-        synthesized.append(synthesized_line)
-        seen.add(synthesized_line)
+            synthesized_line = f"{label} {numeric_tail}"
+            if synthesized_line in seen:
+                continue
+            synthesized.append(synthesized_line)
+            seen.add(synthesized_line)
+            break
 
     return synthesized
 

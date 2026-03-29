@@ -191,6 +191,172 @@ def test_extract_layout_metric_value_lines_recovers_inventory(monkeypatch):
     assert lines == ["Запасы 21 42 153"]
 
 
+def test_extract_layout_metric_value_lines_supports_balance_code_set(monkeypatch):
+    class FakeImage:
+        size = (1653, 2339)
+
+    fake_data = {
+        "text": [
+            "Бухгалтерский", "баланс",
+            "Итого", "по", "разделу", "П",
+            "Запасы",
+            "Дебиторская", "задолженность",
+            "Денежные", "средства",
+            "Итого", "по", "разделу", "IV", "1400",
+            "Итого", "по", "разделу", "V", "1500",
+        ],
+        "block_num": [
+            1, 1,
+            2, 2, 2, 2,
+            3,
+            4, 4,
+            5, 5,
+            6, 6, 6, 6, 6,
+            7, 7, 7, 7, 7,
+        ],
+        "par_num": [
+            1, 1,
+            1, 1, 1, 1,
+            1,
+            1, 1,
+            1, 1,
+            1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1,
+        ],
+        "line_num": [
+            1, 1,
+            1, 1, 1, 1,
+            1,
+            1, 1,
+            1, 1,
+            1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1,
+        ],
+        "top": [
+            120, 120,
+            220, 220, 220, 220,
+            260,
+            300, 300,
+            340, 340,
+            380, 380, 380, 380, 380,
+            420, 420, 420, 420, 420,
+        ],
+        "left": [
+            80, 190,
+            100, 150, 190, 250,
+            100,
+            100, 180,
+            100, 180,
+            100, 150, 190, 250, 320,
+            100, 150, 190, 250, 320,
+        ],
+        "width": [
+            90, 90,
+            40, 30, 70, 20,
+            80,
+            80, 130,
+            80, 90,
+            40, 30, 70, 30, 40,
+            40, 30, 70, 20, 40,
+        ],
+        "height": [
+            20, 20,
+            18, 18, 18, 18,
+            18,
+            18, 18,
+            18, 18,
+            18, 18, 18, 18, 18,
+            18, 18, 18, 18, 18,
+        ],
+    }
+
+    def fake_image_to_data(_image, lang=None, output_type=None):
+        return fake_data
+
+    code_to_tail = {
+        "1200": "174 989 150",
+        "1210": "21 42 153",
+        "1230": "26 998 240",
+        "1250": "1 448 897",
+        "1400": "33 723 849",
+        "1500": "192 460 146",
+    }
+
+    def fake_extract_tail(
+        _image,
+        row_left,
+        row_top,
+        row_right,
+        row_bottom,
+        expected_code=None,
+        require_code_match=False,
+    ):
+        return code_to_tail.get(expected_code)
+
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_data", fake_image_to_data)
+    monkeypatch.setattr(
+        pdf_extractor,
+        "_extract_ocr_row_value_tail",
+        fake_extract_tail,
+    )
+
+    lines = pdf_extractor._extract_layout_metric_value_lines(
+        FakeImage(),
+        "Бухгалтерский баланс",
+    )
+
+    assert set(lines) == {
+        "Итого по разделу П 174 989 150",
+        "Запасы 21 42 153",
+        "Дебиторская задолженность 26 998 240",
+        "Денежные средства 1 448 897",
+        "Итого по разделу IV 33 723 849",
+        "Итого по разделу V 192 460 146",
+    }
+
+
+def test_extract_layout_metric_value_lines_skips_short_section_noise(monkeypatch):
+    class FakeImage:
+        size = (1653, 2339)
+
+    fake_data = {
+        "text": ["Бухгалтерский", "баланс", "Итого", "по", "разделу", "V"],
+        "block_num": [1, 1, 2, 2, 2, 2],
+        "par_num": [1, 1, 1, 1, 1, 1],
+        "line_num": [1, 1, 1, 1, 1, 1],
+        "top": [120, 120, 320, 320, 320, 320],
+        "left": [80, 180, 100, 150, 190, 250],
+        "width": [90, 90, 40, 30, 70, 20],
+        "height": [20, 20, 18, 18, 18, 18],
+    }
+
+    def fake_image_to_data(_image, lang=None, output_type=None):
+        return fake_data
+
+    def fake_extract_tail(
+        _image,
+        row_left,
+        row_top,
+        row_right,
+        row_bottom,
+        expected_code=None,
+        require_code_match=False,
+    ):
+        assert expected_code == "1500"
+        assert require_code_match is True
+        return "8 609"
+
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_data", fake_image_to_data)
+    monkeypatch.setattr(pdf_extractor, "_extract_ocr_row_value_tail", fake_extract_tail)
+
+    lines = pdf_extractor._extract_layout_metric_value_lines(
+        FakeImage(),
+        "Бухгалтерский баланс",
+    )
+
+    assert lines == []
+
+
 def test_extract_tables(monkeypatch):
     class FakeValues:
         def __init__(self, rows):
