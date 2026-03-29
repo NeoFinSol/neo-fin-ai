@@ -1088,7 +1088,14 @@ def parse_financial_statements_with_metadata(
     # Prevents merging numbers from adjacent lines (OCR artifact)
     num_pattern = rf"({_NUMBER_REGEX_FRAGMENT})"
     
-    ocr_pass2_allowlist = {"revenue", "net_profit", "total_assets", "current_assets"}
+    ocr_pass2_allowlist = {
+        "revenue",
+        "net_profit",
+        "total_assets",
+        "current_assets",
+        "accounts_receivable",
+        "inventory",
+    }
 
     for metric_key, keywords in _METRIC_KEYWORDS.items():
         if metric_key in raw and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2:
@@ -1103,6 +1110,7 @@ def parse_financial_statements_with_metadata(
                 keywords,
                 lookahead_lines=24 if metric_key == "net_profit" else 8,
                 ocr_mode=True,
+                metric_key=metric_key,
             )
         if not _is_valid_financial_value(value):
             value = _extract_best_line_value(text, keywords)
@@ -1746,6 +1754,15 @@ _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] =
     ),
     "total_assets": (("1600", "1700"), None),
     "current_assets": (("1200",), None),
+    "inventory": (("1210",), ("запасы", "inventory")),
+    "accounts_receivable": (
+        ("1230",),
+        (
+            "дебиторская задолженность",
+            "accounts receivable",
+            "trade receivables",
+        ),
+    ),
     "short_term_liabilities": (
         ("1500",),
         (
@@ -1798,6 +1815,7 @@ def _extract_best_multiline_value(
     keywords: list[str],
     lookahead_lines: int = 8,
     ocr_mode: bool = False,
+    metric_key: str | None = None,
 ) -> float | None:
     best_score: int | None = None
     best_value: float | None = None
@@ -1820,17 +1838,34 @@ def _extract_best_multiline_value(
             )
         ]
         if ocr_mode:
+            score = _score_metric_line(lower_line, matched_keyword, line) + max(0, 6 - index)
+            same_line_source = line[line.lower().find(matched_keyword) + len(matched_keyword):]
+            same_line_value = _extract_preferred_ocr_numeric_match(same_line_source)
+            if _is_valid_financial_value(same_line_value):
+                if best_score is None or score > best_score or (
+                    score == best_score and abs(same_line_value) > abs(best_value or 0.0)
+                ):
+                    best_score = score
+                    best_value = same_line_value
+
+            followup_lines = normalized_lines[index + 1: index + lookahead_lines]
+            if metric_key is not None:
+                followup_lines = [
+                    candidate
+                    for candidate in followup_lines
+                    if not _line_mentions_other_metric(candidate.lower(), metric_key)
+                ]
+
             line_value = _extract_numeric_value_from_following_lines(
-                normalized_lines[index + 1: index + lookahead_lines]
+                followup_lines
             )
             if _is_valid_financial_value(line_value):
-                score = _score_metric_line(lower_line, matched_keyword, line) + max(0, 6 - index)
                 if best_score is None or score > best_score or (
                     score == best_score and abs(line_value) > abs(best_value or 0.0)
                 ):
                     best_score = score
                     best_value = line_value
-                continue
+            continue
 
         block = " ".join(block_lines)
         keyword_index = block.lower().find(matched_keyword)
@@ -1959,6 +1994,15 @@ def _score_metric_line(lower_line: str, keyword: str, line: str) -> int:
         score -= 4
 
     return score
+
+
+def _line_mentions_other_metric(lower_line: str, metric_key: str) -> bool:
+    for other_key, other_keywords in _METRIC_KEYWORDS.items():
+        if other_key == metric_key:
+            continue
+        if any(keyword in lower_line for keyword in other_keywords):
+            return True
+    return False
 
 
 def _normalize_number(raw_value: str) -> float | None:

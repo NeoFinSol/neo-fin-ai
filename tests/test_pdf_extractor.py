@@ -478,3 +478,20 @@ def test_scanned_russian_multiline_statement_value_is_extracted():
 
     assert metadata["revenue"].value == 103015.0
     assert metadata["net_profit"].value == 1348503.0
+
+
+def test_scanned_russian_same_line_receivables_is_extracted():
+    text = "\n".join(
+        [
+            "Бухгалтерский баланс",
+            "Запасы",
+            "Дебиторская задолженность 26 998 240 18 602 153 105 529 995",
+            "Итого по разделу П 1200 174 989 150 141 877 788 138 420 826",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["accounts_receivable"].value == 26998240.0
+    assert metadata["accounts_receivable"].source == "text_regex"
+    assert metadata["inventory"].value is None
