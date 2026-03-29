@@ -30,8 +30,27 @@ def _load_case_params() -> list[pytest.ParameterSet]:
 
     cases = [
         {
+            "id": "magnit_2025_q1_scanned",
+            "filename": "Бухгалтерская отчетность ПАО «Магнит» за 1 квартал 2025 года.pdf",
+            "scanned": True,
+            "expected": {
+                "revenue": 103015000.0,
+                "net_profit": 1348503000.0,
+                "total_assets": 435659511000.0,
+                "current_assets": 174989150000.0,
+            },
+            "expected_none": [
+                "equity",
+                "liabilities",
+                "short_term_liabilities",
+                "inventory",
+                "accounts_receivable",
+            ],
+        },
+        {
             "id": "magnit_2022_ifrs",
             "filename": "Консолидированная финансовая отчетность ПАО «Магнит» за 2022 год.pdf",
+            "scanned": False,
             "expected": {
                 "revenue": 2351996423000.0,
                 "net_profit": 27932517000.0,
@@ -42,6 +61,7 @@ def _load_case_params() -> list[pytest.ParameterSet]:
         {
             "id": "magnit_2023_ifrs",
             "filename": "Консолидированная финансовая отчетность ПАО «Магнит» за 2023 год.pdf",
+            "scanned": False,
             "expected": {
                 "revenue": 2544688774000.0,
                 "net_profit": 58677601000.0,
@@ -52,6 +72,7 @@ def _load_case_params() -> list[pytest.ParameterSet]:
         {
             "id": "magnit_2025_h1_ifrs",
             "filename": "Консолидированная финансовая отчетность ПАО «Магнит» по МСФО за 1 полугодие 2025 год.pdf",
+            "scanned": False,
             "expected": {
                 "revenue": 1673223617000.0,
                 "net_profit": 154479000.0,
@@ -88,11 +109,20 @@ def test_local_magnit_regression(case: dict | None) -> None:
         pytest.skip("Local Magnit regression is disabled or fixture is unavailable.")
 
     pdf_path = FIXTURE_ROOT / case["filename"]
-    text = pdf_extractor.extract_text(str(pdf_path))
-    tables = pdf_extractor.extract_tables(str(pdf_path))
+    if case.get("scanned"):
+        text = pdf_extractor.extract_text_from_scanned(str(pdf_path))
+        tables = []
+    else:
+        text = pdf_extractor.extract_text(str(pdf_path))
+        tables = pdf_extractor.extract_tables(str(pdf_path))
     metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
 
     for key, expected_value in case["expected"].items():
         assert metadata[key].value == expected_value, (
             f"{case['id']}: expected {key}={expected_value}, got {metadata[key].value}"
+        )
+
+    for key in case.get("expected_none", []):
+        assert metadata[key].value is None, (
+            f"{case['id']}: expected {key}=None, got {metadata[key].value}"
         )

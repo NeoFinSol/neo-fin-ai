@@ -101,6 +101,40 @@ def test_extract_text_from_scanned_typeerror_fallback_respects_page_limit(monkey
     assert text == "text-img1\ntext-img2"
 
 
+def test_extract_text_from_scanned_stops_early_on_financial_signal(monkeypatch):
+    pages = [f"img{i}" for i in range(1, 8)]
+    seen_pages: list[str] = []
+
+    def fake_convert(path, first_page=None, last_page=None, poppler_path=None):
+        assert path == "dummy.pdf"
+        assert first_page == last_page
+        index = first_page - 1
+        if index >= len(pages):
+            raise RuntimeError("done")
+        return [pages[index]]
+
+    def fake_ocr(image, lang=None):
+        seen_pages.append(image)
+        if image == "img1":
+            return "Бухгалтерский баланс"
+        if image == "img2":
+            return "Отчет о финансовых результатах"
+        if image == "img3":
+            return "код 1600 435 659 511 код 1200 174 989 150"
+        if image == "img4":
+            return "код 1250 1 448 897 выручка 2110 103 015 чистая прибыль 2400 1 348 503"
+        return f"noise-{image}"
+
+    monkeypatch.setattr(pdf_extractor, "convert_from_path", fake_convert)
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_string", fake_ocr)
+
+    text = pdf_extractor.extract_text_from_scanned("dummy.pdf")
+
+    assert "Бухгалтерский баланс" in text
+    assert "Отчет о финансовых результатах" in text
+    assert seen_pages == ["img1", "img2", "img3", "img4", "img5"]
+
+
 def test_extract_tables(monkeypatch):
     class FakeValues:
         def __init__(self, rows):
@@ -279,6 +313,28 @@ def test_extract_preferred_numeric_match_skips_note_references():
     assert pdf_extractor._extract_preferred_numeric_match(" 23 1 673 223 617 1 460 058 332") == 1673223617.0
 
 
+def test_extract_value_near_text_codes_supports_scanned_russian_forms():
+    text = (
+        "Бухгалтерский баланс 1600 435 659 511 307 785 500\n"
+        "Итого по разделу П 1200 174 989 150 141 877 788\n"
+        "Выручка от реализации, без НДС (стр. 2110) 103 015 103 015\n"
+        "Прибыль (убыток) (стр. 2300, 2400) "
+        "Чистая прибыль Общества за отчетный период составила 1 348 503 тыс. руб.\n"
+    )
+
+    assert pdf_extractor._extract_value_near_text_codes(text, ("1600",), None) == 435659511.0
+    assert pdf_extractor._extract_value_near_text_codes(
+        text, ("2110",), ("выручка от реализации, без ндс", "выручка")
+    ) == 103015.0
+    assert pdf_extractor._extract_value_near_text_codes(
+        text, ("2400",), ("чистая прибыль", "прибыль за период", "прибыль за год")
+    ) == 1348503.0
+
+
+def test_extract_preferred_ocr_numeric_match_supports_four_digit_group_prefix():
+    assert pdf_extractor._extract_preferred_ocr_numeric_match("1348 503 1339 235") == 1348503.0
+
+
 def test_text_statement_row_overrides_partial_table_noise():
     tables = [
         {"rows": [["Revenue growth", "10,000"]]},
@@ -331,3 +387,26 @@ def test_russian_statement_rows_with_note_numbers_prefer_actual_values():
     assert metadata["revenue"].source == "table_exact"
     assert metadata["net_profit"].value == 27932517000.0
     assert metadata["net_profit"].source == "table_exact"
+
+
+def test_scanned_russian_multiline_statement_value_is_extracted():
+    text = "\n".join(
+        [
+            "Отчет о финансовых результатах",
+            "Выручка",
+            "За январь - март",
+            "2025 г.",
+            "103 015",
+            "Прибыль (убыток) от продаж",
+            "129 258",
+            "Чистая прибыль (убыток)",
+            "Форма 0710002 с. 2",
+            "Совокупный финансовый результат периода",
+            "1 348 503",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["revenue"].value == 103015.0
+    assert metadata["net_profit"].value == 1348503.0
