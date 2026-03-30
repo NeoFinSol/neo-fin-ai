@@ -1485,36 +1485,7 @@ def parse_financial_statements_with_metadata(
             result[key] = ExtractionMetadata(value=None, confidence=0.0, source="derived")
 
     if text_is_form_like:
-        total_assets_meta = result["total_assets"]
-        current_assets_meta = result["current_assets"]
-        liabilities_meta = result["liabilities"]
-        short_term_meta = result["short_term_liabilities"]
-
-        if (
-            total_assets_meta.value is not None
-            and current_assets_meta.value is not None
-            and current_assets_meta.value > total_assets_meta.value
-        ):
-            result["current_assets"] = ExtractionMetadata(value=None, confidence=0.0, source="derived")
-            current_assets_meta = result["current_assets"]
-
-        for component_key in ("cash_and_equivalents", "inventory", "accounts_receivable"):
-            component_meta = result[component_key]
-            if (
-                current_assets_meta.value is not None
-                and component_meta.value is not None
-                and component_meta.value > current_assets_meta.value
-            ):
-                result[component_key] = ExtractionMetadata(value=None, confidence=0.0, source="derived")
-
-        if (
-            liabilities_meta.value is not None
-            and short_term_meta.value is not None
-            and short_term_meta.value > liabilities_meta.value
-        ):
-            result["short_term_liabilities"] = ExtractionMetadata(
-                value=None, confidence=0.0, source="derived"
-            )
+        _apply_form_like_guardrails(result)
 
     return result
 
@@ -1989,6 +1960,46 @@ def _derive_liabilities_from_components(
                 return None
 
     return derived
+
+
+def _apply_form_like_guardrails(result: dict[str, ExtractionMetadata]) -> None:
+    def _soft_null(metric_key: str) -> None:
+        result[metric_key] = ExtractionMetadata(
+            value=None,
+            confidence=0.0,
+            source="derived",
+        )
+
+    total_assets = result["total_assets"].value
+    current_assets = result["current_assets"].value
+    liabilities = result["liabilities"].value
+    equity = result["equity"].value
+    short_term = result["short_term_liabilities"].value
+
+    if total_assets is not None:
+        if current_assets is not None and current_assets > total_assets:
+            _soft_null("current_assets")
+            current_assets = None
+
+        if liabilities is not None and liabilities > total_assets:
+            _soft_null("liabilities")
+            liabilities = None
+
+        if equity is not None and equity > total_assets:
+            _soft_null("equity")
+            equity = None
+
+        if short_term is not None and short_term > total_assets:
+            _soft_null("short_term_liabilities")
+            short_term = None
+
+    for component_key in ("cash_and_equivalents", "inventory", "accounts_receivable"):
+        component = result[component_key].value
+        if current_assets is not None and component is not None and component > current_assets:
+            _soft_null(component_key)
+
+    if liabilities is not None and short_term is not None and short_term > liabilities:
+        _soft_null("short_term_liabilities")
 
 
 _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] = {

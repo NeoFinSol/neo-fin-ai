@@ -653,6 +653,41 @@ def test_section_based_liabilities_derive_falls_back_when_components_conflict():
     assert metadata["liabilities"].value == 226183995.0
 
 
+def test_form_like_guardrails_soft_null_liabilities_above_total_assets():
+    tables = [
+        {
+            "rows": [
+                ["Итого активов", "100 000"],
+                ["Итого обязательств", "120 000"],
+                ["Итого краткосрочных обязательств", "80 000"],
+            ]
+        }
+    ]
+    text = "Бухгалтерский баланс\nФорма 0710001"
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
+
+    assert metadata["total_assets"].value == 100000.0
+    assert metadata["liabilities"].value is None
+    assert metadata["short_term_liabilities"].value == 80000.0
+
+
+def test_form_like_guardrails_soft_null_short_term_above_total_assets():
+    text = "\n".join(
+        [
+            "Бухгалтерский баланс",
+            "код 1600 100 000 90 000",
+            "Итого по разделу V 120 000 110 000",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["total_assets"].value == 100000.0
+    assert metadata["liabilities"].value is None
+    assert metadata["short_term_liabilities"].value is None
+
+
 def test_text_statement_row_overrides_partial_table_noise():
     tables = [
         {"rows": [["Revenue growth", "10,000"]]},
