@@ -50,6 +50,33 @@ def _load_case_params() -> list[pytest.ParameterSet]:
             ],
         },
         {
+            "id": "magnit_2025_q1_scanned_balance_components",
+            "filename": "Бухгалтерская отчетность ПАО «Магнит» за 1 квартал 2025 года.pdf",
+            "scanned": True,
+            "expected": {
+                "current_assets": 174989150000.0,
+                "inventory": 2142153000.0,
+                "accounts_receivable": 26998240000.0,
+                "short_term_liabilities": 192460146000.0,
+                "liabilities": 226183995000.0,
+            },
+            "expected_long_term_liabilities": 33723849000.0,
+            "expected_none": [],
+        },
+        {
+            "id": "magnit_2025_q1_scanned_liability_bridge",
+            "filename": "Бухгалтерская отчетность ПАО «Магнит» за 1 квартал 2025 года.pdf",
+            "scanned": True,
+            "expected": {
+                "liabilities": 226183995000.0,
+                "short_term_liabilities": 192460146000.0,
+                "inventory": 2142153000.0,
+                "accounts_receivable": 26998240000.0,
+            },
+            "expected_long_term_liabilities": 33723849000.0,
+            "expected_none": [],
+        },
+        {
             "id": "magnit_2022_ifrs",
             "filename": "Консолидированная финансовая отчетность ПАО «Магнит» за 2022 год.pdf",
             "scanned": False,
