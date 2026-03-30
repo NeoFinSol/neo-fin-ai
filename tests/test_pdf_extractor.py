@@ -1035,7 +1035,7 @@ def test_russian_statement_rows_with_note_numbers_prefer_actual_values():
     assert metadata["net_profit"].source == "table_exact"
 
 
-def test_scanned_russian_multiline_statement_value_is_extracted():
+def test_scanned_russian_multiline_statement_value_avoids_comprehensive_income_substitution():
     text = "\n".join(
         [
             "Отчет о финансовых результатах",
@@ -1055,7 +1055,24 @@ def test_scanned_russian_multiline_statement_value_is_extracted():
     metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
 
     assert metadata["revenue"].value == 103015.0
-    assert metadata["net_profit"].value == 1348503.0
+    assert metadata["net_profit"].value is None
+
+
+def test_scanned_form_pnl_code_pair_is_preferred_for_revenue_and_net_profit():
+    text = "\n".join(
+        [
+            "Отчет о финансовых результатах",
+            "Выручка от реализации, без НДС (стр. 2110) 1 030 150",
+            "Чистая прибыль (стр. 2400) 134 850",
+            "Совокупный финансовый результат периода",
+            "1 348 503",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["revenue"].value == 1030150.0
+    assert metadata["net_profit"].value == 134850.0
 
 
 def test_scanned_russian_same_line_receivables_is_extracted():
@@ -1073,3 +1090,102 @@ def test_scanned_russian_same_line_receivables_is_extracted():
     assert metadata["accounts_receivable"].value == 26998240.0
     assert metadata["accounts_receivable"].source == "text_regex"
     assert metadata["inventory"].value is None
+
+
+def test_current_assets_rejects_component_rows_and_uses_total_line():
+    tables = [
+        {
+            "rows": [
+                ["Прочие внеоборотные активы", "400 000"],
+                ["Итого оборотных активов", "120 000"],
+            ]
+        }
+    ]
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+
+    assert metadata["current_assets"].value == 120000.0
+
+
+def test_accounts_receivable_excludes_long_term_and_prefers_trade_receivables():
+    tables = [
+        {
+            "rows": [
+                ["Долгосрочная дебиторская задолженность", "50 000"],
+                ["Торговая и прочая дебиторская задолженность", "120 000"],
+            ]
+        }
+    ]
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+
+    assert metadata["accounts_receivable"].value == 120000.0
+
+
+def test_short_term_liabilities_strict_null_when_only_component_row_present():
+    tables = [
+        {
+            "rows": [
+                ["Краткосрочные обязательства по аренде", "70 000"],
+            ]
+        }
+    ]
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+
+    assert metadata["short_term_liabilities"].value is None
+
+
+def test_short_term_liabilities_accepts_nominative_total_label():
+    tables = [
+        {
+            "rows": [
+                ["Итого краткосрочные обязательства", "120 000"],
+            ]
+        }
+    ]
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+
+    assert metadata["short_term_liabilities"].value == 120000.0
+
+
+def test_ifrs_section_heading_unlabeled_totals_are_inferred():
+    tables = [
+        {
+            "rows": [
+                ["Оборотные активы", "", "", ""],
+                ["Запасы", "12", "302 102 443", "270 417 243"],
+                ["Торговая и прочая дебиторская задолженность", "13", "20 060 895", "21 000 746"],
+                ["", "", "533 367 626", "523 471 409"],
+                ["Итого активы", "", "1 670 048 135", "1 563 913 815"],
+                ["Краткосрочные обязательства", "", "", ""],
+                ["Краткосрочные обязательства по аренде", "8", "60 914 519", "62 192 392"],
+                ["", "", "670 066 479", "731 132 037"],
+                ["Итого обязательства", "", "1 486 023 626", "1 382 600 197"],
+            ]
+        }
+    ]
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+
+    assert metadata["current_assets"].value == 533367626.0
+    assert metadata["short_term_liabilities"].value == 670066479.0
+
+
+def test_current_assets_guardrail_nulls_invalid_total_and_derives_from_components():
+    tables = [
+        {
+            "rows": [
+                ["Итого оборотных активов", "90 000"],
+                ["Запасы", "40 000"],
+                ["Дебиторская задолженность", "120 000"],
+            ]
+        }
+    ]
+    text = "Бухгалтерский баланс\nФорма 0710001"
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
+
+    assert metadata["current_assets"].value == 160000.0
+    assert metadata["current_assets"].source == "derived"

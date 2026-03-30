@@ -43,3 +43,37 @@ def test_weights_sum_to_one():
     """Weights must sum to exactly 1.0."""
     total = sum(WEIGHTS.values())
     assert total == pytest.approx(1.0, abs=1e-9)
+
+
+def test_retail_demo_profile_is_less_punitive_for_retail_like_structure():
+    ratios = {
+        "Коэффициент текущей ликвидности": 1.1,
+        "Коэффициент быстрой ликвидности": 0.75,
+        "Коэффициент абсолютной ликвидности": 0.12,
+        "Рентабельность активов (ROA)": 0.05,
+        "Рентабельность собственного капитала (ROE)": 0.12,
+        "Рентабельность продаж (ROS)": 0.04,
+        "EBITDA маржа": 0.08,
+        "Коэффициент автономии": 0.38,
+        "Финансовый рычаг": 2.1,
+        "Покрытие процентов": 2.1,
+        "Оборачиваемость активов": 1.7,
+        "Оборачиваемость запасов": 11.0,
+        "Оборачиваемость дебиторской задолженности": 10.0,
+    }
+
+    generic = calculate_integral_score(ratios, profile="generic")
+    retail_demo = calculate_integral_score(ratios, profile="retail_demo")
+
+    assert retail_demo["score"] > generic["score"]
+    assert retail_demo["profile"] == "retail_demo"
+
+
+def test_unknown_scoring_profile_falls_back_to_generic():
+    ratios = {"Коэффициент текущей ликвидности": 2.0}
+
+    default_generic = calculate_integral_score(ratios, profile="generic")
+    unknown_profile = calculate_integral_score(ratios, profile="unknown-profile")
+
+    assert unknown_profile["score"] == default_generic["score"]
+    assert unknown_profile["profile"] == "generic"

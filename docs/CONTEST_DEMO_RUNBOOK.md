@@ -7,6 +7,7 @@
 ### Предусловия
 - Заполнен `.env` с рабочими `API_KEY`, `DATABASE_URL`
 - Выбран runtime: `TASK_RUNTIME=celery`
+- Для финального demo-score включён профиль: `SCORING_PROFILE=retail_demo`
 - Локальные PDF-файлы доступны в `PDFforTests`
 
 ### Шаги запуска

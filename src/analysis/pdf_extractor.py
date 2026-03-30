@@ -196,11 +196,13 @@ _METRIC_KEYWORDS = {
         "total current assets",
         "current assets total",
         "итого оборотных активов",
+        "итого оборотные активы",
         "оборотные активы всего",
         "итого по разделу ii",
     ],
     "short_term_liabilities": [
         "итого краткосрочных обязательств",
+        "итого краткосрочные обязательства",
         "краткосрочные обязательства всего",
         "total current liabilities",
         "current liabilities total",
@@ -1108,20 +1110,219 @@ def _source_priority(match_type: str, is_exact: bool) -> int:
     return 0  # derived
 
 
+def _contains_any(text: str, tokens: tuple[str, ...]) -> bool:
+    return any(token in text for token in tokens)
+
+
+def _metric_candidate_quality(metric_key: str, candidate_text: str) -> int | None:
+    """Return candidate quality for metric extraction or None when candidate must be rejected."""
+    lower_text = " ".join(candidate_text.lower().split())
+
+    if metric_key == "current_assets":
+        total_tokens = (
+            "итого оборотных активов",
+            "итого оборотные активы",
+            "оборотные активы всего",
+            "итого по разделу ii",
+            "итого по разделу п",
+            "total current assets",
+            "current assets total",
+        )
+        reject_tokens = (
+            "внеоборотн",
+            "non-current",
+            "прочие",
+            "прочая",
+            "other",
+        )
+        if _contains_any(lower_text, reject_tokens):
+            return None
+        if _contains_any(lower_text, total_tokens):
+            return 90
+        return None
+
+    if metric_key == "short_term_liabilities":
+        total_tokens = (
+            "итого краткосрочных обязательств",
+            "итого краткосрочные обязательства",
+            "краткосрочные обязательства всего",
+            "итого по разделу v",
+            "итого по разделу у",
+            "total current liabilities",
+            "current liabilities total",
+        )
+        component_tokens = (
+            "по аренде",
+            "аренд",
+            "lease",
+            "прочие",
+            "прочая",
+            "other current liabilities",
+            "кредиторск",
+        )
+        if _contains_any(lower_text, component_tokens):
+            return None
+        if _contains_any(lower_text, total_tokens):
+            return 90
+        return None
+
+    if metric_key == "accounts_receivable":
+        if _contains_any(lower_text, ("долгосрочн", "long-term", "non-current")):
+            return None
+        if _contains_any(
+            lower_text,
+            ("торговая и прочая дебиторская задолженность", "trade receivables"),
+        ):
+            return 88
+        if _contains_any(lower_text, ("дебиторск", "receivable")):
+            return 70
+        return None
+
+    if metric_key == "net_profit":
+        if (
+            "совокупный финансовый результат периода" in lower_text
+            and "чистая прибыль" not in lower_text
+            and "2400" not in lower_text
+        ):
+            return None
+        if (
+            "total comprehensive income" in lower_text
+            and "net profit" not in lower_text
+            and "net income" not in lower_text
+            and "2400" not in lower_text
+        ):
+            return None
+
+    return 50
+
+
 def _raw_set(
     raw: dict,
     key: str,
     value: float,
     match_type: str,
     is_exact: bool,
+    candidate_quality: int = 50,
 ) -> None:
-    """Set raw[key] only if new entry has strictly higher priority than existing."""
+    """Set raw[key] with source+quality precedence."""
     new_priority = _source_priority(match_type, is_exact)
     if key in raw:
         existing_priority = _source_priority(raw[key][1], raw[key][2])
-        if new_priority <= existing_priority:
+        existing_quality = raw[key][3] if len(raw[key]) > 3 else 50
+        if new_priority < existing_priority:
             return
-    raw[key] = (value, match_type, is_exact)
+        if new_priority == existing_priority:
+            if candidate_quality < existing_quality:
+                return
+            if candidate_quality == existing_quality:
+                return
+    raw[key] = (value, match_type, is_exact, candidate_quality)
+
+
+def _derive_current_assets_from_available(
+    raw: dict[str, tuple[float, str, bool, int]]
+) -> float | None:
+    cash = raw["cash_and_equivalents"][0] if "cash_and_equivalents" in raw else None
+    inventory = raw["inventory"][0] if "inventory" in raw else None
+    receivables = raw["accounts_receivable"][0] if "accounts_receivable" in raw else None
+    total_assets = raw["total_assets"][0] if "total_assets" in raw else None
+    equity = raw["equity"][0] if "equity" in raw else None
+    liabilities = raw["liabilities"][0] if "liabilities" in raw else None
+
+    components = [v for v in (cash, inventory, receivables) if v is not None]
+    if len(components) >= 2:
+        return sum(components)
+
+    if total_assets is not None and equity is not None and liabilities is not None:
+        derived = total_assets - equity - liabilities
+        if derived > 0:
+            return derived
+    return None
+
+
+def _apply_form_like_pnl_sanity(
+    raw: dict[str, tuple[float, str, bool, int]],
+    code_candidates: dict[str, float],
+) -> None:
+    revenue_entry = raw.get("revenue")
+    net_profit_entry = raw.get("net_profit")
+    if revenue_entry is None or net_profit_entry is None:
+        return
+
+    revenue = revenue_entry[0]
+    net_profit = net_profit_entry[0]
+    if revenue <= 0:
+        return
+
+    current_margin = abs(net_profit) / revenue
+    if current_margin <= 0.6:
+        return
+
+    revenue_priority = _source_priority(revenue_entry[1], revenue_entry[2])
+    net_profit_priority = _source_priority(net_profit_entry[1], net_profit_entry[2])
+    if revenue_priority >= 3 or net_profit_priority >= 3:
+        return
+
+    best_revenue = revenue
+    best_net_profit = net_profit
+    best_margin = current_margin
+
+    revenue_code = code_candidates.get("revenue")
+    net_profit_code = code_candidates.get("net_profit")
+    candidate_pairs = [
+        (revenue_code, net_profit),
+        (revenue, net_profit_code),
+        (revenue_code, net_profit_code),
+    ]
+    for candidate_revenue, candidate_net_profit in candidate_pairs:
+        if candidate_revenue is None or candidate_net_profit is None or candidate_revenue <= 0:
+            continue
+        candidate_margin = abs(candidate_net_profit) / candidate_revenue
+        if candidate_margin < best_margin:
+            best_margin = candidate_margin
+            best_revenue = candidate_revenue
+            best_net_profit = candidate_net_profit
+
+    if best_revenue != revenue:
+        _raw_set(
+            raw,
+            "revenue",
+            best_revenue,
+            "text_regex",
+            True,
+            candidate_quality=120,
+        )
+        revenue_entry = raw["revenue"]
+    if best_net_profit != net_profit:
+        _raw_set(
+            raw,
+            "net_profit",
+            best_net_profit,
+            "text_regex",
+            True,
+            candidate_quality=120,
+        )
+        net_profit_entry = raw["net_profit"]
+
+    revenue = revenue_entry[0]
+    net_profit = net_profit_entry[0]
+    if revenue <= 0:
+        return
+
+    margin_after_fallback = abs(net_profit) / revenue
+    if margin_after_fallback <= 0.6:
+        return
+
+    conflicting_key = "net_profit"
+
+    logger.warning(
+        "Dropping %s due to P&L sanity conflict: revenue=%s, net_profit=%s, margin=%s",
+        conflicting_key,
+        revenue,
+        net_profit,
+        margin_after_fallback,
+    )
+    raw.pop(conflicting_key, None)
 
 
 def parse_financial_statements_with_metadata(
@@ -1150,9 +1351,10 @@ def parse_financial_statements_with_metadata(
         or "итого по разделу у" in text_lower
     )
 
-    # raw[key] = (value, match_type, is_exact)
+    # raw[key] = (value, match_type, is_exact, candidate_quality)
     # match_type: "table" | "text_regex" | "derived"
-    raw: dict[str, tuple[float, str, bool]] = {}
+    raw: dict[str, tuple[float, str, bool, int]] = {}
+    form_pnl_code_candidates: dict[str, float] = {}
 
     # Detect scale factor ONCE at the start — apply to all extracted values
     # This fixes the root cause of ROA=2290329% (values in thousands treated as absolute)
@@ -1234,7 +1436,14 @@ def parse_financial_statements_with_metadata(
                     metric_key = _LINE_CODE_MAP[cs]
                     value = _extract_first_numeric_cell(row[ci + 1:])
                     if value is not None and _is_valid_financial_value(value):
-                        _raw_set(raw, metric_key, value, "table", True)
+                        _raw_set(
+                            raw,
+                            metric_key,
+                            value,
+                            "table",
+                            True,
+                            candidate_quality=120,
+                        )
                         logger.debug("[EXTRACT] %s = %s (source=line_code, code=%s)", metric_key, value, cs)
 
             # Strategy B: garbled keyword in col0, note number in col1, value in col2+
@@ -1242,6 +1451,9 @@ def parse_financial_statements_with_metadata(
                 label_cell = str(row[0]).lower() if row[0] else ""
                 for garbled_kw, metric_key in _GARBLED_KEYWORDS.items():
                     if garbled_kw.lower() in label_cell:
+                        metric_quality = _metric_candidate_quality(metric_key, label_cell)
+                        if metric_quality is None:
+                            break
                         value = _extract_first_numeric_cell(row[1:])
                         if value is not None and _is_valid_financial_value(value):
                             # Reject suspiciously small values for monetary metrics
@@ -1256,7 +1468,14 @@ def parse_financial_statements_with_metadata(
                             if metric_key in _MONETARY_METRICS and abs(value) < 1000:
                                 logger.debug("Skipping small value %s for %s (likely TOC page number)", value, metric_key)
                                 break
-                            _raw_set(raw, metric_key, value, "table", True)
+                            _raw_set(
+                                raw,
+                                metric_key,
+                                value,
+                                "table",
+                                True,
+                                candidate_quality=metric_quality,
+                            )
                             logger.debug("[EXTRACT] %s = %s (source=garbled_kw, kw=%s)", metric_key, value, garbled_kw)
                         break
 
@@ -1276,12 +1495,22 @@ def parse_financial_statements_with_metadata(
                         # Search for keyword + number pattern in OCR text (context window 50 chars)
                         # Use [ \t\xa0] instead of \s to avoid merging numbers across newlines
                         for keyword in keywords:
+                            keyword_quality = _metric_candidate_quality(metric_key, keyword)
+                            if keyword_quality is None:
+                                continue
                             pattern = rf"{keyword}[^0-9]{{0,50}}(\d{{1,3}}(?:[ \t\xa0]\d{{3}})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
                             match = re.search(pattern, ocr_text_lower, re.IGNORECASE)
                             if match:
                                 value = _normalize_number(match.group(1))
                                 if _is_valid_financial_value(value):
-                                    _raw_set(raw, metric_key, value, "text_regex", False)
+                                    _raw_set(
+                                        raw,
+                                        metric_key,
+                                        value,
+                                        "text_regex",
+                                        False,
+                                        candidate_quality=keyword_quality,
+                                    )
                                     logger.debug("[EXTRACT] %s = %s (source=ocr, keyword=%s)", metric_key, value, keyword)
                                     break
             continue
@@ -1313,8 +1542,18 @@ def parse_financial_statements_with_metadata(
 
                 # is_exact: the label cell itself matches a keyword fully
                 label_cell = str(row[label_idx]).lower().strip() if row[label_idx] is not None else ""
+                metric_quality = _metric_candidate_quality(metric_key, label_cell or row_text_lower)
+                if metric_quality is None:
+                    continue
                 is_exact = any(label_cell == kw for kw in keywords)
-                _raw_set(raw, metric_key, value, "table", is_exact)
+                _raw_set(
+                    raw,
+                    metric_key,
+                    value,
+                    "table",
+                    is_exact,
+                    candidate_quality=metric_quality,
+                )
                 logger.debug("[EXTRACT] %s = %s (source=table, exact=%s)", metric_key, value, is_exact)
 
     # Pass 1.5: text line-code extraction for OCR/split Russian forms
@@ -1324,8 +1563,45 @@ def parse_financial_statements_with_metadata(
 
         value = _extract_value_near_text_codes(text, codes, anchor_keywords)
         if _is_valid_financial_value(value):
-            _raw_set(raw, metric_key, value, "text_regex", False)
+            _raw_set(
+                raw,
+                metric_key,
+                value,
+                "text_regex",
+                False,
+                candidate_quality=115,
+            )
             logger.debug("[EXTRACT] %s = %s (source=text_code)", metric_key, value)
+
+    if is_form_like and not tables:
+        form_pnl_spec = {
+            "revenue": (
+                ("2110",),
+                ("выручка от реализации, без ндс", "выручка", "revenue"),
+            ),
+            "net_profit": (
+                ("2400",),
+                ("чистая прибыль", "net profit", "net income", "profit for the period"),
+            ),
+        }
+        for metric_key, (codes, anchors) in form_pnl_spec.items():
+            code_value = _extract_value_near_text_codes(
+                text,
+                codes,
+                anchors,
+                lookahead_chars=1400,
+            )
+            if not _is_valid_financial_value(code_value):
+                continue
+            form_pnl_code_candidates[metric_key] = code_value
+            _raw_set(
+                raw,
+                metric_key,
+                code_value,
+                "text_regex",
+                True,
+                candidate_quality=120,
+            )
 
     # Pass 2: free text keyword proximity (with context window)
     # Strict number pattern: groups of 1-3 digits separated by non-newline spaces
@@ -1347,9 +1623,10 @@ def parse_financial_statements_with_metadata(
         if is_form_like and not tables and metric_key not in ocr_pass2_allowlist:
             continue
 
-        value = None
+        value: float | None = None
+        candidate_quality: int | None = None
         if is_form_like:
-            value = _extract_best_multiline_value(
+            value, candidate_quality = _extract_best_multiline_value(
                 text,
                 keywords,
                 lookahead_lines=24 if metric_key == "net_profit" else 8,
@@ -1357,9 +1634,21 @@ def parse_financial_statements_with_metadata(
                 metric_key=metric_key,
             )
         if not _is_valid_financial_value(value):
-            value = _extract_best_line_value(text, keywords)
+            value, candidate_quality = _extract_best_line_value(
+                text,
+                keywords,
+                metric_key=metric_key,
+            )
         if _is_valid_financial_value(value):
-            _raw_set(raw, metric_key, value, "text_regex", False)
+            quality_for_raw = candidate_quality if candidate_quality is not None else 50
+            _raw_set(
+                raw,
+                metric_key,
+                value,
+                "text_regex",
+                False,
+                candidate_quality=quality_for_raw,
+            )
             logger.debug("[EXTRACT] %s = %s (source=text_regex, line_match)", metric_key, value)
 
     # Pass 3: broad regex patterns
@@ -1403,12 +1692,14 @@ def parse_financial_statements_with_metadata(
             r"total current assets[^\d]{0,80}" + num_pattern,
             r"итого оборотных активов\s*\|\s*" + num_pattern,
             r"итого оборотных активов[^\d]{0,60}" + num_pattern,
+            r"итого оборотные активы[^\d]{0,60}" + num_pattern,
         ],
         "short_term_liabilities": [
             r"total current liabilities\s*\|\s*" + num_pattern,
             r"total current liabilities[^\d]{0,80}" + num_pattern,
             r"итого краткосрочных обязательств\s*\|\s*" + num_pattern,
             r"итого краткосрочных обязательств[^\d]{0,80}" + num_pattern,
+            r"итого краткосрочные обязательства[^\d]{0,80}" + num_pattern,
         ],
         "cost_of_goods_sold": [
             r"себестоимость продаж\s*\|\s*" + num_pattern,
@@ -1423,9 +1714,23 @@ def parse_financial_statements_with_metadata(
         for pattern in pattern_list:
             match = re.search(pattern, text_lower)
             if match:
-                value = _normalize_number(match.group(1))
+                raw_match = match.group(1)
+                digits_only = "".join(ch for ch in raw_match if ch.isdigit())
+                if digits_only.startswith("07") and len(digits_only) >= 6:
+                    continue
+                value = _normalize_number(raw_match)
                 if value is not None:
-                    _raw_set(raw, metric_key, value, "text_regex", False)
+                    pattern_quality = _metric_candidate_quality(metric_key, pattern)
+                    if pattern_quality is None:
+                        continue
+                    _raw_set(
+                        raw,
+                        metric_key,
+                        value,
+                        "text_regex",
+                        False,
+                        candidate_quality=pattern_quality,
+                    )
                     break
 
     # Pass 3.5: OCR section totals from Russian scanned balance forms.
@@ -1436,17 +1741,79 @@ def parse_financial_statements_with_metadata(
                 "итого по разделу v",
                 "итого по разделу у",
                 "итого краткосрочных обязательств",
+                "итого краткосрочные обязательства",
             ),
             lookback_lines=8,
             lookahead_lines=1,
         )
         if _is_valid_financial_value(short_term_value):
             _raw_set(
-                raw, "short_term_liabilities", short_term_value, "text_regex", True
+                raw,
+                "short_term_liabilities",
+                short_term_value,
+                "text_regex",
+                True,
+                candidate_quality=110,
             )
             logger.debug(
                 "[EXTRACT] short_term_liabilities = %s (source=form_section_total)",
                 short_term_value,
+            )
+
+    if tables:
+        inferred_current_assets = _extract_section_total_from_heading_rows(
+            tables,
+            section_headings=(
+                "оборотные активы",
+                "current assets",
+            ),
+            stop_markers=(
+                "итого активы",
+                "total assets",
+                "капитал и обязательства",
+                "equity and liabilities",
+            ),
+        )
+        if _is_valid_financial_value(inferred_current_assets):
+            _raw_set(
+                raw,
+                "current_assets",
+                inferred_current_assets,
+                "table",
+                True,
+                candidate_quality=112,
+            )
+            logger.debug(
+                "[EXTRACT] current_assets = %s (source=section_heading_total)",
+                inferred_current_assets,
+            )
+
+    if tables:
+        inferred_short_term = _extract_section_total_from_heading_rows(
+            tables,
+            section_headings=(
+                "краткосрочные обязательства",
+                "current liabilities",
+            ),
+            stop_markers=(
+                "итого обязательства",
+                "total liabilities",
+                "итого капитал и обязательства",
+                "total equity and liabilities",
+            ),
+        )
+        if _is_valid_financial_value(inferred_short_term):
+            _raw_set(
+                raw,
+                "short_term_liabilities",
+                inferred_short_term,
+                "table",
+                True,
+                candidate_quality=112,
+            )
+            logger.debug(
+                "[EXTRACT] short_term_liabilities = %s (source=section_heading_total)",
+                inferred_short_term,
             )
 
     if is_balance_like and not tables and "long_term_liabilities" not in raw:
@@ -1460,7 +1827,14 @@ def parse_financial_statements_with_metadata(
             short_term_value=short_term_value,
         )
         if _is_valid_financial_value(long_term_value):
-            _raw_set(raw, "long_term_liabilities", long_term_value, "text_regex", True)
+            _raw_set(
+                raw,
+                "long_term_liabilities",
+                long_term_value,
+                "text_regex",
+                True,
+                candidate_quality=105,
+            )
             logger.debug(
                 "[EXTRACT] long_term_liabilities = %s (source=form_section_total)",
                 long_term_value,
@@ -1474,8 +1848,18 @@ def parse_financial_statements_with_metadata(
             lookahead_lines=1,
         )
         if _is_valid_financial_value(equity_value):
-            _raw_set(raw, "equity", equity_value, "text_regex", True)
+            _raw_set(
+                raw,
+                "equity",
+                equity_value,
+                "text_regex",
+                True,
+                candidate_quality=105,
+            )
             logger.debug("[EXTRACT] equity = %s (source=form_section_total)", equity_value)
+
+    if is_form_like and not tables:
+        _apply_form_like_pnl_sanity(raw, form_pnl_code_candidates)
 
     # Pass 4: derive missing metrics
     if "liabilities" not in raw:
@@ -1500,7 +1884,7 @@ def parse_financial_statements_with_metadata(
         )
         if derived is not None:
             logger.debug("Derived liabilities = IV(%s) + V(%s) = %s", long_term, short_term, derived)
-            raw["liabilities"] = (derived, "derived_strong", False)
+            raw["liabilities"] = (derived, "derived_strong", False, 60)
         elif total_assets is not None and equity is not None and not (
             is_balance_like
             and not tables
@@ -1513,55 +1897,43 @@ def parse_financial_statements_with_metadata(
                 ratio = derived / total_assets
                 if ratio >= 0.02:
                     logger.debug("Derived liabilities = assets - equity = %s", derived)
-                    raw["liabilities"] = (derived, "derived_strong", False)
+                    raw["liabilities"] = (derived, "derived_strong", False, 60)
 
     # Derive current_assets from known components if still missing
     if "current_assets" not in raw:
-        cash = raw["cash_and_equivalents"][0] if "cash_and_equivalents" in raw else None
-        inventory = raw["inventory"][0] if "inventory" in raw else None
-        ar = raw["accounts_receivable"][0] if "accounts_receivable" in raw else None
-        total_assets = raw["total_assets"][0] if "total_assets" in raw else None
-        equity = raw["equity"][0] if "equity" in raw else None
-        liabilities = raw["liabilities"][0] if "liabilities" in raw else None
+        derived = _derive_current_assets_from_available(raw)
+        if _is_valid_financial_value(derived):
+            logger.debug("Derived current_assets from available fields = %s", derived)
+            raw["current_assets"] = (derived, "derived", False, 30)
 
-        # Method 1: sum of known current components (lower bound)
-        components = [v for v in [cash, inventory, ar] if v is not None]
-        if len(components) >= 2:
-            derived = sum(components)
-            logger.debug("Derived current_assets from components = %s", derived)
-            raw["current_assets"] = (derived, "derived", False)
-        # Method 2: total_assets - equity - liabilities (if all known)
-        elif total_assets is not None and equity is not None and liabilities is not None:
-            derived = total_assets - equity - liabilities
-            if derived > 0:
-                logger.debug("Derived current_assets = assets - equity - liabilities = %s", derived)
-                raw["current_assets"] = (derived, "derived", False)
-
-    # Derive short_term_liabilities from liabilities if still missing
-    if "short_term_liabilities" not in raw:
-        liabilities = raw["liabilities"][0] if "liabilities" in raw else None
-        long_term = (
-            raw["long_term_liabilities"][0]
-            if "long_term_liabilities" in raw
-            else None
+    current_assets_value = raw["current_assets"][0] if "current_assets" in raw else None
+    component_values = [
+        raw[key][0]
+        for key in ("inventory", "accounts_receivable", "cash_and_equivalents")
+        if key in raw
+    ]
+    if (
+        current_assets_value is not None
+        and component_values
+        and current_assets_value < max(component_values)
+    ):
+        logger.warning(
+            "Current assets candidate rejected by guardrail: current_assets=%s, max_component=%s",
+            current_assets_value,
+            max(component_values),
         )
-        if long_term is None and (tables or not is_balance_like):
-            long_term = _extract_section_total(tables, text_lower, [
-                "итого по разделу iv", "итого долгосрочных обязательств",
-                "долгосрочные обязательства всего",
-            ])
-        if liabilities is not None and long_term is not None:
-            derived = liabilities - long_term
-            if _is_valid_financial_value(derived) and 0 < derived <= liabilities:
-                logger.debug("Derived short_term_liabilities = liabilities - long_term = %s", derived)
-                raw["short_term_liabilities"] = (derived, "derived", False)
+        raw.pop("current_assets", None)
+        derived = _derive_current_assets_from_available(raw)
+        if _is_valid_financial_value(derived):
+            logger.debug("Derived current_assets after guardrail fallback = %s", derived)
+            raw["current_assets"] = (derived, "derived", False, 30)
 
     # Build final result — all keys guaranteed present
     # Apply scale_factor to monetary metrics (not ratios)
     result: dict[str, ExtractionMetadata] = {}
     for key in _METRIC_KEYWORDS:
         if key in raw:
-            value, match_type, is_exact = raw[key]
+            value, match_type, is_exact, _quality = raw[key]
             # Scale monetary values; skip ratio keys
             if scale_factor != 1.0 and key not in _RATIO_KEYS:
                 value = value * scale_factor
@@ -1746,6 +2118,106 @@ def _extract_section_total(tables: list, text_lower: str, keywords: list[str]) -
                 if val is not None:
                     return val
     return _extract_number_near_keywords(text_lower, keywords)
+
+
+def _extract_section_total_from_heading_rows(
+    tables: list,
+    section_headings: tuple[str, ...],
+    stop_markers: tuple[str, ...],
+) -> float | None:
+    """
+    Infer section totals from unlabeled or total-like rows following a section heading.
+
+    This helps IFRS/RSBU balance tables where subtotal rows are represented as
+    numeric-only lines without an explicit "Итого ..." label in the same row.
+    """
+    best_value: float | None = None
+    best_score: int | None = None
+
+    for table in tables or []:
+        rows = _table_to_rows(table)
+        if not rows:
+            continue
+
+        table_text = " ".join(
+            " ".join(str(cell) for cell in row if cell is not None).lower()
+            for row in rows
+        )
+        table_bonus = (
+            15
+            if (
+                ("итого активы" in table_text or "total assets" in table_text)
+                and (
+                    "капитал и обязательства" in table_text
+                    or "total equity and liabilities" in table_text
+                    or "equity and liabilities" in table_text
+                )
+            )
+            else 0
+        )
+        if (
+            "первоначально представлено" in table_text
+            or "эффект от пересчета" in table_text
+            or "как пересчитано" in table_text
+        ):
+            table_bonus -= 35
+
+        for heading_idx, row in enumerate(rows):
+            row_text_lower = " ".join(str(cell) for cell in row if cell is not None).lower()
+            if not any(heading in row_text_lower for heading in section_headings):
+                continue
+            if (
+                ("оборотные активы" in section_headings or "current assets" in section_headings)
+                and ("внеоборотн" in row_text_lower or "non-current" in row_text_lower)
+            ):
+                continue
+            if (
+                (
+                    "краткосрочные обязательства" in section_headings
+                    or "current liabilities" in section_headings
+                )
+                and ("долгосрочн" in row_text_lower or "non-current" in row_text_lower)
+            ):
+                continue
+
+            for candidate_idx in range(heading_idx + 1, min(len(rows), heading_idx + 30)):
+                candidate_row = rows[candidate_idx]
+                candidate_text_lower = " ".join(
+                    str(cell) for cell in candidate_row if cell is not None
+                ).lower()
+
+                if any(marker in candidate_text_lower for marker in stop_markers):
+                    break
+                if any(heading in candidate_text_lower for heading in section_headings):
+                    break
+
+                value = _extract_first_numeric_cell(candidate_row[1:])
+                if not _is_valid_financial_value(value):
+                    continue
+
+                first_cell = (
+                    str(candidate_row[0]).strip().lower()
+                    if len(candidate_row) > 0 and candidate_row[0] is not None
+                    else ""
+                )
+                is_unlabeled = first_cell in {"", "-", "—", "–"}
+                has_total_label = "итого" in candidate_text_lower or "total" in candidate_text_lower
+                if not (is_unlabeled or has_total_label):
+                    continue
+
+                score = 100 + table_bonus - (candidate_idx - heading_idx)
+                if not has_total_label:
+                    score -= 4
+
+                if (
+                    best_score is None
+                    or score > best_score
+                    or (score == best_score and abs(value or 0.0) > abs(best_value or 0.0))
+                ):
+                    best_score = score
+                    best_value = value
+
+    return best_value
 
 
 def _table_to_rows(table: Any) -> list[list[Any]]:
@@ -2100,7 +2572,6 @@ _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] =
             "чистая прибыль общества",
             "прибыль за период",
             "прибыль за год",
-            "совокупный финансовый результат периода",
             "net profit",
             "net income",
         ),
@@ -2129,6 +2600,7 @@ _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] =
         (
             "краткосрочные обязательства",
             "итого краткосрочных обязательств",
+            "итого краткосрочные обязательства",
             "total current liabilities",
         ),
     ),
@@ -2177,14 +2649,20 @@ def _extract_best_multiline_value(
     lookahead_lines: int = 8,
     ocr_mode: bool = False,
     metric_key: str | None = None,
-) -> float | None:
+) -> tuple[float | None, int | None]:
     best_score: int | None = None
     best_value: float | None = None
+    best_quality: int | None = None
     ordered_keywords = sorted(keywords, key=len, reverse=True)
     normalized_lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
 
     for index, line in enumerate(normalized_lines):
         lower_line = line.lower()
+        metric_quality = (
+            _metric_candidate_quality(metric_key, line) if metric_key is not None else 50
+        )
+        if metric_quality is None:
+            continue
         matched_keyword = next((kw for kw in ordered_keywords if kw in lower_line), None)
         if matched_keyword is None:
             continue
@@ -2199,7 +2677,11 @@ def _extract_best_multiline_value(
             )
         ]
         if ocr_mode:
-            score = _score_metric_line(lower_line, matched_keyword, line) + max(0, 6 - index)
+            score = (
+                _score_metric_line(lower_line, matched_keyword, line)
+                + max(0, 6 - index)
+                + metric_quality // 20
+            )
             same_line_source = line[line.lower().find(matched_keyword) + len(matched_keyword):]
             same_line_value = _extract_preferred_ocr_numeric_match(same_line_source)
             if _is_valid_financial_value(same_line_value):
@@ -2208,6 +2690,7 @@ def _extract_best_multiline_value(
                 ):
                     best_score = score
                     best_value = same_line_value
+                    best_quality = metric_quality
 
             followup_lines = normalized_lines[index + 1: index + lookahead_lines]
             if metric_key is not None:
@@ -2216,6 +2699,18 @@ def _extract_best_multiline_value(
                     for candidate in followup_lines
                     if not _line_mentions_other_metric(candidate.lower(), metric_key)
                 ]
+            if metric_key == "net_profit":
+                trimmed_followup: list[str] = []
+                for candidate in followup_lines:
+                    candidate_lower = candidate.lower()
+                    if (
+                        "совокупный финансовый результат периода" in candidate_lower
+                        and "чистая прибыль" not in candidate_lower
+                        and "2400" not in candidate_lower
+                    ):
+                        break
+                    trimmed_followup.append(candidate)
+                followup_lines = trimmed_followup
 
             line_value = _extract_numeric_value_from_following_lines(
                 followup_lines
@@ -2226,6 +2721,7 @@ def _extract_best_multiline_value(
                 ):
                     best_score = score
                     best_value = line_value
+                    best_quality = metric_quality
             continue
 
         block = " ".join(block_lines)
@@ -2241,14 +2737,19 @@ def _extract_best_multiline_value(
         if not _is_valid_financial_value(value):
             continue
 
-        score = _score_metric_line(lower_line, matched_keyword, line) + max(0, 6 - index)
+        score = (
+            _score_metric_line(lower_line, matched_keyword, line)
+            + max(0, 6 - index)
+            + metric_quality // 20
+        )
         if best_score is None or score > best_score or (
             score == best_score and abs(value) > abs(best_value or 0.0)
         ):
             best_score = score
             best_value = value
+            best_quality = metric_quality
 
-    return best_value
+    return best_value, best_quality
 
 
 _LINE_NOISE_HINTS = (
@@ -2269,10 +2770,15 @@ _LINE_NOISE_HINTS = (
 )
 
 
-def _extract_best_line_value(text: str, keywords: list[str]) -> float | None:
+def _extract_best_line_value(
+    text: str,
+    keywords: list[str],
+    metric_key: str | None = None,
+) -> tuple[float | None, int | None]:
     """Pick the most statement-like line candidate for the requested metric."""
     best_score: int | None = None
     best_value: float | None = None
+    best_quality: int | None = None
     ordered_keywords = sorted(keywords, key=len, reverse=True)
 
     for raw_line in text.splitlines():
@@ -2281,6 +2787,11 @@ def _extract_best_line_value(text: str, keywords: list[str]) -> float | None:
             continue
 
         lower_line = line.lower()
+        metric_quality = (
+            _metric_candidate_quality(metric_key, line) if metric_key is not None else 50
+        )
+        if metric_quality is None:
+            continue
         matched_keyword = next((kw for kw in ordered_keywords if kw in lower_line), None)
         if matched_keyword is None:
             continue
@@ -2289,7 +2800,7 @@ def _extract_best_line_value(text: str, keywords: list[str]) -> float | None:
         if value is None:
             continue
 
-        score = _score_metric_line(lower_line, matched_keyword, line)
+        score = _score_metric_line(lower_line, matched_keyword, line) + metric_quality // 20
         if (
             best_score is None
             or score > best_score
@@ -2297,8 +2808,9 @@ def _extract_best_line_value(text: str, keywords: list[str]) -> float | None:
         ):
             best_score = score
             best_value = value
+            best_quality = metric_quality
 
-    return best_value
+    return best_value, best_quality
 
 
 def _extract_number_after_keyword(line: str, keyword: str) -> float | None:

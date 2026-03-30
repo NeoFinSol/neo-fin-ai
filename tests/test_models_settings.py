@@ -163,6 +163,18 @@ class TestAppSettings:
         assert settings.task_queue_result_backend == "redis://localhost:6379/1"
         assert settings.task_events_redis_url == "redis://localhost:6379/2"
 
+    def test_scoring_profile_defaults_to_generic(self):
+        settings = AppSettings(_env_file=None)
+        assert settings.scoring_profile == "generic"
+
+    def test_scoring_profile_accepts_retail_demo(self):
+        settings = AppSettings(_env_file=None, SCORING_PROFILE="retail_demo")
+        assert settings.scoring_profile == "retail_demo"
+
+    def test_scoring_profile_invalid_value_falls_back_to_generic(self):
+        settings = AppSettings(_env_file=None, SCORING_PROFILE="invalid-profile")
+        assert settings.scoring_profile == "generic"
+
 
 class TestGlobalAppSettings:
     """Tests for global app_settings instance."""

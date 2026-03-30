@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.analysis import pdf_extractor
+from src.analysis.ratios import calculate_ratios
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -120,4 +121,23 @@ def test_local_magnit_regression(
         assert liabilities - short_term == expected_long_term, (
             f"{case['id']}: expected long_term_liabilities={expected_long_term}, "
             f"got {liabilities - short_term}"
+        )
+
+    if case["id"] in {"magnit_2025_q1_scanned", "magnit_2025_h1_ifrs"}:
+        metrics_values = {key: value.value for key, value in metadata.items()}
+        ratios = calculate_ratios(metrics_values)
+        quick_ratio = ratios["Коэффициент быстрой ликвидности"]
+        current_assets = metrics_values.get("current_assets")
+        inventory = metrics_values.get("inventory")
+
+        assert quick_ratio is None or quick_ratio >= 0, (
+            f"{case['id']}: quick_ratio must be non-negative or None, got {quick_ratio}"
+        )
+        assert (
+            current_assets is None
+            or inventory is None
+            or current_assets >= inventory
+        ), (
+            f"{case['id']}: current_assets must be >= inventory when both present, "
+            f"got current_assets={current_assets}, inventory={inventory}"
         )

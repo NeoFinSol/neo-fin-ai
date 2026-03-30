@@ -301,6 +301,7 @@ docker compose -f docker-compose.prod.yml run --rm backend-migrate
 | `TEST_DATABASE_URL` | — | Отдельная БД для тестов; при `TESTING=1` имеет приоритет над `DATABASE_URL` |
 | `API_KEY` | — | Ключ доступа к API (обязательно) |
 | `CONFIDENCE_THRESHOLD` | `0.5` | Порог надёжности: показатели ниже исключаются из расчётов |
+| `SCORING_PROFILE` | `generic` | Профиль benchmark’ов скоринга: `generic` или `retail_demo` |
 | `DB_POOL_TIMEOUT` | `30` | Сколько ждать свободное соединение с базой данных из пула |
 | `DB_POOL_RECYCLE` | `3600` | Через сколько секунд пересоздавать устаревшие соединения |
 | `CLEANUP_BATCH_LIMIT` | `100` | Максимум строк за один проход очистки |

@@ -104,6 +104,11 @@ class AppSettings(BaseSettings):
         alias="CONFIDENCE_THRESHOLD",
         description="Minimum confidence score to include an extracted metric [0.0–1.0]",
     )
+    scoring_profile: str = Field(
+        "generic",
+        alias="SCORING_PROFILE",
+        description="Scoring benchmark profile: generic or retail_demo",
+    )
 
     # LLM Extraction settings
     llm_extraction_enabled: bool = Field(
@@ -186,6 +191,21 @@ class AppSettings(BaseSettings):
                 "CONFIDENCE_THRESHOLD=%s out of [0.0, 1.0]. Using default 0.5", value
             )
             return 0.5
+        return value
+
+    @field_validator("scoring_profile", mode="before")
+    @classmethod
+    def validate_scoring_profile(cls, v: str | None) -> str:
+        """Validate scoring profile and fall back to generic profile."""
+        if v is None:
+            return "generic"
+        value = str(v).strip().lower()
+        if value not in {"generic", "retail_demo"}:
+            logging.warning(
+                "Invalid SCORING_PROFILE=%r. Using default 'generic'",
+                v,
+            )
+            return "generic"
         return value
 
     @field_validator("llm_chunk_size", mode="before")

@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from src.analysis.ratios import RATIO_KEY_MAP
+from src.models.settings import app_settings
 
 logger = logging.getLogger(__name__)
 
@@ -54,30 +55,62 @@ WEIGHTS = {
     "Оборачиваемость дебиторской задолженности": 0.05,
 }
 
-# Industry benchmarks for normalization (retail/general Russian market, РСБУ)
+# Industry benchmarks for normalization by profile.
 # Format: (target_value, is_higher_better)
-_BENCHMARKS: dict[str, tuple[float, bool]] = {
-    # Liquidity — нормативные значения по РСБУ
-    "Коэффициент текущей ликвидности": (2.0, True),       # норма ≥ 2.0
-    "Коэффициент быстрой ликвидности": (1.0, True),       # норма ≥ 1.0
-    "Коэффициент абсолютной ликвидности": (0.2, True),    # норма ≥ 0.2
-    # Profitability — средние по рынку РФ (ритейл/промышленность)
-    "Рентабельность активов (ROA)": (0.08, True),         # 8% — хороший уровень
-    "Рентабельность собственного капитала (ROE)": (0.15, True),  # 15% — норма
-    "Рентабельность продаж (ROS)": (0.10, True),          # 10% — норма
-    "EBITDA маржа": (0.15, True),                         # 15% — норма
-    # Financial stability
-    "Коэффициент автономии": (0.5, True),                 # норма ≥ 0.5
-    "Финансовый рычаг": (1.0, False),                     # норма ≤ 1.0 (меньше — лучше)
-    "Покрытие процентов": (3.0, True),                    # норма ≥ 3.0
-    # Business activity — оборачиваемость (разы в год)
-    "Оборачиваемость активов": (1.0, True),               # норма ≥ 1.0
-    "Оборачиваемость запасов": (8.0, True),               # норма ≥ 8 раз/год (ритейл)
-    "Оборачиваемость дебиторской задолженности": (8.0, True),  # норма ≥ 8 раз/год
+BENCHMARKS_BY_PROFILE: dict[str, dict[str, tuple[float, bool]]] = {
+    "generic": {
+        # Liquidity — нормативные значения по РСБУ
+        "Коэффициент текущей ликвидности": (2.0, True),       # норма ≥ 2.0
+        "Коэффициент быстрой ликвидности": (1.0, True),       # норма ≥ 1.0
+        "Коэффициент абсолютной ликвидности": (0.2, True),    # норма ≥ 0.2
+        # Profitability — средние по рынку РФ
+        "Рентабельность активов (ROA)": (0.08, True),
+        "Рентабельность собственного капитала (ROE)": (0.15, True),
+        "Рентабельность продаж (ROS)": (0.10, True),
+        "EBITDA маржа": (0.15, True),
+        # Financial stability
+        "Коэффициент автономии": (0.5, True),
+        "Финансовый рычаг": (1.0, False),
+        "Покрытие процентов": (3.0, True),
+        # Business activity
+        "Оборачиваемость активов": (1.0, True),
+        "Оборачиваемость запасов": (8.0, True),
+        "Оборачиваемость дебиторской задолженности": (8.0, True),
+    },
+    "retail_demo": {
+        # Retail-friendly thresholds for demo-readiness (without weakening anomaly blocking)
+        "Коэффициент текущей ликвидности": (1.0, True),
+        "Коэффициент быстрой ликвидности": (0.7, True),
+        "Коэффициент абсолютной ликвидности": (0.1, True),
+        "Рентабельность активов (ROA)": (0.05, True),
+        "Рентабельность собственного капитала (ROE)": (0.12, True),
+        "Рентабельность продаж (ROS)": (0.04, True),
+        "EBITDA маржа": (0.08, True),
+        "Коэффициент автономии": (0.35, True),
+        "Финансовый рычаг": (2.0, False),
+        "Покрытие процентов": (2.0, True),
+        "Оборачиваемость активов": (1.5, True),
+        "Оборачиваемость запасов": (10.0, True),
+        "Оборачиваемость дебиторской задолженности": (10.0, True),
+    },
 }
 
 
-def calculate_integral_score(ratios: dict[str, Any]) -> dict[str, Any]:
+def _resolve_scoring_profile(profile: str | None = None) -> str:
+    resolved_profile = (profile or app_settings.scoring_profile or "generic").strip().lower()
+    if resolved_profile not in BENCHMARKS_BY_PROFILE:
+        logger.warning(
+            "Unknown scoring profile %r, using generic profile",
+            resolved_profile,
+        )
+        return "generic"
+    return resolved_profile
+
+
+def calculate_integral_score(
+    ratios: dict[str, Any],
+    profile: str | None = None,
+) -> dict[str, Any]:
     """
     Calculate integral financial score (0–100) based on up to 12 ratios.
 
@@ -90,13 +123,15 @@ def calculate_integral_score(ratios: dict[str, Any]) -> dict[str, Any]:
     Returns:
         dict with keys: score (float), risk_level (str), details (dict[str, float])
     """
+    active_profile = _resolve_scoring_profile(profile)
+    benchmarks = BENCHMARKS_BY_PROFILE[active_profile]
     normalized: dict[str, float] = {}
     total_weight = 0.0
     weighted_sum = 0.0
 
     for ratio_name, weight in WEIGHTS.items():
         value = _to_number(ratios.get(ratio_name))
-        score = _normalize_ratio(ratio_name, value)
+        score = _normalize_ratio(ratio_name, value, benchmarks=benchmarks)
         if score is None:
             continue
         normalized[ratio_name] = round(score, 4)
@@ -119,6 +154,7 @@ def calculate_integral_score(ratios: dict[str, Any]) -> dict[str, Any]:
         "risk_level": risk_level,
         "details": normalized,
         "confidence_score": confidence_score,
+        "profile": active_profile,
     }
 
 
@@ -131,6 +167,8 @@ def build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
         normalized_scores: {en_key: float | null, ...} }
     """
     details = raw_score.get("details", {})  # normalized 0-1 values per ratio (RU keys)
+    active_profile = _resolve_scoring_profile(raw_score.get("profile"))
+    benchmarks = BENCHMARKS_BY_PROFILE[active_profile]
 
     factors = []
     normalized_scores: dict[str, float | None] = {
@@ -156,7 +194,7 @@ def build_score_payload(raw_score: dict, ratios_en: dict) -> dict:
             impact = "negative"
 
         friendly_name = FRIENDLY_NAMES.get(ru_name, ru_name)
-        benchmark = _BENCHMARKS.get(ru_name)
+        benchmark = benchmarks.get(ru_name)
         description = _build_factor_description(ru_name, actual_val, benchmark)
 
         factors.append({
@@ -272,7 +310,11 @@ _ANOMALY_LIMITS: dict[str, tuple[float, float]] = {
 }
 
 
-def _normalize_ratio(ratio_name: str, value: float | None) -> float | None:
+def _normalize_ratio(
+    ratio_name: str,
+    value: float | None,
+    benchmarks: dict[str, tuple[float, bool]] | None = None,
+) -> float | None:
     """
     Normalize a ratio value to [0, 1] range using benchmark targets.
 
@@ -297,7 +339,8 @@ def _normalize_ratio(ratio_name: str, value: float | None) -> float | None:
             )
             return None
 
-    benchmark = _BENCHMARKS.get(ratio_name)
+    active_benchmarks = benchmarks or BENCHMARKS_BY_PROFILE["generic"]
+    benchmark = active_benchmarks.get(ratio_name)
     if benchmark is None:
         return None
 

@@ -27,6 +27,7 @@ cp .env.example .env
 | `TEST_DATABASE_URL` | `string` | — | — | Отдельная строка подключения для тестов. При `TESTING=1` используется вместо `DATABASE_URL`, если задана |
 | `API_KEY` | `string` | — | ✅ | Ключ аутентификации. Передаётся в заголовке `X-API-Key` |
 | `CONFIDENCE_THRESHOLD` | `float` | `0.5` | — | Минимальный уровень достоверности для включения показателя в расчёт. Диапазон: `[0.0, 1.0]` |
+| `SCORING_PROFILE` | `string` | `generic` | — | Профиль benchmark’ов интегрального скоринга: `generic` или `retail_demo` |
 | `DEV_MODE` | `bool` | `false` | — | Режим разработки: отключает проверку `API_KEY`, разрешает CORS `*` |
 | `DEMO_MODE` | `int` | `0` | — | При `1` — маскирует числовые данные в ответах API |
 
@@ -234,6 +235,21 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → мягкая 
 
 ---
 
+### Профиль benchmark’ов скоринга
+
+`SCORING_PROFILE` переключает внутренние benchmark’и для нормализации коэффициентов без изменения API-контракта.
+
+| Значение | Режим | Описание |
+|---|---|---|
+| `generic` | По умолчанию | Универсальные benchmark’и для широкого набора компаний |
+| `retail_demo` | Demo-профиль | Retail-friendly benchmark’и для показов и кейсов крупного ритейла |
+
+Важно:
+- anomaly-blocking в скоринге (блокировка экстремальных ratio) остаётся включённым для всех профилей;
+- профиль влияет только на внутреннюю нормализацию/интерпретацию score, формат ответа API не меняется.
+
+---
+
 ## Пример файла .env
 
 ```env
@@ -241,6 +257,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → мягкая 
 DATABASE_URL=postgresql+asyncpg://neofin:password@db:5432/neofin
 API_KEY=change-me-in-production
 CONFIDENCE_THRESHOLD=0.5
+SCORING_PROFILE=generic
 
 # ── GigaChat (приоритет 1) ────────────────────────────────
 GIGACHAT_CLIENT_ID=your-client-id
