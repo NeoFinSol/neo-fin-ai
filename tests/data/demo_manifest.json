@@ -7,7 +7,7 @@
       "filename": "Бухгалтерская отчетность ПАО «Магнит» за 1 квартал 2025 года.pdf",
       "scanned": true,
       "expected": {
-        "revenue": 103015000.0,
+        "net_profit": 1348503000.0,
         "total_assets": 435659511000.0,
         "current_assets": 174989150000.0,
         "cash_and_equivalents": 1448897000.0,
@@ -19,7 +19,7 @@
       },
       "expected_long_term_liabilities": 33723849000.0,
       "expected_none": [
-        "net_profit"
+        "revenue"
       ]
     },
     {

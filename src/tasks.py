@@ -368,7 +368,29 @@ async def _run_extraction_phase(file_path: str, logger: logging.Logger) -> dict:
     if (not metrics_filtered.get("revenue") or not metrics_filtered.get("total_assets")) and text:
         logger.warning("Critical metrics missing, using regex fallback")
         regex_metrics = extract_metrics_regex(text)
+        min_monetary_abs = 1000.0
+        monetary_keys = {
+            "revenue",
+            "net_profit",
+            "total_assets",
+            "liabilities",
+            "equity",
+            "current_assets",
+            "short_term_liabilities",
+            "accounts_receivable",
+            "inventory",
+            "cash_and_equivalents",
+        }
         for key, value in regex_metrics.items():
+            if value is None:
+                continue
+            if key in monetary_keys and abs(value) < min_monetary_abs:
+                logger.debug(
+                    "Skipping regex fallback for %s due to low absolute value: %s",
+                    key,
+                    value,
+                )
+                continue
             if value is not None and metrics_filtered.get(key) is None:
                 metrics_filtered[key] = value
     
@@ -754,6 +776,5 @@ async def process_multi_analysis(
     finally:
         for file_path in remaining_paths:
             cleanup_temp_file(file_path)
-
 
 

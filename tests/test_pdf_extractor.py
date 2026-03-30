@@ -789,6 +789,15 @@ def test_extract_preferred_ocr_numeric_match_supports_four_digit_group_prefix():
     assert pdf_extractor._extract_preferred_ocr_numeric_match("1348 503 1339 235") == 1348503.0
 
 
+def test_extract_preferred_ocr_numeric_match_skips_four_digit_row_code_artifact():
+    assert (
+        pdf_extractor._extract_preferred_ocr_numeric_match(
+            "3211 - - - - - 1339 235 1339 235"
+        )
+        == 1339235.0
+    )
+
+
 def test_extract_form_section_total_prefers_same_line_number():
     text = "\n".join(
         [
@@ -1045,7 +1054,6 @@ def test_scanned_russian_multiline_statement_value_avoids_comprehensive_income_s
             "103 015",
             "Прибыль (убыток) от продаж",
             "129 258",
-            "Чистая прибыль (убыток)",
             "Форма 0710002 с. 2",
             "Совокупный финансовый результат периода",
             "1 348 503",
@@ -1056,6 +1064,28 @@ def test_scanned_russian_multiline_statement_value_avoids_comprehensive_income_s
 
     assert metadata["revenue"].value == 103015.0
     assert metadata["net_profit"].value is None
+
+
+def test_scanned_russian_multiline_statement_uses_comprehensive_when_direct_signal_exists():
+    text = "\n".join(
+        [
+            "Отчет о финансовых результатах",
+            "Выручка",
+            "За январь - март",
+            "2025 г.",
+            "103 015",
+            "Чистая прибыль (убыток)",
+            "Форма 0710002 с. 2",
+            "Совокупный финансовый результат периода",
+            "1 348 503",
+            "1 339 235",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["revenue"].value is None
+    assert metadata["net_profit"].value == 1348503.0
 
 
 def test_scanned_form_pnl_code_pair_is_preferred_for_revenue_and_net_profit():

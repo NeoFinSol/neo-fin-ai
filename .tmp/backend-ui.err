@@ -1,0 +1,289 @@
+GigaChat SSL verification DISABLED! This is insecure and should only be used in development environments with self-signed certificates.
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\pypdf\_crypt_providers\_cryptography.py:32: CryptographyDeprecationWarning: ARC4 has been moved to cryptography.hazmat.decrepit.ciphers.algorithms.ARC4 and will be removed from cryptography.hazmat.primitives.ciphers.algorithms in 48.0.0.
+  from cryptography.hazmat.primitives.ciphers.algorithms import AES, ARC4
+INFO:     Started server process [2632]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     ('127.0.0.1', 53390) - "WebSocket /ws/5063a14d-b313-47b9-aacc-ddb7fcbdf54b" [accepted]
+INFO:     connection open
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\xd7' in position 85: character maps to <undefined>
+Call stack:
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 1159, in parse_financial_statements_with_metadata
+    scale_factor = _detect_scale_factor(text)
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 993, in _detect_scale_factor
+    logger.info("Scale detected: thousands (\xd71,000)")
+Message: 'Scale detected: thousands (\xd71,000)'
+Arguments: ()
+INFO:     connection closed
+INFO:     ('127.0.0.1', 49439) - "WebSocket /ws/5063a14d-b313-47b9-aacc-ddb7fcbdf54b" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     ('127.0.0.1', 64057) - "WebSocket /ws/5063a14d-b313-47b9-aacc-ddb7fcbdf54b" [accepted]
+INFO:     connection open
+INFO:     ('127.0.0.1', 49984) - "WebSocket /ws/efa4d80e-d021-4d8d-8255-7e1ec28a111f" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     ('127.0.0.1', 59489) - "WebSocket /ws/5063a14d-b313-47b9-aacc-ddb7fcbdf54b" [accepted]
+INFO:     connection open
+2026-03-30T20:09:52 - INFO - Processing page-1
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:365: UserWarning: No tables found in table area 1
+  warnings.warn(f"No tables found in table area {table_idx + 1}")
+2026-03-30T20:09:53 - INFO - Processing page-2
+2026-03-30T20:09:53 - INFO - Processing page-3
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:448: UserWarning: page-3 is image-based, camelot only works on text-based pages.
+  warnings.warn(
+2026-03-30T20:09:53 - INFO - Processing page-4
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:448: UserWarning: page-4 is image-based, camelot only works on text-based pages.
+  warnings.warn(
+2026-03-30T20:09:53 - INFO - Processing page-5
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:448: UserWarning: page-5 is image-based, camelot only works on text-based pages.
+  warnings.warn(
+2026-03-30T20:09:54 - INFO - Processing page-6
+2026-03-30T20:09:55 - INFO - Processing page-7
+2026-03-30T20:09:56 - INFO - Processing page-8
+2026-03-30T20:09:58 - INFO - Processing page-9
+2026-03-30T20:09:59 - INFO - Processing page-10
+2026-03-30T20:10:00 - INFO - Processing page-11
+2026-03-30T20:10:00 - INFO - Processing page-12
+2026-03-30T20:10:01 - INFO - Processing page-13
+2026-03-30T20:10:01 - INFO - Processing page-14
+2026-03-30T20:10:01 - INFO - Processing page-15
+2026-03-30T20:10:02 - INFO - Processing page-16
+2026-03-30T20:10:02 - INFO - Processing page-17
+2026-03-30T20:10:02 - INFO - Processing page-18
+2026-03-30T20:10:03 - INFO - Processing page-19
+2026-03-30T20:10:03 - INFO - Processing page-20
+2026-03-30T20:10:03 - INFO - Processing page-21
+2026-03-30T20:10:04 - INFO - Processing page-22
+2026-03-30T20:10:04 - INFO - Processing page-23
+2026-03-30T20:10:04 - INFO - Processing page-24
+2026-03-30T20:10:05 - INFO - Processing page-25
+2026-03-30T20:10:06 - INFO - Processing page-26
+2026-03-30T20:10:06 - INFO - Processing page-27
+2026-03-30T20:10:07 - INFO - Processing page-28
+2026-03-30T20:10:08 - INFO - Processing page-29
+2026-03-30T20:10:08 - INFO - Processing page-30
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\xd7' in position 85: character maps to <undefined>
+Call stack:
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 1159, in parse_financial_statements_with_metadata
+    scale_factor = _detect_scale_factor(text)
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 993, in _detect_scale_factor
+    logger.info("Scale detected: thousands (\xd71,000)")
+Message: 'Scale detected: thousands (\xd71,000)'
+Arguments: ()
+INFO:     connection closed
+INFO:     ('127.0.0.1', 61997) - "WebSocket /ws/5063a14d-b313-47b9-aacc-ddb7fcbdf54b" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     ('127.0.0.1', 58099) - "WebSocket /ws/5063a14d-b313-47b9-aacc-ddb7fcbdf54b" [accepted]
+INFO:     connection open
+INFO:     ('127.0.0.1', 53870) - "WebSocket /ws/8e00e286-aea3-4ddf-be16-4869a73f9e97" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     ('127.0.0.1', 53568) - "WebSocket /ws/5063a14d-b313-47b9-aacc-ddb7fcbdf54b" [accepted]
+INFO:     connection open
+2026-03-30T20:19:32 - INFO - Processing page-1
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:365: UserWarning: No tables found in table area 1
+  warnings.warn(f"No tables found in table area {table_idx + 1}")
+2026-03-30T20:19:32 - INFO - Processing page-2
+2026-03-30T20:19:33 - INFO - Processing page-3
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:448: UserWarning: page-3 is image-based, camelot only works on text-based pages.
+  warnings.warn(
+2026-03-30T20:19:33 - INFO - Processing page-4
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:448: UserWarning: page-4 is image-based, camelot only works on text-based pages.
+  warnings.warn(
+2026-03-30T20:19:33 - INFO - Processing page-5
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:448: UserWarning: page-5 is image-based, camelot only works on text-based pages.
+  warnings.warn(
+2026-03-30T20:19:34 - INFO - Processing page-6
+2026-03-30T20:19:35 - INFO - Processing page-7
+2026-03-30T20:19:35 - INFO - Processing page-8
+2026-03-30T20:19:37 - INFO - Processing page-9
+2026-03-30T20:19:38 - INFO - Processing page-10
+2026-03-30T20:19:39 - INFO - Processing page-11
+2026-03-30T20:19:39 - INFO - Processing page-12
+2026-03-30T20:19:40 - INFO - Processing page-13
+2026-03-30T20:19:40 - INFO - Processing page-14
+2026-03-30T20:19:40 - INFO - Processing page-15
+2026-03-30T20:19:41 - INFO - Processing page-16
+2026-03-30T20:19:41 - INFO - Processing page-17
+2026-03-30T20:19:41 - INFO - Processing page-18
+2026-03-30T20:19:42 - INFO - Processing page-19
+2026-03-30T20:19:42 - INFO - Processing page-20
+2026-03-30T20:19:42 - INFO - Processing page-21
+2026-03-30T20:19:43 - INFO - Processing page-22
+2026-03-30T20:19:43 - INFO - Processing page-23
+2026-03-30T20:19:43 - INFO - Processing page-24
+2026-03-30T20:19:44 - INFO - Processing page-25
+2026-03-30T20:19:44 - INFO - Processing page-26
+2026-03-30T20:19:45 - INFO - Processing page-27
+2026-03-30T20:19:46 - INFO - Processing page-28
+2026-03-30T20:19:47 - INFO - Processing page-29
+2026-03-30T20:19:48 - INFO - Processing page-30
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\xd7' in position 85: character maps to <undefined>
+Call stack:
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 1159, in parse_financial_statements_with_metadata
+    scale_factor = _detect_scale_factor(text)
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 993, in _detect_scale_factor
+    logger.info("Scale detected: thousands (\xd71,000)")
+Message: 'Scale detected: thousands (\xd71,000)'
+Arguments: ()
+INFO:     connection closed
+INFO:     ('127.0.0.1', 61388) - "WebSocket /ws/5063a14d-b313-47b9-aacc-ddb7fcbdf54b" [accepted]
+INFO:     connection open
+INFO:     ('127.0.0.1', 57727) - "WebSocket /ws/d4a95d43-d6d1-4f53-a351-f3728cf7fdba" [accepted]
+INFO:     connection open
+2026-03-30T22:41:35 - INFO - Processing page-1
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:365: UserWarning: No tables found in table area 1
+  warnings.warn(f"No tables found in table area {table_idx + 1}")
+2026-03-30T22:41:35 - INFO - Processing page-2
+2026-03-30T22:41:35 - INFO - Processing page-3
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:448: UserWarning: page-3 is image-based, camelot only works on text-based pages.
+  warnings.warn(
+2026-03-30T22:41:35 - INFO - Processing page-4
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:448: UserWarning: page-4 is image-based, camelot only works on text-based pages.
+  warnings.warn(
+2026-03-30T22:41:35 - INFO - Processing page-5
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\camelot\parsers\stream.py:448: UserWarning: page-5 is image-based, camelot only works on text-based pages.
+  warnings.warn(
+2026-03-30T22:41:36 - INFO - Processing page-6
+2026-03-30T22:41:37 - INFO - Processing page-7
+2026-03-30T22:41:38 - INFO - Processing page-8
+2026-03-30T22:41:39 - INFO - Processing page-9
+2026-03-30T22:41:40 - INFO - Processing page-10
+2026-03-30T22:41:41 - INFO - Processing page-11
+2026-03-30T22:41:41 - INFO - Processing page-12
+2026-03-30T22:41:41 - INFO - Processing page-13
+2026-03-30T22:41:42 - INFO - Processing page-14
+2026-03-30T22:41:42 - INFO - Processing page-15
+2026-03-30T22:41:42 - INFO - Processing page-16
+2026-03-30T22:41:42 - INFO - Processing page-17
+2026-03-30T22:41:43 - INFO - Processing page-18
+2026-03-30T22:41:43 - INFO - Processing page-19
+2026-03-30T22:41:43 - INFO - Processing page-20
+2026-03-30T22:41:44 - INFO - Processing page-21
+2026-03-30T22:41:44 - INFO - Processing page-22
+2026-03-30T22:41:44 - INFO - Processing page-23
+2026-03-30T22:41:45 - INFO - Processing page-24
+2026-03-30T22:41:45 - INFO - Processing page-25
+2026-03-30T22:41:45 - INFO - Processing page-26
+2026-03-30T22:41:46 - INFO - Processing page-27
+2026-03-30T22:41:47 - INFO - Processing page-28
+2026-03-30T22:41:48 - INFO - Processing page-29
+2026-03-30T22:41:48 - INFO - Processing page-30
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\xd7' in position 85: character maps to <undefined>
+Call stack:
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 1159, in parse_financial_statements_with_metadata
+    if _contains_any(lower_text, component_tokens):
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 993, in _detect_scale_factor
+    logger.info("Scale detected: thousands (\xd71,000)")
+Message: 'Scale detected: thousands (\xd71,000)'
+Arguments: ()
+INFO:     connection closed
+INFO:     ('127.0.0.1', 49953) - "WebSocket /ws/d4a95d43-d6d1-4f53-a351-f3728cf7fdba" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     ('127.0.0.1', 60293) - "WebSocket /ws/d4a95d43-d6d1-4f53-a351-f3728cf7fdba" [accepted]
+INFO:     connection open
+INFO:     ('127.0.0.1', 61964) - "WebSocket /ws/06cde897-520c-41ae-8e7f-1c9d8753f1eb" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     ('127.0.0.1', 55756) - "WebSocket /ws/d4a95d43-d6d1-4f53-a351-f3728cf7fdba" [accepted]
+INFO:     connection open
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\logging\__init__.py", line 1113, in emit
+    stream.write(msg + self.terminator)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1251.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\xd7' in position 85: character maps to <undefined>
+Call stack:
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 83, in _worker
+    work_item.run()
+  File "C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\concurrent\futures\thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 1159, in parse_financial_statements_with_metadata
+    if _contains_any(lower_text, component_tokens):
+  File "E:\neo-fin-ai\src\analysis\pdf_extractor.py", line 993, in _detect_scale_factor
+    logger.info("Scale detected: thousands (\xd71,000)")
+Message: 'Scale detected: thousands (\xd71,000)'
+Arguments: ()
+INFO:     connection closed
+INFO:     ('127.0.0.1', 62721) - "WebSocket /ws/d4a95d43-d6d1-4f53-a351-f3728cf7fdba" [accepted]
+INFO:     connection open

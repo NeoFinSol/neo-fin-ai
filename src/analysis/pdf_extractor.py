@@ -542,6 +542,24 @@ _LAYOUT_ROW_SIGNAL_TOKENS = (
     "краткосрочн",
 )
 
+_P_AND_L_SECTION_MARKERS = (
+    "отчет о финансовых результатах",
+    "отчёт о финансовых результатах",
+    "statement of income",
+    "statement of profit",
+)
+
+_P_AND_L_SECTION_END_MARKERS = (
+    "бухгалтерский баланс",
+    "отчет об изменениях капитала",
+    "отчёт об изменениях капитала",
+    "отчет о движении денежных средств",
+    "отчёт о движении денежных средств",
+    "statement of changes in equity",
+    "statement of cash flows",
+    "руководитель",
+)
+
 
 def _should_run_layout_metric_row_crop(page_text: str) -> bool:
     text_lower = (page_text or "").lower()
@@ -1313,14 +1331,30 @@ def _apply_form_like_pnl_sanity(
     if margin_after_fallback <= 0.6:
         return
 
-    conflicting_key = "net_profit"
+    revenue_quality = revenue_entry[3] if len(revenue_entry) > 3 else 50
+    net_profit_quality = net_profit_entry[3] if len(net_profit_entry) > 3 else 50
+    revenue_reliability = revenue_priority * 100 + revenue_quality
+    net_profit_reliability = net_profit_priority * 100 + net_profit_quality
+
+    if revenue_reliability < net_profit_reliability:
+        conflicting_key = "revenue"
+    elif net_profit_reliability < revenue_reliability:
+        conflicting_key = "net_profit"
+    elif "net_profit" in code_candidates and "revenue" not in code_candidates:
+        conflicting_key = "revenue"
+    elif "revenue" in code_candidates and "net_profit" not in code_candidates:
+        conflicting_key = "net_profit"
+    else:
+        conflicting_key = "net_profit"
 
     logger.warning(
-        "Dropping %s due to P&L sanity conflict: revenue=%s, net_profit=%s, margin=%s",
+        "Dropping %s due to P&L sanity conflict: revenue=%s, net_profit=%s, margin=%s, reliability=(revenue:%s, net_profit:%s)",
         conflicting_key,
         revenue,
         net_profit,
         margin_after_fallback,
+        revenue_reliability,
+        net_profit_reliability,
     )
     raw.pop(conflicting_key, None)
 
@@ -1859,6 +1893,18 @@ def parse_financial_statements_with_metadata(
             logger.debug("[EXTRACT] equity = %s (source=form_section_total)", equity_value)
 
     if is_form_like and not tables:
+        section_candidates = _extract_form_like_pnl_section_candidates(text)
+        for metric_key, (value, quality, is_exact) in section_candidates.items():
+            if not _is_valid_financial_value(value):
+                continue
+            _raw_set(
+                raw,
+                metric_key,
+                value,
+                "text_regex",
+                is_exact,
+                candidate_quality=quality,
+            )
         _apply_form_like_pnl_sanity(raw, form_pnl_code_candidates)
 
     # Pass 4: derive missing metrics
@@ -2346,9 +2392,23 @@ def _extract_preferred_ocr_numeric_match(text: str) -> float | None:
     if not parsed_candidates:
         return None
 
+    has_large_numeric_candidate = any(
+        len("".join(ch for ch in raw_match if ch.isdigit())) >= 6
+        for raw_match, _value in parsed_candidates
+    )
+
     for raw_match, value in parsed_candidates:
         digits_only = "".join(ch for ch in raw_match if ch.isdigit())
         if digits_only.isdigit() and len(digits_only) <= 3 and len(parsed_candidates) > 1:
+            continue
+        if (
+            has_large_numeric_candidate
+            and len(digits_only) == 4
+            and len(parsed_candidates) > 1
+            and abs(value) < 10000
+        ):
+            # OCR rows in scanned forms often start with 4-digit line codes
+            # (for example 3211/3311) before actual period values.
             continue
         if digits_only.startswith("07") and len(digits_only) >= 6:
             continue
@@ -2493,6 +2553,137 @@ def _extract_form_long_term_liabilities(
     if smaller > 0 and larger / smaller >= 1.5:
         return smaller
     return candidates[0]
+
+
+def _extract_form_like_pnl_section_candidates(
+    text: str,
+) -> dict[str, tuple[float, int, bool]]:
+    lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    if not lines:
+        return {}
+
+    start_index: int | None = None
+    for idx, line in enumerate(lines):
+        lower_line = line.lower()
+        if any(marker in lower_line for marker in _P_AND_L_SECTION_MARKERS):
+            start_index = idx
+            break
+    if start_index is None:
+        return {}
+
+    end_index = len(lines)
+    for idx in range(start_index + 1, len(lines)):
+        lower_line = lines[idx].lower()
+        if any(marker in lower_line for marker in _P_AND_L_SECTION_END_MARKERS):
+            end_index = idx
+            break
+
+    section_lines = lines[start_index:end_index]
+    if not section_lines:
+        return {}
+    section_text = "\n".join(section_lines)
+
+    def _extract_same_line_after_anchor(line: str, anchors: tuple[str, ...]) -> float | None:
+        lower_line = line.lower()
+        for anchor in anchors:
+            anchor_index = lower_line.find(anchor)
+            if anchor_index == -1:
+                continue
+            value = _extract_preferred_ocr_numeric_match(
+                line[anchor_index + len(anchor):]
+            )
+            if _is_valid_financial_value(value):
+                return value
+        return None
+
+    candidates: dict[str, tuple[float, int, bool]] = {}
+
+    revenue_code_value = _extract_value_near_text_codes(
+        section_text,
+        ("2110",),
+        ("выручка от реализации, без ндс", "выручка", "revenue"),
+        lookahead_chars=1400,
+    )
+    if _is_valid_financial_value(revenue_code_value):
+        candidates["revenue"] = (revenue_code_value, 120, True)
+    else:
+        for idx, line in enumerate(section_lines):
+            lower_line = line.lower()
+            if "выручка" not in lower_line and "revenue" not in lower_line:
+                continue
+            same_line_value = _extract_same_line_after_anchor(
+                line,
+                ("выручка", "revenue"),
+            )
+            if _is_valid_financial_value(same_line_value):
+                candidates["revenue"] = (same_line_value, 108, True)
+                break
+            followup_value = _extract_numeric_value_from_following_lines(
+                section_lines[idx + 1: idx + 6]
+            )
+            if _is_valid_financial_value(followup_value):
+                candidates["revenue"] = (followup_value, 104, True)
+                break
+
+    net_profit_direct_signal = False
+    net_profit_code_value = _extract_value_near_text_codes(
+        section_text,
+        ("2400",),
+        ("чистая прибыль", "net profit", "net income"),
+        lookahead_chars=1400,
+    )
+    if _is_valid_financial_value(net_profit_code_value):
+        candidates["net_profit"] = (net_profit_code_value, 120, True)
+        net_profit_direct_signal = True
+
+    net_profit_direct_tokens = ("чистая прибыль", "net profit", "net income", "2400")
+    if "net_profit" not in candidates:
+        for idx, line in enumerate(section_lines):
+            lower_line = line.lower()
+            if not any(token in lower_line for token in net_profit_direct_tokens):
+                continue
+            net_profit_direct_signal = True
+            same_line_value = _extract_same_line_after_anchor(
+                line,
+                ("чистая прибыль", "net profit", "net income"),
+            )
+            if _is_valid_financial_value(same_line_value):
+                candidates["net_profit"] = (same_line_value, 110, True)
+                break
+
+            followup_lines: list[str] = []
+            for candidate_line in section_lines[idx + 1: idx + 7]:
+                candidate_lower = candidate_line.lower()
+                if (
+                    "совокупный финансовый результат периода" in candidate_lower
+                    or "total comprehensive income" in candidate_lower
+                ):
+                    break
+                followup_lines.append(candidate_line)
+
+            followup_value = _extract_numeric_value_from_following_lines(followup_lines)
+            if _is_valid_financial_value(followup_value):
+                candidates["net_profit"] = (followup_value, 106, True)
+                break
+
+    if "net_profit" not in candidates and net_profit_direct_signal:
+        for idx, line in enumerate(section_lines):
+            lower_line = line.lower()
+            if (
+                "совокупный финансовый результат периода" not in lower_line
+                and "total comprehensive income" not in lower_line
+            ):
+                continue
+            fallback_value = _extract_preferred_ocr_numeric_match(line)
+            if not _is_valid_financial_value(fallback_value):
+                fallback_value = _extract_numeric_value_from_following_lines(
+                    section_lines[idx + 1: idx + 4]
+                )
+            if _is_valid_financial_value(fallback_value):
+                candidates["net_profit"] = (fallback_value, 112, True)
+            break
+
+    return candidates
 
 
 def _derive_liabilities_from_components(
