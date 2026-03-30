@@ -1085,7 +1085,7 @@ def parse_financial_statements_with_metadata(
         "2110": "revenue", "2400": "net_profit", "2300": "net_profit",
         "1600": "total_assets", "1700": "total_assets",
         "1300": "equity", "1200": "current_assets",
-        "1500": "short_term_liabilities", "1400": "liabilities",
+        "1500": "short_term_liabilities", "1400": "long_term_liabilities",
         "1230": "accounts_receivable", "1210": "inventory",
         "1250": "cash_and_equivalents", "2120": "cost_of_goods_sold",
         "2200": "ebit",
@@ -1161,6 +1161,7 @@ def parse_financial_statements_with_metadata(
                             _MONETARY_METRICS = {
                                 "revenue", "net_profit", "total_assets", "equity",
                                 "liabilities", "current_assets", "short_term_liabilities",
+                                "long_term_liabilities",
                                 "accounts_receivable", "inventory", "cash_and_equivalents",
                                 "ebitda", "ebit", "interest_expense", "cost_of_goods_sold",
                             }
@@ -1360,6 +1361,23 @@ def parse_financial_statements_with_metadata(
                 short_term_value,
             )
 
+    if text_is_form_like and not tables and "long_term_liabilities" not in raw:
+        short_term_value = (
+            raw["short_term_liabilities"][0]
+            if "short_term_liabilities" in raw
+            else None
+        )
+        long_term_value = _extract_form_long_term_liabilities(
+            text,
+            short_term_value=short_term_value,
+        )
+        if _is_valid_financial_value(long_term_value):
+            _raw_set(raw, "long_term_liabilities", long_term_value, "text_regex", True)
+            logger.debug(
+                "[EXTRACT] long_term_liabilities = %s (source=form_section_total)",
+                long_term_value,
+            )
+
     if text_is_form_like and not tables and "equity" not in raw:
         equity_value = _extract_form_section_total(
             text,
@@ -1373,8 +1391,12 @@ def parse_financial_statements_with_metadata(
 
     # Pass 4: derive missing metrics
     if "liabilities" not in raw:
-        long_term = None
-        if tables or not text_is_form_like:
+        long_term = (
+            raw["long_term_liabilities"][0]
+            if "long_term_liabilities" in raw
+            else None
+        )
+        if long_term is None and (tables or not text_is_form_like):
             long_term = _extract_section_total(tables, text_lower, [
                 "итого по разделу iv", "итого долгосрочных обязательств"
             ])
@@ -1382,8 +1404,13 @@ def parse_financial_statements_with_metadata(
         total_assets = raw["total_assets"][0] if "total_assets" in raw else None
         equity = raw["equity"][0] if "equity" in raw else None
 
-        if long_term is not None and short_term is not None:
-            derived = long_term + short_term
+        derived = _derive_liabilities_from_components(
+            long_term,
+            short_term,
+            total_assets,
+            equity,
+        )
+        if derived is not None:
             logger.debug("Derived liabilities = IV(%s) + V(%s) = %s", long_term, short_term, derived)
             raw["liabilities"] = (derived, "derived", False)
         elif total_assets is not None and equity is not None and not (
@@ -1425,16 +1452,19 @@ def parse_financial_statements_with_metadata(
     # Derive short_term_liabilities from liabilities if still missing
     if "short_term_liabilities" not in raw:
         liabilities = raw["liabilities"][0] if "liabilities" in raw else None
-        # Try to find long-term liabilities subtotal from tables
-        long_term = None
-        if tables or not text_is_form_like:
+        long_term = (
+            raw["long_term_liabilities"][0]
+            if "long_term_liabilities" in raw
+            else None
+        )
+        if long_term is None and (tables or not text_is_form_like):
             long_term = _extract_section_total(tables, text_lower, [
                 "итого по разделу iv", "итого долгосрочных обязательств",
                 "долгосрочные обязательства всего",
             ])
         if liabilities is not None and long_term is not None:
             derived = liabilities - long_term
-            if derived > 0:
+            if _is_valid_financial_value(derived) and 0 < derived <= liabilities:
                 logger.debug("Derived short_term_liabilities = liabilities - long_term = %s", derived)
                 raw["short_term_liabilities"] = (derived, "derived", False)
 
@@ -1545,8 +1575,6 @@ def extract_metrics_regex(text: str) -> dict[str, float | None]:
         "liabilities": [
             r"Итого обязательств\s*\|\s*" + num_group,
             r"Итого обязательств[^\d]{0,60}" + num_group,
-            r"Итого долгосрочных обязательств\s*\|\s*" + num_group,
-            r"Итого краткосрочных обязательств\s*\|\s*" + num_group,
             r"обязательств[ауы].*?(\d+(?:[\s\xa0]?\d+)*(?:[.,]\d+)?)",
         ],
         "current_assets": [
@@ -1893,6 +1921,76 @@ def _extract_form_section_total(
     return None
 
 
+def _extract_form_long_term_liabilities(
+    text: str,
+    short_term_value: float | None = None,
+) -> float | None:
+    section_value = _extract_form_section_total(
+        text,
+        ("итого по разделу iv", "итого долгосрочных обязательств"),
+        lookback_lines=8,
+        lookahead_lines=1,
+    )
+    code_value = _extract_value_near_text_codes(
+        text,
+        ("1400",),
+        ("итого по разделу iv", "долгосрочн"),
+        lookahead_chars=220,
+    )
+
+    candidates = [
+        value
+        for value in (section_value, code_value)
+        if _is_valid_financial_value(value)
+    ]
+    if short_term_value is not None:
+        tolerance = max(1000.0, abs(short_term_value) * 0.01)
+        candidates = [
+            value
+            for value in candidates
+            if abs(value - short_term_value) > tolerance
+        ]
+
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    larger = max(candidates)
+    smaller = min(candidates)
+    if smaller > 0 and larger / smaller >= 1.5:
+        return smaller
+    return candidates[0]
+
+
+def _derive_liabilities_from_components(
+    long_term: float | None,
+    short_term: float | None,
+    total_assets: float | None,
+    equity: float | None,
+) -> float | None:
+    if long_term is None or short_term is None:
+        return None
+
+    derived = long_term + short_term
+    if not _is_valid_financial_value(derived):
+        return None
+
+    if total_assets is not None and total_assets > 0:
+        ratio = derived / total_assets
+        if not (0.02 <= ratio <= 0.98):
+            return None
+
+    if total_assets is not None and equity is not None:
+        assets_minus_equity = total_assets - equity
+        if _is_valid_financial_value(assets_minus_equity):
+            tolerance = max(1000.0, abs(assets_minus_equity) * 0.05)
+            if abs(derived - assets_minus_equity) > tolerance:
+                return None
+
+    return derived
+
+
 _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] = {
     "revenue": (("2110",), ("выручка от реализации, без ндс", "выручка", "revenue")),
     "net_profit": (
@@ -1916,6 +2014,14 @@ _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] =
             "дебиторская задолженность",
             "accounts receivable",
             "trade receivables",
+        ),
+    ),
+    "long_term_liabilities": (
+        ("1400",),
+        (
+            "долгосрочные обязательства",
+            "итого по разделу iv",
+            "total non-current liabilities",
         ),
     ),
     "short_term_liabilities": (

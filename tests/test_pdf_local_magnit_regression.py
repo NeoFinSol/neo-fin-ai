@@ -45,6 +45,7 @@ def _load_case_params() -> list[pytest.ParameterSet]:
                 "accounts_receivable": 26998240000.0,
                 "inventory": 2142153000.0,
             },
+            "expected_long_term_liabilities": 33723849000.0,
             "expected_none": [
             ],
         },
@@ -126,4 +127,16 @@ def test_local_magnit_regression(case: dict | None) -> None:
     for key in case.get("expected_none", []):
         assert metadata[key].value is None, (
             f"{case['id']}: expected {key}=None, got {metadata[key].value}"
+        )
+
+    expected_long_term = case.get("expected_long_term_liabilities")
+    if expected_long_term is not None:
+        liabilities = metadata["liabilities"].value
+        short_term = metadata["short_term_liabilities"].value
+        assert liabilities is not None and short_term is not None, (
+            f"{case['id']}: expected liabilities/short_term_liabilities for long-term check"
+        )
+        assert liabilities - short_term == expected_long_term, (
+            f"{case['id']}: expected long_term_liabilities={expected_long_term}, "
+            f"got {liabilities - short_term}"
         )

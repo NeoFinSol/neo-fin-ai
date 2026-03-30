@@ -589,6 +589,22 @@ def test_extract_form_section_total_supports_section_v_marker():
     assert value == 226183995.0
 
 
+def test_extract_form_long_term_liabilities_prefers_smaller_candidate_on_conflict():
+    text = "\n".join(
+        [
+            "Итого по разделу IV 226 183 995 197 916 480",
+            "код 1400 33 723 849 43 960 253",
+        ]
+    )
+
+    value = pdf_extractor._extract_form_long_term_liabilities(
+        text,
+        short_term_value=192460146.0,
+    )
+
+    assert value == 33723849.0
+
+
 def test_scanned_form_extracts_short_term_liabilities_from_section_v_total():
     text = "\n".join(
         [
@@ -603,6 +619,38 @@ def test_scanned_form_extracts_short_term_liabilities_from_section_v_total():
 
     assert metadata["short_term_liabilities"].value == 226183995.0
     assert metadata["short_term_liabilities"].source == "text_regex"
+
+
+def test_form_text_code_1400_is_treated_as_long_term_component():
+    text = "\n".join(
+        [
+            "Бухгалтерский баланс",
+            "код 1600 435 659 511 307 785 500",
+            "код 1400 33 723 849 43 960 253",
+            "код 1500 192 460 146 153 956 227",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["liabilities"].value == 226183995.0
+    assert metadata["short_term_liabilities"].value == 192460146.0
+
+
+def test_section_based_liabilities_derive_falls_back_when_components_conflict():
+    text = "\n".join(
+        [
+            "Бухгалтерский баланс",
+            "код 1600 435 659 511 307 785 500",
+            "Итого по разделу Ш 209 475 516 208 127 013",
+            "Итого по разделу IV 226 183 995 197 916 480",
+            "Итого по разделу V 192 460 146 153 956 227",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["liabilities"].value == 226183995.0
 
 
 def test_text_statement_row_overrides_partial_table_noise():
