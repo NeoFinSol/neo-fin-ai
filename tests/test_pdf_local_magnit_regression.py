@@ -133,17 +133,32 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         metafunc.parametrize("case", _load_case_params())
 
 
-def test_local_magnit_regression(case: dict | None) -> None:
+@pytest.fixture(scope="module")
+def extracted_payload_cache() -> dict[tuple[str, bool], tuple[str, list]]:
+    return {}
+
+
+def test_local_magnit_regression(
+    case: dict | None,
+    extracted_payload_cache: dict[tuple[str, bool], tuple[str, list]],
+) -> None:
     if case is None:
         pytest.skip("Local Magnit regression is disabled or fixture is unavailable.")
 
     pdf_path = FIXTURE_ROOT / case["filename"]
-    if case.get("scanned"):
-        text = pdf_extractor.extract_text_from_scanned(str(pdf_path))
-        tables = []
-    else:
-        text = pdf_extractor.extract_text(str(pdf_path))
-        tables = pdf_extractor.extract_tables(str(pdf_path))
+    cache_key = (case["filename"], bool(case.get("scanned")))
+    cached_payload = extracted_payload_cache.get(cache_key)
+    if cached_payload is None:
+        if case.get("scanned"):
+            text = pdf_extractor.extract_text_from_scanned(str(pdf_path))
+            tables = []
+        else:
+            text = pdf_extractor.extract_text(str(pdf_path))
+            tables = pdf_extractor.extract_tables(str(pdf_path))
+        cached_payload = (text, tables)
+        extracted_payload_cache[cache_key] = cached_payload
+
+    text, tables = cached_payload
     metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
 
     for key, expected_value in case["expected"].items():

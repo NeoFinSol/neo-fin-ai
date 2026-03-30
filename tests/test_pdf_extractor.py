@@ -408,7 +408,114 @@ def test_extract_layout_metric_value_lines_limits_row_crop_attempts_per_spec(mon
     )
 
     assert lines == []
-    assert attempts["count"] == 2
+    assert attempts["count"] == 4
+
+
+def test_extract_layout_metric_value_lines_extracts_value_after_second_candidate(monkeypatch):
+    class FakeImage:
+        size = (1653, 2339)
+
+    fake_data = {
+        "text": ["Бухгалтерский", "баланс", "Запасы", "Запасы", "Запасы", "Запасы"],
+        "block_num": [1, 1, 2, 3, 4, 5],
+        "par_num": [1, 1, 1, 1, 1, 1],
+        "line_num": [1, 1, 1, 1, 1, 1],
+        "top": [120, 120, 220, 260, 300, 340],
+        "left": [80, 180, 100, 100, 100, 100],
+        "width": [90, 90, 80, 80, 80, 80],
+        "height": [20, 20, 18, 18, 18, 18],
+    }
+
+    attempts = {"count": 0}
+
+    def fake_image_to_data(_image, lang=None, output_type=None):
+        return fake_data
+
+    def fake_extract_tail(
+        _image,
+        row_left,
+        row_top,
+        row_right,
+        row_bottom,
+        expected_code=None,
+        require_code_match=False,
+    ):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            return None
+        return "21 42 153"
+
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_data", fake_image_to_data)
+    monkeypatch.setattr(pdf_extractor, "_extract_ocr_row_value_tail", fake_extract_tail)
+
+    lines = pdf_extractor._extract_layout_metric_value_lines(
+        FakeImage(),
+        "Бухгалтерский баланс\nЗапасы",
+    )
+
+    assert lines == ["Запасы 21 42 153"]
+    assert attempts["count"] == 3
+
+
+def test_extract_layout_metric_value_lines_applies_page_level_attempt_budget(monkeypatch):
+    class FakeImage:
+        size = (1653, 2339)
+
+    marker_rows = [
+        "m1", "m1", "m1", "m1", "m1",
+        "m2", "m2", "m2", "m2", "m2",
+        "m3", "m3", "m3", "m3", "m3",
+        "m4", "m4", "m4", "m4", "m4",
+    ]
+    texts = ["Бухгалтерский", "баланс", *marker_rows]
+    fake_data = {
+        "text": texts,
+        "block_num": [1, 1, *range(2, 2 + len(marker_rows))],
+        "par_num": [1] * len(texts),
+        "line_num": [1] * len(texts),
+        "top": [120, 120, *[200 + idx * 20 for idx in range(len(marker_rows))]],
+        "left": [80, 180, *([100] * len(marker_rows))],
+        "width": [90, 90, *([80] * len(marker_rows))],
+        "height": [20, 20, *([18] * len(marker_rows))],
+    }
+
+    attempts = {"count": 0}
+
+    def fake_image_to_data(_image, lang=None, output_type=None):
+        return fake_data
+
+    def fake_extract_tail(
+        _image,
+        row_left,
+        row_top,
+        row_right,
+        row_bottom,
+        expected_code=None,
+        require_code_match=False,
+    ):
+        attempts["count"] += 1
+        return None
+
+    monkeypatch.setattr(
+        pdf_extractor,
+        "_LAYOUT_BALANCE_ROW_SPECS",
+        (
+            ("code1", ("m1",), "L1", 2, False),
+            ("code2", ("m2",), "L2", 2, False),
+            ("code3", ("m3",), "L3", 2, False),
+            ("code4", ("m4",), "L4", 2, False),
+        ),
+    )
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_data", fake_image_to_data)
+    monkeypatch.setattr(pdf_extractor, "_extract_ocr_row_value_tail", fake_extract_tail)
+
+    lines = pdf_extractor._extract_layout_metric_value_lines(
+        FakeImage(),
+        "Бухгалтерский баланс",
+    )
+
+    assert lines == []
+    assert attempts["count"] == 14
 
 
 def test_extract_text_from_scanned_runs_layout_row_crop_only_for_signal_pages(monkeypatch):
@@ -692,6 +799,22 @@ def test_extract_form_long_term_liabilities_prefers_smaller_candidate_on_conflic
     assert value == 33723849.0
 
 
+def test_extract_form_long_term_liabilities_keeps_near_short_term_values():
+    text = "\n".join(
+        [
+            "Итого по разделу IV 50 005 49 000",
+            "Краткосрочные обязательства",
+        ]
+    )
+
+    value = pdf_extractor._extract_form_long_term_liabilities(
+        text,
+        short_term_value=50000.0,
+    )
+
+    assert value == 50005.0
+
+
 def test_scanned_form_extracts_short_term_liabilities_from_section_v_total():
     text = "\n".join(
         [
@@ -706,6 +829,23 @@ def test_scanned_form_extracts_short_term_liabilities_from_section_v_total():
 
     assert metadata["short_term_liabilities"].value == 226183995.0
     assert metadata["short_term_liabilities"].source == "text_regex"
+
+
+def test_scanned_balance_header_without_codes_still_runs_section_path():
+    text = "\n".join(
+        [
+            "Бухгалтерский баланс",
+            "Итого по разделу III 100 000 97 000",
+            "Итого по разделу IV 50 005 49 000",
+            "Итого по разделу V 50 000 48 000",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["short_term_liabilities"].value == 50000.0
+    assert metadata["equity"].value == 100000.0
+    assert metadata["liabilities"].value == 100005.0
 
 
 def test_form_text_code_1400_is_treated_as_long_term_component():
@@ -738,6 +878,17 @@ def test_section_based_liabilities_derive_falls_back_when_components_conflict():
     metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
 
     assert metadata["liabilities"].value == 226183995.0
+
+
+def test_derive_liabilities_from_components_allows_high_leverage():
+    derived = pdf_extractor._derive_liabilities_from_components(
+        long_term=980.0,
+        short_term=10.0,
+        total_assets=1000.0,
+        equity=10.0,
+    )
+
+    assert derived == 990.0
 
 
 def test_form_like_guardrails_soft_null_liabilities_above_total_assets():

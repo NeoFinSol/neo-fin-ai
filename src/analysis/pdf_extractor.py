@@ -667,8 +667,12 @@ def _extract_layout_metric_value_lines(image: object, page_text: str) -> list[st
 
     synthesized: list[str] = []
     seen: set[str] = set()
-    max_attempts_per_spec = 2
+    max_attempts_per_spec = 4
+    max_row_crop_attempts_per_page = 14
+    row_crop_attempts = 0
     for expected_code, markers, label, min_groups, require_code_match in _LAYOUT_BALANCE_ROW_SPECS:
+        if row_crop_attempts >= max_row_crop_attempts_per_page:
+            break
         candidate_rows = [
             row
             for row in prepared_rows
@@ -691,6 +695,9 @@ def _extract_layout_metric_value_lines(image: object, page_text: str) -> list[st
         )
 
         for row in candidate_rows[:max_attempts_per_spec]:
+            if row_crop_attempts >= max_row_crop_attempts_per_page:
+                break
+            row_crop_attempts += 1
             numeric_tail = _extract_ocr_row_value_tail(
                 image,
                 row_left=int(row["left"]),
@@ -1111,16 +1118,21 @@ def parse_financial_statements_with_metadata(
     Always returns exactly len(_METRIC_KEYWORDS) keys.
     """
     text_lower = (text or "").lower()
-    has_russian_balance_form = "бухгалтерский баланс" in text_lower and any(
-        code in text_lower for code in ("1200", "1600", "1250")
-    )
-    has_russian_results_form = "отчет о финансовых результатах" in text_lower and any(
-        code in text_lower for code in ("2110", "2400", "2300")
-    )
-    text_is_form_like = (
+    has_russian_balance_header = "бухгалтерский баланс" in text_lower
+    has_russian_results_header = "отчет о финансовых результатах" in text_lower
+    is_form_like = (
         "форма 071000" in text_lower
-        or has_russian_balance_form
-        or has_russian_results_form
+        or has_russian_balance_header
+        or has_russian_results_header
+    )
+    is_balance_like = (
+        has_russian_balance_header
+        or "форма 0710001" in text_lower
+        or "итого по разделу iii" in text_lower
+        or "итого по разделу ш" in text_lower
+        or "итого по разделу iv" in text_lower
+        or "итого по разделу v" in text_lower
+        or "итого по разделу у" in text_lower
     )
 
     # raw[key] = (value, match_type, is_exact)
@@ -1317,11 +1329,11 @@ def parse_financial_statements_with_metadata(
     for metric_key, keywords in _METRIC_KEYWORDS.items():
         if metric_key in raw and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2:
             continue
-        if text_is_form_like and not tables and metric_key not in ocr_pass2_allowlist:
+        if is_form_like and not tables and metric_key not in ocr_pass2_allowlist:
             continue
 
         value = None
-        if text_is_form_like:
+        if is_form_like:
             value = _extract_best_multiline_value(
                 text,
                 keywords,
@@ -1391,7 +1403,7 @@ def parse_financial_statements_with_metadata(
     for metric_key, pattern_list in broad_patterns.items():
         if metric_key in raw and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2:
             continue
-        if text_is_form_like and not tables and metric_key not in ocr_pass2_allowlist:
+        if is_form_like and not tables and metric_key not in ocr_pass2_allowlist:
             continue
         for pattern in pattern_list:
             match = re.search(pattern, text_lower)
@@ -1402,7 +1414,7 @@ def parse_financial_statements_with_metadata(
                     break
 
     # Pass 3.5: OCR section totals from Russian scanned balance forms.
-    if text_is_form_like and not tables and "short_term_liabilities" not in raw:
+    if is_balance_like and not tables and "short_term_liabilities" not in raw:
         short_term_value = _extract_form_section_total(
             text,
             (
@@ -1422,7 +1434,7 @@ def parse_financial_statements_with_metadata(
                 short_term_value,
             )
 
-    if text_is_form_like and not tables and "long_term_liabilities" not in raw:
+    if is_balance_like and not tables and "long_term_liabilities" not in raw:
         short_term_value = (
             raw["short_term_liabilities"][0]
             if "short_term_liabilities" in raw
@@ -1439,7 +1451,7 @@ def parse_financial_statements_with_metadata(
                 long_term_value,
             )
 
-    if text_is_form_like and not tables and "equity" not in raw:
+    if is_balance_like and not tables and "equity" not in raw:
         equity_value = _extract_form_section_total(
             text,
             ("итого по разделу ш", "итого по разделу iii"),
@@ -1457,7 +1469,7 @@ def parse_financial_statements_with_metadata(
             if "long_term_liabilities" in raw
             else None
         )
-        if long_term is None and (tables or not text_is_form_like):
+        if long_term is None and (tables or not is_balance_like):
             long_term = _extract_section_total(tables, text_lower, [
                 "итого по разделу iv", "итого долгосрочных обязательств"
             ])
@@ -1475,7 +1487,7 @@ def parse_financial_statements_with_metadata(
             logger.debug("Derived liabilities = IV(%s) + V(%s) = %s", long_term, short_term, derived)
             raw["liabilities"] = (derived, "derived", False)
         elif total_assets is not None and equity is not None and not (
-            text_is_form_like
+            is_balance_like
             and not tables
             and "equity" in raw
             and raw["equity"][1] == "text_regex"
@@ -1484,7 +1496,7 @@ def parse_financial_statements_with_metadata(
             derived = total_assets - equity
             if total_assets > 0:
                 ratio = derived / total_assets
-                if 0.02 <= ratio <= 0.98:
+                if ratio >= 0.02:
                     logger.debug("Derived liabilities = assets - equity = %s", derived)
                     raw["liabilities"] = (derived, "derived", False)
 
@@ -1518,7 +1530,7 @@ def parse_financial_statements_with_metadata(
             if "long_term_liabilities" in raw
             else None
         )
-        if long_term is None and (tables or not text_is_form_like):
+        if long_term is None and (tables or not is_balance_like):
             long_term = _extract_section_total(tables, text_lower, [
                 "итого по разделу iv", "итого долгосрочных обязательств",
                 "долгосрочные обязательства всего",
@@ -1545,7 +1557,7 @@ def parse_financial_statements_with_metadata(
         else:
             result[key] = ExtractionMetadata(value=None, confidence=0.0, source="derived")
 
-    if text_is_form_like:
+    if is_balance_like:
         _apply_form_like_guardrails(result)
 
     return result
@@ -1976,7 +1988,8 @@ def _extract_form_long_term_liabilities(
         if _is_valid_financial_value(value)
     ]
     if short_term_value is not None:
-        tolerance = max(1000.0, abs(short_term_value) * 0.01)
+        # Soft deduplication only for near-identical IV/V artifacts from OCR.
+        tolerance = max(1.0, abs(short_term_value) * 0.000001)
         candidates = [
             value
             for value in candidates
@@ -2010,7 +2023,7 @@ def _derive_liabilities_from_components(
 
     if total_assets is not None and total_assets > 0:
         ratio = derived / total_assets
-        if not (0.02 <= ratio <= 0.98):
+        if ratio < 0.02:
             return None
 
     if total_assets is not None and equity is not None:
