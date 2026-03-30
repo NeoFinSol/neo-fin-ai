@@ -421,7 +421,9 @@ def extract_text_from_scanned(pdf_path: str) -> str:
                 except pytesseract.TesseractError:
                     page_text = pytesseract.image_to_string(image)
                 layout_totals = _extract_layout_section_total_lines(image, page_text)
-                layout_metric_lines = _extract_layout_metric_value_lines(image, page_text)
+                layout_metric_lines: list[str] = []
+                if _should_run_layout_metric_row_crop(page_text):
+                    layout_metric_lines = _extract_layout_metric_value_lines(image, page_text)
                 synthesized_layout_lines = [*layout_totals, *layout_metric_lines]
                 if synthesized_layout_lines:
                     page_text = "\n".join([page_text, *synthesized_layout_lines])
@@ -517,6 +519,35 @@ _LAYOUT_BALANCE_ROW_SPECS: tuple[tuple[str, tuple[str, ...], str, int, bool], ..
 )
 
 
+_LAYOUT_ROW_SIGNAL_TOKENS = (
+    "1200",
+    "1210",
+    "1230",
+    "1250",
+    "1400",
+    "1500",
+    "итого по разделу п",
+    "итого по разделу ii",
+    "итого по разделу iv",
+    "итого по разделу v",
+    "итого по разделу у",
+    "запас",
+    "дебитор",
+    "денежн",
+    "долгосрочн",
+    "краткосрочн",
+)
+
+
+def _should_run_layout_metric_row_crop(page_text: str) -> bool:
+    text_lower = (page_text or "").lower()
+    if "бухгалтерский баланс" in text_lower:
+        return True
+    if "итого по разделу" not in text_lower:
+        return False
+    return any(token in text_lower for token in _LAYOUT_ROW_SIGNAL_TOKENS)
+
+
 def _extract_ocr_row_value_tail(
     image: object,
     row_left: int,
@@ -582,8 +613,7 @@ def _extract_ocr_row_value_tail(
 
 
 def _extract_layout_metric_value_lines(image: object, page_text: str) -> list[str]:
-    text_lower = (page_text or "").lower()
-    if "бухгалтерский баланс" not in text_lower and "итого по разделу" not in text_lower:
+    if not _should_run_layout_metric_row_crop(page_text):
         return []
 
     try:
@@ -618,18 +648,49 @@ def _extract_layout_metric_value_lines(image: object, page_text: str) -> list[st
         row["top"] = min(int(row["top"]), top)
         row["bottom"] = max(int(row["bottom"]), top + height)
 
-    synthesized: list[str] = []
-    seen: set[str] = set()
+    prepared_rows: list[dict[str, int | str]] = []
     for row in row_map.values():
         tokens = sorted(row["tokens"], key=lambda x: x[0])
         line_text = " ".join(token for _, token in tokens)
-        lower_line = line_text.lower()
-        for expected_code, markers, label, min_groups, require_code_match in _LAYOUT_BALANCE_ROW_SPECS:
-            if not any(marker in lower_line for marker in markers):
-                continue
-            if require_code_match and expected_code not in lower_line:
-                continue
+        if not line_text:
+            continue
+        prepared_rows.append(
+            {
+                "line": line_text,
+                "lower": line_text.lower(),
+                "left": int(row["left"]),
+                "right": int(row["right"]),
+                "top": int(row["top"]),
+                "bottom": int(row["bottom"]),
+            }
+        )
 
+    synthesized: list[str] = []
+    seen: set[str] = set()
+    max_attempts_per_spec = 2
+    for expected_code, markers, label, min_groups, require_code_match in _LAYOUT_BALANCE_ROW_SPECS:
+        candidate_rows = [
+            row
+            for row in prepared_rows
+            if any(marker in str(row["lower"]) for marker in markers)
+        ]
+        if require_code_match:
+            candidate_rows = [
+                row
+                for row in candidate_rows
+                if expected_code in str(row["lower"])
+            ]
+        if not candidate_rows:
+            continue
+
+        candidate_rows.sort(
+            key=lambda row: (
+                0 if expected_code in str(row["lower"]) else 1,
+                int(row["top"]),
+            )
+        )
+
+        for row in candidate_rows[:max_attempts_per_spec]:
             numeric_tail = _extract_ocr_row_value_tail(
                 image,
                 row_left=int(row["left"]),

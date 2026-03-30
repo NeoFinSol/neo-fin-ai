@@ -357,6 +357,93 @@ def test_extract_layout_metric_value_lines_skips_short_section_noise(monkeypatch
     assert lines == []
 
 
+def test_should_run_layout_metric_row_crop_uses_balance_signal():
+    assert pdf_extractor._should_run_layout_metric_row_crop("Произвольный текст отчета") is False
+    assert (
+        pdf_extractor._should_run_layout_metric_row_crop(
+            "Бухгалтерский баланс\nкод 1210 21 42 153"
+        )
+        is True
+    )
+
+
+def test_extract_layout_metric_value_lines_limits_row_crop_attempts_per_spec(monkeypatch):
+    class FakeImage:
+        size = (1653, 2339)
+
+    fake_data = {
+        "text": ["Бухгалтерский", "баланс", "Запасы", "Запасы", "Запасы", "Запасы", "Запасы"],
+        "block_num": [1, 1, 2, 3, 4, 5, 6],
+        "par_num": [1, 1, 1, 1, 1, 1, 1],
+        "line_num": [1, 1, 1, 1, 1, 1, 1],
+        "top": [120, 120, 220, 260, 300, 340, 380],
+        "left": [80, 180, 100, 100, 100, 100, 100],
+        "width": [90, 90, 80, 80, 80, 80, 80],
+        "height": [20, 20, 18, 18, 18, 18, 18],
+    }
+
+    attempts = {"count": 0}
+
+    def fake_image_to_data(_image, lang=None, output_type=None):
+        return fake_data
+
+    def fake_extract_tail(
+        _image,
+        row_left,
+        row_top,
+        row_right,
+        row_bottom,
+        expected_code=None,
+        require_code_match=False,
+    ):
+        attempts["count"] += 1
+        return None
+
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_data", fake_image_to_data)
+    monkeypatch.setattr(pdf_extractor, "_extract_ocr_row_value_tail", fake_extract_tail)
+
+    lines = pdf_extractor._extract_layout_metric_value_lines(
+        FakeImage(),
+        "Бухгалтерский баланс\nЗапасы",
+    )
+
+    assert lines == []
+    assert attempts["count"] == 2
+
+
+def test_extract_text_from_scanned_runs_layout_row_crop_only_for_signal_pages(monkeypatch):
+    def fake_convert(path, first_page=None, last_page=None, poppler_path=None):
+        assert path == "dummy.pdf"
+        if first_page == 1 and last_page == 1:
+            return ["img1"]
+        if first_page == 2 and last_page == 2:
+            return ["img2"]
+        raise RuntimeError("done")
+
+    def fake_ocr(image, lang=None):
+        if image == "img1":
+            return "Narrative page without balance signal"
+        return "Бухгалтерский баланс\nЗапасы"
+
+    calls = {"count": 0}
+
+    def fake_layout_metric(_image, _page_text):
+        calls["count"] += 1
+        return []
+
+    monkeypatch.setattr(pdf_extractor, "convert_from_path", fake_convert)
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_string", fake_ocr)
+    monkeypatch.setattr(pdf_extractor, "_extract_layout_section_total_lines", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(pdf_extractor, "_extract_layout_metric_value_lines", fake_layout_metric)
+    monkeypatch.setattr(pdf_extractor, "_should_stop_scanned_ocr", lambda *_args, **_kwargs: False)
+
+    text = pdf_extractor.extract_text_from_scanned("dummy.pdf")
+
+    assert "Narrative page without balance signal" in text
+    assert "Бухгалтерский баланс" in text
+    assert calls["count"] == 1
+
+
 def test_extract_tables(monkeypatch):
     class FakeValues:
         def __init__(self, rows):
