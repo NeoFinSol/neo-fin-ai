@@ -266,6 +266,12 @@ curl http://localhost/api/multi-analysis/xyz-456 \
 - Отдельно проверяются API-контракты и ключевые сценарии интерфейса.
 - Сквозные тесты вынесены в отдельный слой и запускаются на окружении с реальной базой данных.
 
+Для финального демо доступен отдельный smoke-сценарий по эталонным PDF:
+
+```bash
+python scripts/demo_smoke.py --base-url http://localhost --api-prefix /api --api-key <API_KEY>
+```
+
 ---
 
 ## Docker для развёртывания
@@ -328,6 +334,9 @@ docker compose -f docker-compose.prod.yml run --rm backend-migrate
 | [`docs/API.md`](docs/API.md) | Все эндпоинты, форматы запросов/ответов, curl-примеры |
 | [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) | Все переменные окружения с типами и значениями по умолчанию |
 | [`docs/BUSINESS_MODEL.md`](docs/BUSINESS_MODEL.md) | Бизнес-модель, ценностное предложение и экономическое обоснование |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Текущая дорожная карта: конкурсный demo-pack и post-final этап |
+| [`docs/CONTEST_DEMO_RUNBOOK.md`](docs/CONTEST_DEMO_RUNBOOK.md) | Пошаговый runbook локального и публичного контура показа |
+| [`docs/CONTEST_OPERATOR_CARD.md`](docs/CONTEST_OPERATOR_CARD.md) | Короткая операторская карточка для выступления и fallback-сценария |
 
 ---
 

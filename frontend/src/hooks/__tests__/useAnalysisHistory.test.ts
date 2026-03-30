@@ -8,6 +8,7 @@ const createMockAnalysisData = (scoreValue: number = 75): AnalysisData => ({
     score: {
         score: scoreValue,
         risk_level: scoreValue >= 75 ? 'low' : 'medium',
+        confidence_score: 1.0,
         factors: [],
         normalized_scores: {},
     },
