@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import asyncio
 import logging
 from typing import Any, Awaitable, Callable
@@ -13,6 +14,38 @@ from src.exceptions import TaskRuntimeError
 from src.models.settings import app_settings
 
 logger = logging.getLogger(__name__)
+_worker_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_worker_loop() -> asyncio.AbstractEventLoop:
+    global _worker_loop
+    if _worker_loop is None or _worker_loop.is_closed():
+        _worker_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_worker_loop)
+    return _worker_loop
+
+
+def _close_worker_loop() -> None:
+    global _worker_loop
+    loop = _worker_loop
+    if loop is None or loop.is_closed():
+        return
+
+    try:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+    except Exception:
+        logger.debug("Failed to shutdown async generators for worker loop", exc_info=True)
+    finally:
+        loop.close()
+        _worker_loop = None
+
+
+def _run_worker_job(coro: Awaitable[None]) -> None:
+    loop = _get_worker_loop()
+    loop.run_until_complete(_run_worker_coroutine(coro))
+
+
+atexit.register(_close_worker_loop)
 
 
 async def _run_worker_coroutine(coro: Awaitable[None]) -> None:
@@ -67,7 +100,7 @@ if celery_app is not None:
     def run_pdf_task(task_id: str, file_path: str) -> None:
         from src.tasks import process_pdf
 
-        asyncio.run(_run_worker_coroutine(process_pdf(task_id, file_path)))
+        _run_worker_job(process_pdf(task_id, file_path))
 
 
     @celery_app.task(name="neofin.process_multi_analysis")
@@ -77,7 +110,7 @@ if celery_app is not None:
     ) -> None:
         from src.tasks import process_multi_analysis
 
-        asyncio.run(_run_worker_coroutine(process_multi_analysis(session_id, periods_payload)))
+        _run_worker_job(process_multi_analysis(session_id, periods_payload))
 else:
 
     class _MissingCeleryTask:

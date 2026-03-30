@@ -65,6 +65,8 @@ def determine_source(
     is_derived: bool = False,
 ) -> tuple[ExtractionSource, float]:
     """Return (source, confidence) deterministically based on extraction method."""
+    if match_type == "derived_strong":
+        return ("derived", 0.6)
     if is_derived:
         return ("derived", 0.3)
     if match_type == "table":
@@ -749,12 +751,25 @@ def _should_stop_scanned_ocr(text: str, processed_pages: int) -> bool:
         "чистая прибыль",
         "итого по разделу",
     )
-
     has_balance = any(marker in text_lower for marker in balance_markers)
     has_results = any(marker in text_lower for marker in results_markers)
     token_hits = sum(1 for token in financial_tokens if token in text_lower)
+    has_liabilities = (
+        "1700" in text_lower
+        or ("1400" in text_lower and "1500" in text_lower)
+        or (
+            "итого по разделу iv" in text_lower
+            and ("итого по разделу v" in text_lower or "итого по разделу у" in text_lower)
+        )
+        or (
+            "total liabilities" in text_lower
+            and ("current liabilities" in text_lower or "non-current liabilities" in text_lower)
+        )
+    )
 
-    return has_balance and has_results and token_hits >= 5
+    # Require liability-side signal before stopping. This prevents cutting OCR
+    # too early on scanned balance forms where liabilities are detected later pages.
+    return has_balance and has_results and token_hits >= 5 and has_liabilities
 
 
 def _is_financial_table(rows: list) -> bool:
@@ -1485,7 +1500,7 @@ def parse_financial_statements_with_metadata(
         )
         if derived is not None:
             logger.debug("Derived liabilities = IV(%s) + V(%s) = %s", long_term, short_term, derived)
-            raw["liabilities"] = (derived, "derived", False)
+            raw["liabilities"] = (derived, "derived_strong", False)
         elif total_assets is not None and equity is not None and not (
             is_balance_like
             and not tables
@@ -1498,7 +1513,7 @@ def parse_financial_statements_with_metadata(
                 ratio = derived / total_assets
                 if ratio >= 0.02:
                     logger.debug("Derived liabilities = assets - equity = %s", derived)
-                    raw["liabilities"] = (derived, "derived", False)
+                    raw["liabilities"] = (derived, "derived_strong", False)
 
     # Derive current_assets from known components if still missing
     if "current_assets" not in raw:

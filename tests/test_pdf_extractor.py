@@ -123,6 +123,8 @@ def test_extract_text_from_scanned_stops_early_on_financial_signal(monkeypatch):
             return "код 1600 435 659 511 код 1200 174 989 150"
         if image == "img4":
             return "код 1250 1 448 897 выручка 2110 103 015 чистая прибыль 2400 1 348 503"
+        if image == "img5":
+            return "код 1400 33 723 849 код 1500 192 460 146"
         return f"noise-{image}"
 
     monkeypatch.setattr(pdf_extractor, "convert_from_path", fake_convert)
@@ -133,6 +135,42 @@ def test_extract_text_from_scanned_stops_early_on_financial_signal(monkeypatch):
     assert "Бухгалтерский баланс" in text
     assert "Отчет о финансовых результатах" in text
     assert seen_pages == ["img1", "img2", "img3", "img4", "img5"]
+
+
+def test_extract_text_from_scanned_does_not_stop_before_liabilities_signal(monkeypatch):
+    pages = [f"img{i}" for i in range(1, 9)]
+    seen_pages: list[str] = []
+
+    def fake_convert(path, first_page=None, last_page=None, poppler_path=None):
+        assert path == "dummy.pdf"
+        assert first_page == last_page
+        index = first_page - 1
+        if index >= len(pages):
+            raise RuntimeError("done")
+        return [pages[index]]
+
+    def fake_ocr(image, lang=None):
+        seen_pages.append(image)
+        if image == "img1":
+            return "Бухгалтерский баланс"
+        if image == "img2":
+            return "Отчет о финансовых результатах"
+        if image == "img3":
+            return "код 1600 435 659 511 код 1200 174 989 150"
+        if image == "img4":
+            return "код 1250 1 448 897 выручка 2110 103 015 чистая прибыль 2400 1 348 503"
+        if image == "img6":
+            return "код 1500 226 183 995"
+        if image == "img7":
+            return "код 1400 33 723 849"
+        return f"noise-{image}"
+
+    monkeypatch.setattr(pdf_extractor, "convert_from_path", fake_convert)
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_string", fake_ocr)
+
+    _ = pdf_extractor.extract_text_from_scanned("dummy.pdf")
+
+    assert seen_pages == ["img1", "img2", "img3", "img4", "img5", "img6", "img7"]
 
 
 def test_extract_layout_section_total_lines_from_ocr_layout(monkeypatch):
@@ -862,6 +900,23 @@ def test_form_text_code_1400_is_treated_as_long_term_component():
 
     assert metadata["liabilities"].value == 226183995.0
     assert metadata["short_term_liabilities"].value == 192460146.0
+
+
+def test_form_liabilities_derived_from_components_has_strong_confidence():
+    text = "\n".join(
+        [
+            "Бухгалтерский баланс",
+            "код 1600 435 659 511 307 785 500",
+            "код 1400 33 723 849 43 960 253",
+            "код 1500 192 460 146 153 956 227",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["liabilities"].value == 226183995.0
+    assert metadata["liabilities"].source == "derived"
+    assert metadata["liabilities"].confidence == 0.6
 
 
 def test_section_based_liabilities_derive_falls_back_when_components_conflict():
