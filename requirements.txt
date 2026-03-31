@@ -20,8 +20,8 @@ uvicorn[standard]~=0.30.0
 # Data Validation & Settings
 # -----------------------------------------------------------------------------
 # Pydantic 2.8.x - major version 2 with v2 API
-pydantic~=2.8.0
-pydantic-settings~=2.4.0
+pydantic~=2.12.5
+pydantic-settings~=2.13.1
 python-multipart~=0.0.9  # Form data parsing
 
 # -----------------------------------------------------------------------------
@@ -29,6 +29,8 @@ python-multipart~=0.0.9  # Form data parsing
 # -----------------------------------------------------------------------------
 requests~=2.31.0  # Sync HTTP client
 aiohttp~=3.9.0    # Async HTTP client
+# yarl < 1.20 — без Rust-зависимости (транзитивная зависимость aiohttp)
+yarl<1.20
 celery[redis]~=5.4.0
 redis~=5.2.0
 
@@ -38,22 +40,18 @@ redis~=5.2.0
 # SQLAlchemy 2.0.x with async support
 # asyncpg 0.29.x - PostgreSQL async driver
 # alembic 1.13.x - Database migrations
-# psycopg2 2.9.x - Sync PostgreSQL driver (for alembic CLI) - PRODUCTION
 # COMPATIBILITY: SQLAlchemy 2.0.30+ works with asyncpg 0.29.x
-# NOTE: psycopg2 (not -binary) is used in production for security patches
-SQLAlchemy[asyncio]~=2.0.30
-asyncpg~=0.29.0
-alembic~=1.13.0
-psycopg2~=2.9.9
+SQLAlchemy[asyncio]~=2.0.48
+asyncpg~=0.31.0
+alembic~=1.18.4
 
 # -----------------------------------------------------------------------------
 # PDF Processing
 # -----------------------------------------------------------------------------
-# pdfplumber 0.11.9 - latest published PyPI release as of 2026-03; keep pin aligned with upstream availability
-# PyPDF2 3.0.x - PDF manipulation
-# pdf2image 1.16.x - Convert PDF to images (for OCR)
+# PyPDF2 3.0.x - PDF manipulation (текстовый слой)
+# pdf2image 1.16.x - Convert PDF to images (для OCR)
 # pytesseract 0.3.x - OCR engine wrapper
-pdfplumber~=0.11.9
+# Pillow - Image processing (транзитивная зависимость pdf2image/pytesseract)
 PyPDF2~=3.0.0
 pdf2image~=1.16.0
 pytesseract~=0.3.10
@@ -62,12 +60,9 @@ pytesseract~=0.3.10
 # Table Extraction from PDFs
 # -----------------------------------------------------------------------------
 # camelot-py 0.11.x - Table extraction from PDFs
-# opencv-python 4.13.x - Computer vision (compatible with numpy 2.x)
-# pillow 10.0.x - Image processing
+# ghostscript - системный бинарник для camelot (lattice mode)
+# Pillow - транзитивная зависимость (pdf2image, pytesseract)
 camelot-py~=0.11.0
-ghostscript~=0.8.1
-opencv-python~=4.13.0
-pillow~=10.0.0
 
 # -----------------------------------------------------------------------------
 # Rate Limiting

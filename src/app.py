@@ -12,7 +12,6 @@ from slowapi.util import get_remote_address
 
 from src.models.settings import app_settings
 import src.routers.system as system_router
-import src.routers.analyze as analyze_router
 import src.routers.pdf_tasks as pdf_tasks_router
 import src.routers.analyses as analyses_router
 import src.routers.multi_analysis as multi_analysis_router
@@ -257,7 +256,6 @@ async def log_requests(request: Request, call_next):
 
 # Routers (must be added after middleware)
 app.include_router(system_router.router)
-app.include_router(analyze_router.router)
 app.include_router(pdf_tasks_router.router)
 app.include_router(analyses_router.router)
 app.include_router(multi_analysis_router.router)
