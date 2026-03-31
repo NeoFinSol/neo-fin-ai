@@ -345,7 +345,7 @@ docker compose -f docker-compose.prod.yml run --rm backend-migrate
 
 | Слой | Технологии |
 |---|---|
-| Серверная часть | Python 3.11, FastAPI, SQLAlchemy async, Alembic, Pydantic v2 |
+| Серверная часть | Python 3.14, FastAPI, SQLAlchemy async, Alembic, Pydantic v2 |
 | Клиентская часть | React 18, TypeScript, Mantine, Recharts, Vite |
 | База данных | PostgreSQL 16, JSONB для полного результата и отдельные сводные поля для истории |
 | Очередь и runtime | Celery, Redis, мост событий статуса для WebSocket и персистентного выполнения задач |
