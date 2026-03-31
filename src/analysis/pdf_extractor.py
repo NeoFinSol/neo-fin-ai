@@ -141,119 +141,220 @@ _NUMBER_REGEX_FRAGMENT = (
 
 _METRIC_KEYWORDS = {
     "revenue": [
+        # RSBU/IFRS Russian
         "выручка от реализации",
         "выручка",
+        "доходы от реализации",
+        "доход от продаж",
+        "совокупный доход",
+        "выручка от продаж",
+        # IFRS English
         "revenues",
         "revenue",
         "total revenues",
         "total revenue",
         "sales revenue",
         "net sales",
-        "доходы от реализации",
-        "совокупный доход",
+        "turnover",
+        # IFRS consolidated
+        "консолидированная выручка",
+        "consolidated revenue",
     ],
     "net_profit": [
+        # RSBU/IFRS Russian
         "чистая прибыль (убыток)",
         "чистая прибыль",
+        "чистый убыток",
         "прибыль за период",
         "прибыль за год",
+        "прибыль после налогообложения",
+        "чистая прибыль за год",
+        "чистая прибыль за период",
+        "совокупный финансовый результат",
+        # IFRS English
         "net profit",
         "net income",
         "net loss",
         "profit for the year",
         "profit for the period",
         "profit (loss)",
-        "прибыль после налогообложения",
+        "profit for the year attributable to",
+        "net profit attributable to",
+        # IFRS consolidated
+        "чистая прибыль, относящаяся к акционерам",
+        "net profit attributable to owners",
     ],
     "total_assets": [
+        # RSBU/IFRS Russian
         "итого активов",
         "итого активы",
         "активы всего",
-        "total assets",
         "активов всего",
         "баланс",
+        "внеоборотные и оборотные активы",
+        # IFRS English
+        "total assets",
+        "assets total",
+        "total non-current and current assets",
+        # IFRS consolidated
+        "консолидированные активы",
+        "consolidated total assets",
     ],
     "equity": [
+        # RSBU/IFRS Russian
         "итого по разделу iii",
         "итого капитала",
         "капитал и резервы",
+        "собственный капитал",
+        "капитал",
+        "итого капитал",
+        "капитала всего",
+        # IFRS English
         "total stockholders' equity",
         "stockholders' equity",
-        "total stockholders’ equity",
-        "stockholders’ equity",
+        "total stockholders' equity",
+        "stockholders' equity",
         "total shareholders' equity",
         "shareholders' equity",
-        "total shareholders’ equity",
-        "shareholders’ equity",
+        "total shareholders' equity",
+        "shareholders' equity",
         "total equity",
-        "собственный капитал",
+        "equity total",
+        "equity attributable to owners",
+        "капитал, относящийся к акционерам",
+        # IFRS consolidated
+        "капитал и резервы, относящиеся к акционерам",
+        "total equity attributable to",
     ],
     "liabilities": [
+        # RSBU/IFRS Russian
         "итого обязательств",
+        "обязательства всего",
+        "долгосрочные и краткосрочные обязательства",
+        # IFRS English
         "total liabilities",
+        "liabilities total",
+        "total non-current and current liabilities",
+        # IFRS consolidated
+        "консолидированные обязательства",
     ],
     "current_assets": [
-        "total current assets",
-        "current assets total",
+        # RSBU/IFRS Russian
         "итого оборотных активов",
         "итого оборотные активы",
         "оборотные активы всего",
         "итого по разделу ii",
+        "оборотные активы",
+        # IFRS English
+        "total current assets",
+        "current assets total",
+        # IFRS consolidated
+        "консолидированные оборотные активы",
     ],
     "short_term_liabilities": [
+        # RSBU/IFRS Russian
         "итого краткосрочных обязательств",
         "итого краткосрочные обязательства",
         "краткосрочные обязательства всего",
+        "итого по разделу v",
+        "итого по разделу у",
+        "краткосрочные обязательства",
+        # IFRS English
         "total current liabilities",
         "current liabilities total",
         "short-term liabilities",
-        "итого по разделу v",
+        # IFRS consolidated
+        "консолидированные краткосрочные обязательства",
     ],
     "accounts_receivable": [
+        # RSBU/IFRS Russian
         "дебиторская задолженность",
+        "торговая дебиторская задолженность",
+        "краткосрочная дебиторская задолженность",
+        # IFRS English
         "accounts receivable",
         "trade receivables",
+        "trade and other receivables",
+        "current receivables",
+        # IFRS consolidated
+        "торговая и прочая дебиторская задолженность",
     ],
     # ===== NEW FIELDS FOR EXTENDED RATIOS =====
     "inventory": [
+        # RSBU/IFRS Russian
         "запасы",
         "товарно-материальные ценности",
+        "запасы и затраты",
+        "производственные запасы",
+        # IFRS English
         "inventory",
         "merchandise",
+        "stocks",
+        "inventories",
     ],
     "cash_and_equivalents": [
+        # RSBU/IFRS Russian
         "денежные средства",
         "наличные",
+        "денежные средства и эквиваленты",
+        # IFRS English
         "cash and equivalents",
         "cash and cash equivalents",
+        "cash",
+        "cash at bank and in hand",
     ],
     "ebitda": [
+        # RSBU/IFRS Russian
         "ebitda",
         "ebit до амортизации",
         "прибыль до налогов",
+        "прибыль до налогообложения",
+        # IFRS English
+        "ebitda",
+        "earnings before interest, taxes, depreciation and amortization",
     ],
     "ebit": [
+        # RSBU/IFRS Russian
         "ebit",
         "операционная прибыль",
-        "operating profit",
         "прибыль от операций",
+        "прибыль от операционной деятельности",
+        # IFRS English
+        "ebit",
+        "operating profit",
+        "profit from operations",
+        "operating income",
     ],
     "interest_expense": [
+        # RSBU/IFRS Russian
         "процентные расходы",
+        "процентные платежи",
+        "расходы по процентам",
+        # IFRS English
         "interest expense",
         "interest paid",
-        "процентные платежи",
+        "finance costs",
+        "finance expenses",
+        "interest and similar charges",
     ],
     "cost_of_goods_sold": [
+        # RSBU/IFRS Russian
         "себестоимость продаж",
+        "себестоимость",
+        "коммерческие расходы",
+        # IFRS English
         "cost of goods sold",
         "cogs",
-        "себестоимость",
+        "cost of sales",
+        "direct costs",
     ],
     "average_inventory": [
+        # RSBU/IFRS Russian
         "средний запас",
-        "average inventory",
         "средний остаток запасов",
+        # IFRS English
+        "average inventory",
+        "average stocks",
     ],
 }
 
@@ -1405,14 +1506,71 @@ def parse_financial_statements_with_metadata(
     # Works for IFRS/RSBU reports where Cyrillic is broken but numbers are intact.
     # Strategy A: match by RSBU 4-digit line codes (e.g. 2110, 1600)
     # Strategy B: structural parsing — col0=label(garbled), col1=note(1-2 digits), col2=value
+    # Strategy C: IFRS line codes and English keywords
     _LINE_CODE_MAP: dict[str, str] = {
+        # RSBU codes (форма 0710001)
         "2110": "revenue", "2400": "net_profit", "2300": "net_profit",
         "1600": "total_assets", "1700": "total_assets",
         "1300": "equity", "1200": "current_assets",
         "1500": "short_term_liabilities", "1400": "long_term_liabilities",
         "1230": "accounts_receivable", "1210": "inventory",
         "1250": "cash_and_equivalents", "2120": "cost_of_goods_sold",
-        "2200": "ebit",
+        "2200": "ebit", "2110": "revenue",
+        # IFRS common line codes (vary by company, but these are frequent)
+        "3": "revenue",  # Revenue line in many IFRS statements
+        "4": "cost_of_goods_sold",  # Cost of sales
+        "5": "gross_profit",  # Gross profit (not tracked, but useful)
+        "11": "total_assets",  # Total assets in some IFRS templates
+        "12": "current_assets",  # Current assets
+        "13": "non_current_assets",  # Non-current assets
+        "14": "equity",  # Total equity
+        "15": "liabilities",  # Total liabilities
+        "16": "current_liabilities",  # Current liabilities
+        "17": "non_current_liabilities",  # Non-current liabilities
+    }
+    # IFRS English keyword map for table extraction
+    _IFRS_ENGLISH_KEYWORDS: dict[str, str] = {
+        # Revenue
+        "revenue": "revenue",
+        "total revenue": "revenue",
+        "turnover": "revenue",
+        "net sales": "revenue",
+        # Profit
+        "net profit": "net_profit",
+        "net income": "net_profit",
+        "profit for the year": "net_profit",
+        "profit for the period": "net_profit",
+        "profit attributable to owners": "net_profit",
+        "profit attributable to shareholders": "net_profit",
+        "gross profit": "ebitda",  # Approximation
+        "operating profit": "ebit",
+        "ebitda": "ebitda",
+        # Assets
+        "total assets": "total_assets",
+        "non-current assets": "total_assets",
+        "current assets": "current_assets",
+        "property, plant and equipment": "total_assets",
+        "intangible assets": "total_assets",
+        # Equity
+        "total equity": "equity",
+        "equity attributable to owners": "equity",
+        "share capital": "equity",
+        "retained earnings": "equity",
+        "total shareholders' equity": "equity",
+        # Liabilities
+        "total liabilities": "liabilities",
+        "total equity and liabilities": "liabilities",
+        "current liabilities": "short_term_liabilities",
+        "non-current liabilities": "long_term_liabilities",
+        "trade payables": "liabilities",
+        "borrowings": "liabilities",
+        # Components
+        "cash and cash equivalents": "cash_and_equivalents",
+        "trade receivables": "accounts_receivable",
+        "inventories": "inventory",
+        "stocks": "inventory",
+        "finance costs": "interest_expense",
+        "interest expense": "interest_expense",
     }
     # Garbled-text keyword map: maps garbled pseudographic patterns to metric keys
     # Uses short substrings that appear in both garbled variants and normal Cyrillic.
@@ -1512,6 +1670,56 @@ def parse_financial_statements_with_metadata(
                             )
                             logger.debug("[EXTRACT] %s = %s (source=garbled_kw, kw=%s)", metric_key, value, garbled_kw)
                         break
+
+            # Strategy C: IFRS English keywords in table rows
+            if len(row) >= 2:
+                label_cell = str(row[0]).lower() if row[0] else ""
+                for english_kw, metric_key in _IFRS_ENGLISH_KEYWORDS.items():
+                    if english_kw in label_cell:
+                        metric_quality = _metric_candidate_quality(metric_key, label_cell)
+                        if metric_quality is None:
+                            break
+                        value = _extract_first_numeric_cell(row[1:])
+                        if value is not None and _is_valid_financial_value(value):
+                            _MONETARY_METRICS = {
+                                "revenue", "net_profit", "total_assets", "equity",
+                                "liabilities", "current_assets", "short_term_liabilities",
+                                "long_term_liabilities",
+                                "accounts_receivable", "inventory", "cash_and_equivalents",
+                                "ebitda", "ebit", "interest_expense", "cost_of_goods_sold",
+                            }
+                            if metric_key in _MONETARY_METRICS and abs(value) < 1000:
+                                logger.debug("Skipping small value %s for %s (likely TOC page number)", value, metric_key)
+                                break
+                            _raw_set(
+                                raw,
+                                metric_key,
+                                value,
+                                "table",
+                                True,
+                                candidate_quality=metric_quality if metric_quality else 85,
+                            )
+                            logger.debug("[EXTRACT] %s = %s (source=ifrs_english, kw=%s)", metric_key, value, english_kw)
+                        break
+
+            # Strategy D: IFRS 1-2 digit line codes (single digit codes common in IFRS)
+            for ci, cell in enumerate(row):
+                if cell is None:
+                    continue
+                cs = str(cell).strip().replace("\xa0", "").replace(" ", "")
+                if cs.isdigit() and len(cs) <= 2 and cs in _LINE_CODE_MAP:
+                    metric_key = _LINE_CODE_MAP[cs]
+                    value = _extract_first_numeric_cell(row[ci + 1:])
+                    if value is not None and _is_valid_financial_value(value):
+                        _raw_set(
+                            raw,
+                            metric_key,
+                            value,
+                            "table",
+                            True,
+                            candidate_quality=100,
+                        )
+                        logger.debug("[EXTRACT] %s = %s (source=ifrs_line_code, code=%s)", metric_key, value, cs)
 
 
     for table in tables or []:
@@ -1694,6 +1902,10 @@ def parse_financial_statements_with_metadata(
             r"выручка[^\d]{0,80}" + num_pattern,
             r"total revenues[^\d]{0,80}" + num_pattern,
             r"revenues[^\d]{0,80}" + num_pattern,
+            # IFRS patterns
+            r"turnover[^\d]{0,60}" + num_pattern,
+            r"net sales[^\d]{0,60}" + num_pattern,
+            r"consolidated revenue[^\d]{0,60}" + num_pattern,
         ],
         "net_profit": [
             r"чистая прибыль\s*\|\s*" + num_pattern,
@@ -1703,6 +1915,11 @@ def parse_financial_statements_with_metadata(
             r"net income[^\d]{0,80}" + num_pattern,
             r"net loss\s*\|\s*" + num_pattern,
             r"net loss[^\d]{0,80}" + num_pattern,
+            # IFRS patterns
+            r"profit for the year[^\d]{0,80}" + num_pattern,
+            r"profit for the period[^\d]{0,80}" + num_pattern,
+            r"profit attributable to[^\d]{0,80}" + num_pattern,
+            r"net profit attributable[^\d]{0,80}" + num_pattern,
         ],
         "total_assets": [
             r"total assets\s*\|\s*" + num_pattern,
@@ -1710,16 +1927,24 @@ def parse_financial_statements_with_metadata(
             r"итого активов[^\d]{0,60}" + num_pattern,
             r"баланс\s*\|\s*" + num_pattern,
             r"total assets[^\d]{0,80}" + num_pattern,
+            # IFRS patterns
+            r"non-current and current assets[^\d]{0,80}" + num_pattern,
+            r"consolidated assets[^\d]{0,60}" + num_pattern,
         ],
         "equity": [
             r"итого капитала\s*\|\s*" + num_pattern,
             r"итого капитала[^\d]{0,60}" + num_pattern,
             r"собственный капитал\s*\|\s*" + num_pattern,
             r"капитал и резервы\s*\|\s*" + num_pattern,
-            r"total stockholders['’] equity\s*\|\s*" + num_pattern,
-            r"total stockholders['’] equity[^\d]{0,80}" + num_pattern,
-            r"stockholders['’] equity[^\d]{0,80}" + num_pattern,
-            r"total shareholders['’] equity[^\d]{0,80}" + num_pattern,
+            r"total stockholders[''] equity\s*\|\s*" + num_pattern,
+            r"total stockholders[''] equity[^\d]{0,80}" + num_pattern,
+            r"stockholders[''] equity[^\d]{0,80}" + num_pattern,
+            r"total shareholders[''] equity[^\d]{0,80}" + num_pattern,
+            # IFRS patterns
+            r"total equity\s*\|\s*" + num_pattern,
+            r"total equity[^\d]{0,80}" + num_pattern,
+            r"equity attributable to[^\d]{0,80}" + num_pattern,
+            r"shareholders' equity[^\d]{0,80}" + num_pattern,
         ],
         "current_assets": [
             r"total current assets\s*\|\s*" + num_pattern,
@@ -2755,6 +2980,7 @@ def _apply_form_like_guardrails(result: dict[str, ExtractionMetadata]) -> None:
 
 
 _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] = {
+    # RSBU codes (форма 0710001)
     "revenue": (("2110",), ("выручка от реализации, без ндс", "выручка", "revenue")),
     "net_profit": (
         ("2400", "2300"),
@@ -2796,6 +3022,9 @@ _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] =
         ),
     ),
     "cash_and_equivalents": (("1250",), ("денежные средства", "cash and cash equivalents")),
+    # IFRS additional codes (single and double digit codes common in IFRS)
+    "equity": (("1300", "14", "13"), None),
+    "liabilities": (("15", "17"), None),
 }
 
 
