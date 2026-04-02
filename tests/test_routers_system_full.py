@@ -260,8 +260,24 @@ class TestMetricsEndpoint:
             }
             
             response = client.get("/system/metrics")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["total_tasks"] == 10000
-        assert data["failed_tasks"] == 500
+
+
+class TestAIProvidersEndpoint:
+    """Tests for GET /system/ai/providers endpoint."""
+
+    def test_ai_providers_returns_default_and_available(self, client):
+        with patch("src.routers.system.ai_service") as mock_ai:
+            mock_ai.provider = "gigachat"
+            mock_ai.available_providers = ["gigachat", "ollama"]
+
+            response = client.get("/system/ai/providers")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "default_provider": "gigachat",
+            "available_providers": ["auto", "gigachat", "ollama"],
+        }

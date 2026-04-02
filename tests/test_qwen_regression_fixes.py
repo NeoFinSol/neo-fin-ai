@@ -32,7 +32,7 @@ def test_polling_uses_upload_endpoint():
 
 
 def test_polling_max_attempts_defined():
-    """MAX_POLLING_ATTEMPTS=15 is defined. Req 2.4"""
+    """MAX_POLLING_ATTEMPTS remains explicitly bounded for polling flow. Req 2.4"""
     frontend_file = os.path.normpath(
         os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "context", "AnalysisContext.tsx")
     )
@@ -43,7 +43,7 @@ def test_polling_max_attempts_defined():
         content = f.read()
 
     assert "MAX_POLLING_ATTEMPTS" in content, "MAX_POLLING_ATTEMPTS not defined"
-    assert "MAX_POLLING_ATTEMPTS = 15" in content, "MAX_POLLING_ATTEMPTS must be 15"
+    assert "MAX_POLLING_ATTEMPTS = 600" in content, "MAX_POLLING_ATTEMPTS must stay explicit and bounded"
 
 
 def test_polling_stops_on_404():
@@ -341,7 +341,7 @@ def test_tasks_module_level_imports():
     except ImportError as exc:
         pytest.skip("Could not import src.tasks: %s" % exc)
 
-    assert hasattr(m, "analyze_narrative"), "analyze_narrative not imported at module level"
+    assert hasattr(m, "analyze_narrative_with_runtime"), "analyze_narrative_with_runtime not imported at module level"
     assert hasattr(m, "generate_recommendations"), "generate_recommendations not imported at module level"
     assert hasattr(m, "_extract_metrics_with_regex"), "_extract_metrics_with_regex not imported at module level"
 
@@ -350,8 +350,8 @@ def test_tasks_module_level_imports():
 # БАГ 11 — requirements.txt: pdfplumber version
 # ---------------------------------------------------------------------------
 
-def test_pdfplumber_version():
-    """requirements pin stays on the latest published pdfplumber release. Req 2.23"""
+def test_table_extraction_dependencies_declared():
+    """Current table-extraction stack is declared in requirements. Req 2.23"""
     req_file = os.path.normpath(
         os.path.join(os.path.dirname(__file__), "..", "requirements.txt")
     )
@@ -361,8 +361,10 @@ def test_pdfplumber_version():
     with open(req_file, encoding="utf-8") as f:
         content = f.read()
 
-    assert "pdfplumber~=0.11.9" in content, \
-        "pdfplumber pin is not aligned with the latest published release in requirements.txt"
+    assert "camelot-py~=0.11.0" in content, \
+        "camelot-py requirement missing from requirements.txt"
+    assert "pdfplumber" not in content, \
+        "requirements.txt still contains stale pdfplumber dependency"
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 """Add runtime cancellation and heartbeat fields.
 
-Revision ID: 0006_add_runtime_cancellation_fields
-Revises: 0005_add_analysis_summary_columns
+Revision ID: 0006_runtime_cancel_fields
+Revises: 0005_analysis_summary_cols
 Create Date: 2026-03-29 12:40:00
 """
 from __future__ import annotations
@@ -9,8 +9,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0006_add_runtime_cancellation_fields"
-down_revision = "0005_add_analysis_summary_columns"
+revision = "0006_runtime_cancel_fields"
+down_revision = "0005_analysis_summary_cols"
 branch_labels = None
 depends_on = None
 

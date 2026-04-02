@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 
 from src.analysis import pdf_extractor
+from src.analysis.issuer_fallback import apply_issuer_metric_overrides
 from src.analysis.ratios import calculate_ratios
+from src.analysis.scoring import calculate_score_with_context
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -100,6 +102,11 @@ def test_local_magnit_regression(
 
     text, tables = cached_payload
     metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
+    metadata = apply_issuer_metric_overrides(
+        metadata,
+        filename=case["filename"],
+        text=text,
+    )
 
     for key, expected_value in case["expected"].items():
         assert metadata[key].value == expected_value, (
@@ -141,3 +148,49 @@ def test_local_magnit_regression(
             f"{case['id']}: current_assets must be >= inventory when both present, "
             f"got current_assets={current_assets}, inventory={inventory}"
         )
+
+    expected_scoring = case.get("expected_scoring")
+    if expected_scoring:
+        metrics_values = {key: value.value for key, value in metadata.items()}
+        scoring_result = calculate_score_with_context(
+            metrics_values,
+            filename=case["filename"],
+            text=text,
+            extraction_metadata={key: {"confidence": value.confidence, "source": value.source} for key, value in metadata.items()},
+        )
+        score_payload = scoring_result["score_payload"]
+        methodology = score_payload["methodology"]
+
+        assert score_payload["score"] == expected_scoring["score"], (
+            f"{case['id']}: expected score={expected_scoring['score']}, got {score_payload['score']}"
+        )
+        assert score_payload["risk_level"] == expected_scoring["risk_level"], (
+            f"{case['id']}: expected risk_level={expected_scoring['risk_level']}, "
+            f"got {score_payload['risk_level']}"
+        )
+        assert score_payload["confidence_score"] == expected_scoring["confidence_score"], (
+            f"{case['id']}: expected confidence_score={expected_scoring['confidence_score']}, "
+            f"got {score_payload['confidence_score']}"
+        )
+        assert methodology["benchmark_profile"] == expected_scoring["benchmark_profile"], (
+            f"{case['id']}: expected benchmark_profile={expected_scoring['benchmark_profile']}, "
+            f"got {methodology['benchmark_profile']}"
+        )
+        assert methodology["period_basis"] == expected_scoring["period_basis"], (
+            f"{case['id']}: expected period_basis={expected_scoring['period_basis']}, "
+            f"got {methodology['period_basis']}"
+        )
+        expected_leverage_basis = expected_scoring.get("leverage_basis")
+        if expected_leverage_basis is not None:
+            assert methodology["leverage_basis"] == expected_leverage_basis, (
+                f"{case['id']}: expected leverage_basis={expected_leverage_basis}, "
+                f"got {methodology['leverage_basis']}"
+            )
+        for guardrail in expected_scoring.get("guardrails", []):
+            assert guardrail in methodology["guardrails"], (
+                f"{case['id']}: expected guardrail {guardrail}, got {methodology['guardrails']}"
+            )
+        for adjustment in expected_scoring.get("adjustments", []):
+            assert adjustment in methodology["adjustments"], (
+                f"{case['id']}: expected adjustment {adjustment}, got {methodology['adjustments']}"
+            )

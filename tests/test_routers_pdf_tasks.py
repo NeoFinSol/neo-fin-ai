@@ -164,6 +164,49 @@ class TestUploadPdf:
         assert mock_apply_async.call_args.kwargs["task_id"] == result["task_id"]
 
     @pytest.mark.asyncio
+    async def test_successful_upload_uses_shared_storage_dir_in_celery_runtime(self, tmp_path):
+        """Celery runtime should store uploaded PDFs in a shared directory visible to workers."""
+        mock_background = MagicMock(spec=BackgroundTasks)
+        mock_file = MagicMock(spec=UploadFile)
+        mock_file.content_type = "application/pdf"
+        mock_file.filename = "test.pdf"
+        mock_file.file = MagicMock()
+        mock_file.file.read.side_effect = [b"%PDF-", b"1.4 test content", b""]
+        shared_dir = tmp_path / "task-storage"
+
+        with patch("src.routers.pdf_tasks.create_analysis", new_callable=AsyncMock):
+            with patch("src.routers.pdf_tasks.tempfile.NamedTemporaryFile") as mock_temp:
+                mock_temp_instance = MagicMock()
+                mock_temp_instance.name = str(shared_dir / "test.pdf")
+                mock_temp.return_value = mock_temp_instance
+                with patch("src.core.task_queue.celery_app", MagicMock()):
+                    with patch.object(
+                        __import__("src.core.task_queue", fromlist=["app_settings"]).app_settings,
+                        "task_runtime",
+                        "celery",
+                    ):
+                        with patch.object(
+                            __import__("src.core.task_queue", fromlist=["app_settings"]).app_settings,
+                            "task_queue_broker_url",
+                            "redis://broker",
+                        ):
+                            with patch("src.core.task_queue.run_pdf_task.apply_async"):
+                                with patch.object(
+                                    __import__("src.routers.pdf_tasks", fromlist=["app_settings"]).app_settings,
+                                    "task_runtime",
+                                    "celery",
+                                ):
+                                    with patch.object(
+                                        __import__("src.routers.pdf_tasks", fromlist=["app_settings"]).app_settings,
+                                        "task_storage_dir",
+                                        str(shared_dir),
+                                    ):
+                                        await upload_pdf(mock_file, mock_background)
+
+        assert shared_dir.is_dir()
+        assert mock_temp.call_args.kwargs["dir"] == str(shared_dir)
+
+    @pytest.mark.asyncio
     async def test_dispatch_failure_marks_analysis_failed_and_cleans_temp_file(self):
         """Dispatch failures should fail the analysis record and remove the temp file."""
         mock_background = MagicMock(spec=BackgroundTasks)

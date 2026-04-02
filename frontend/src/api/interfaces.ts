@@ -23,6 +23,10 @@ export interface FinancialMetrics {
   interest_expense: number | null;
   cost_of_goods_sold: number | null;
   average_inventory: number | null;
+  short_term_borrowings: number | null;
+  long_term_borrowings: number | null;
+  short_term_lease_liabilities: number | null;
+  long_term_lease_liabilities: number | null;
 }
 
 // All 12 ratios across 4 groups (РСБУ/МСФО standard)
@@ -39,6 +43,8 @@ export interface FinancialRatios {
   // Financial stability
   equity_ratio: number | null;
   financial_leverage: number | null;
+  financial_leverage_total: number | null;
+  financial_leverage_debt_only: number | null;
   interest_coverage: number | null;
   // Business activity
   asset_turnover: number | null;
@@ -52,18 +58,48 @@ export interface ScoreFactor {
   impact: 'positive' | 'negative' | 'neutral';
 }
 
+export interface ScoringMethodology {
+  benchmark_profile: 'generic' | 'retail_demo';
+  period_basis: 'reported' | 'annualized_q1' | 'annualized_h1';
+  detection_mode: 'auto';
+  reasons: string[];
+  guardrails: string[];
+  leverage_basis: 'total_liabilities' | 'debt_only';
+  ifrs16_adjusted: boolean;
+  adjustments: string[];
+  peer_context: string[];
+}
+
 export interface ScoreData {
   score: number;
   risk_level: 'low' | 'medium' | 'high' | 'critical';
   confidence_score: number;
   factors: ScoreFactor[];
   normalized_scores: Partial<Record<keyof FinancialRatios, number | null>>;
+  methodology?: ScoringMethodology;
 }
 
 export interface NLPResult {
   risks: string[];
   key_factors: string[];
   recommendations: string[];
+}
+
+export type AIRuntimeStatus = 'succeeded' | 'empty' | 'failed' | 'skipped';
+
+export type AIRuntimeReasonCode =
+  | 'no_nlp_content'
+  | 'provider_unavailable'
+  | 'provider_error'
+  | 'invalid_response'
+  | 'insufficient_text'
+  | null;
+
+export interface AIRuntimeInfo {
+  requested_provider: AIProvider;
+  effective_provider: Exclude<AIProvider, 'auto'> | null;
+  status: AIRuntimeStatus;
+  reason_code: AIRuntimeReasonCode;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,7 +111,8 @@ export type ExtractionSource =
   | 'table_exact'
   | 'table_partial'
   | 'text_regex'
-  | 'derived';
+  | 'derived'
+  | 'issuer_fallback';
 
 export interface ExtractionMetadataItem {
   confidence: number; // expected range [0.0, 1.0]
@@ -90,6 +127,7 @@ export interface AnalysisData {
   ratios: FinancialRatios;
   score: ScoreData;
   nlp?: NLPResult;
+  ai_runtime?: AIRuntimeInfo;
   extraction_metadata?: Record<string, ExtractionMetadataItem>;
 }
 
@@ -101,6 +139,13 @@ export interface AnalysisResponse {
 
 export interface UploadResponse {
   task_id: string;
+}
+
+export type AIProvider = 'auto' | 'gigachat' | 'huggingface' | 'qwen' | 'ollama';
+
+export interface AIProvidersResponse {
+  default_provider: Exclude<AIProvider, 'auto'> | null;
+  available_providers: AIProvider[];
 }
 
 
@@ -137,6 +182,7 @@ export interface PeriodResult {
   ratios: Partial<Record<string, number | null>>;
   score: number | null;
   risk_level: RiskLevel | null;
+  score_methodology?: ScoringMethodology | null;
   extraction_metadata: Record<string, ExtractionMetadataItem>;
   error?: string;
 }

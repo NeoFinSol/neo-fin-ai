@@ -1,34 +1,46 @@
-# Дорожная карта NeoFin AI
+# Публичная дорожная карта НеоФин.Документы
 
-## Текущий приоритет (финал конкурса, окно 3-5 дней)
+Документ фиксирует публичные направления развития `НеоФин.Документы` как модуля экосистемы `НеоФин.Контур`.
 
-### Пакет A — Demo Corpus Lock
-- Зафиксировать 3 эталонных сценария: `text`, `scanned`, `multi-period`
-- Закрепить headline-метрики и допуски в `tests/data/demo_manifest.json`
-- Держать эти сценарии в связке с локальным regression path
+## 1. Ближайший приоритет
 
-### Пакет B — Local Demo Smoke Automation
-- Повторяемый smoke path для полного цикла: upload -> processing -> completed -> history
-- Основной runtime для показа: `TASK_RUNTIME=celery`
-- Скрипты запуска: `scripts/demo_smoke.py`, `scripts/run_demo_smoke.ps1`, `scripts/run_demo_smoke.sh`
+### Надёжность release-контура
 
-### Пакет C — Report Screen Execution Polish
-- Разделить `DetailedReport` на подкомпоненты
-- Вынести frontend constants и helper-логику
-- Убрать `Math.random()` из transaction ID
+- дальнейшее укрепление Docker/runtime и health-проверок;
+- стабилизация демо-сценариев и contest-ready контура;
+- удержание truthfulness-инвариантов для AI-state и scoring.
 
-### Пакет D — Public Backup Stand
-- Подготовить резервный публичный контур на compose-схеме с `worker + redis`
-- Зафиксировать операторский порядок `migrate -> up -> health -> demo`
-- HTTPS оставить как post-final hardening, если нужна отдельная инфраструктурная итерация
+## 2. Развитие scoring и benchmark’ов
 
-### Пакет E — Rehearsal & Contest Readiness
-- Провести 2 репетиции: локальный primary и публичный backup
-- Утвердить операторскую карточку показа и fallback-переход
+Текущий публичный baseline:
 
-## После финала (следующая волна)
-- Production hardening: HTTPS, backup/restore, VPS hardening checks
-- Cleanup operationalization: cron/Task Scheduler runbook, retention review
-- Дополнительный performance-pass для тяжёлых real-PDF кейсов
-- Interactive OCR corrections и продуктовые расширения
-- S3/MinIO, отраслевые benchmarks/OKVED
+- `generic`
+- `retail_demo`
+
+Следующая волна развития:
+
+- расширение benchmark-калибровки без потери explainability;
+- улучшение period-aware интерпретации;
+- развитие cash-flow и debt-service слоя;
+- более аккуратная отраслeвая настройка без “универсального” ложного score.
+
+## 3. Provenance и explainability
+
+- развитие issuer-aware truth-source там, где это действительно оправдано;
+- улучшение визуализации `score.methodology`;
+- расширение explainability по extraction metadata и guardrails.
+
+## 4. Интерфейс и продуктовый UX
+
+- дальнейшее улучшение отчётного экрана;
+- развитие истории анализов;
+- улучшение многопериодного сценария;
+- дополнительные polish-итерации для русскоязычного интерфейса.
+
+## 5. Экосистема НеоФин.Контур
+
+`НеоФин.Документы` рассматривается как входной модуль в более широкий контур:
+
+- объяснимый анализ документов;
+- стандартизированный scoring;
+- последующее расширение на соседние сервисы экосистемы.

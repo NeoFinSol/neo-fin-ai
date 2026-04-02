@@ -7,7 +7,6 @@ interface DetailedMetricsCardProps {
     metrics: AnalysisData['metrics'];
     extractionMetadata: AnalysisData['extraction_metadata'];
     reliableCount: number;
-    totalMetrics: number;
 }
 
 type MetricRow = {
@@ -36,7 +35,6 @@ export default function DetailedMetricsCard({
     metrics,
     extractionMetadata,
     reliableCount,
-    totalMetrics,
 }: DetailedMetricsCardProps) {
     const rows = buildRows(metrics);
 
@@ -80,7 +78,7 @@ export default function DetailedMetricsCard({
             {extractionMetadata && (
                 <Stack gap="xs" mt="md">
                     <Text size="sm" c="dimmed">
-                        Извлечено надёжно: <b>{reliableCount} из {totalMetrics}</b> показателей
+                        Надёжно извлечено: <b>{reliableCount} показателей</b>
                     </Text>
                     <Group gap="xs" align="flex-start">
                         <Info size={14} style={{ marginTop: 2, color: '#868e96', flexShrink: 0 }} />

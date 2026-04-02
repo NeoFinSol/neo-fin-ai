@@ -91,6 +91,7 @@ async def generate_recommendations(
     metrics: dict[str, Optional[float | int]],
     ratios: dict[str, Optional[float]],
     nlp_result: dict[str, Any],
+    ai_provider: str | None = None,
 ) -> list[str]:
     """
     Generate recommendations with references to extracted data.
@@ -120,17 +121,22 @@ async def generate_recommendations(
     # Try to invoke AI service
     try:
         # Timeout is controlled by tasks.py (single wait_for on the call stack)
-        response = await ai_service.invoke(
-            input={
+        invoke_kwargs: dict[str, Any] = {
+            "input": {
                 "tool_input": prompt,
                 "system": (
                     "Ты опытный финансовый аналитик и консультант. "
                     "Давай конкретные, действенные рекомендации с ссылками на цифры. "
                     "Отвечай только JSON без дополнительного текста."
                 ),
+                "format": "json",
             },
-            timeout=90,
-        )
+            "timeout": 90,
+        }
+        if ai_provider is not None:
+            invoke_kwargs["provider"] = ai_provider
+
+        response = await ai_service.invoke(**invoke_kwargs)
 
         if not response:
             logger.warning("AI service returned empty response for recommendations")
@@ -215,6 +221,7 @@ async def generate_recommendations_with_fallback(
     ratios: dict[str, Optional[float]],
     nlp_result: dict[str, Any],
     use_fallback: bool = True,
+    ai_provider: str | None = None,
 ) -> list[str]:
     """
     Generate recommendations with optional fallback.
@@ -231,7 +238,12 @@ async def generate_recommendations_with_fallback(
     Returns:
         list[str]: List of recommendations
     """
-    recommendations = await generate_recommendations(metrics, ratios, nlp_result)
+    recommendations = await generate_recommendations(
+        metrics,
+        ratios,
+        nlp_result,
+        ai_provider=ai_provider,
+    )
     
     # If we got empty results but should use fallback
     if not recommendations and use_fallback:

@@ -1,4 +1,4 @@
-# Конфигурация системы NeoFin AI
+# Конфигурация системы НеоФин.Документы
 
 ## Общая информация
 
@@ -27,7 +27,7 @@ cp .env.example .env
 | `TEST_DATABASE_URL` | `string` | — | — | Отдельная строка подключения для тестов. При `TESTING=1` используется вместо `DATABASE_URL`, если задана |
 | `API_KEY` | `string` | — | ✅ | Ключ аутентификации. Передаётся в заголовке `X-API-Key` |
 | `CONFIDENCE_THRESHOLD` | `float` | `0.5` | — | Минимальный уровень достоверности для включения показателя в расчёт. Диапазон: `[0.0, 1.0]` |
-| `SCORING_PROFILE` | `string` | `generic` | — | Профиль benchmark’ов интегрального скоринга: `generic` или `retail_demo` |
+| `SCORING_PROFILE` | `string` | `auto` | — | Профиль benchmark’ов интегрального скоринга: `auto`, `generic` или `retail_demo` |
 | `DEV_MODE` | `bool` | `false` | — | Режим разработки: отключает проверку `API_KEY`, разрешает CORS `*` |
 | `DEMO_MODE` | `int` | `0` | — | При `1` — маскирует числовые данные в ответах API |
 
@@ -77,6 +77,22 @@ cp .env.example .env
 
 ---
 
+### LLM extraction и guarded structured output
+
+| Переменная | Тип | По умолчанию | Обязательная | Описание |
+|---|---|---|:---:|---|
+| `LLM_EXTRACTION_ENABLED` | `bool` | `false` | — | Включить LLM-based extraction поверх детерминированного контура |
+| `LLM_CHUNK_SIZE` | `int` | `12000` | — | Размер одного текстового чанка для extraction |
+| `LLM_MAX_CHUNKS` | `int` | `5` | — | Максимальное число чанков на документ |
+| `LLM_TOKEN_BUDGET` | `int` | `50000` | — | Общий текстовый budget на документ |
+
+Поведение:
+- LLM-extraction остаётся guarded и не должен перетирать сильный deterministic parse;
+- structured output идёт в отдельный merge-path с fallback и validation;
+- контур полезен как дополнение к `table/text/OCR`, но не подменяет explainability-слой `extraction_metadata`.
+
+---
+
 ### Персистентный контур выполнения задач
 
 | Переменная | Тип | По умолчанию | Обязательная | Описание |
@@ -105,7 +121,7 @@ cp .env.example .env
 Провайдер выбирается автоматически при старте в порядке приоритета:
 
 ```
-GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → мягкая деградация
+GigaChat → HuggingFace → Ollama → мягкая деградация
 ```
 
 Если ни один провайдер не настроен — NLP-анализ отключается. Числовой анализ (коэффициенты, скоринг) продолжается в полном объёме.
@@ -147,6 +163,10 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → мягкая 
 | `LLM_MODEL` | `string` | `llama3` | — | Имя модели: `deepseek-r1:7b`, `llama3`, `mistral` и др. |
 
 Условие активации: задан `LLM_URL`. Работает полностью локально, без внешних зависимостей.
+
+Практическая рекомендация для локального JSON-heavy сценария:
+- кодовый default `LLM_MODEL` остаётся `llama3`;
+- для более стабильного structured-output path рекомендуется явно задавать `LLM_MODEL=qwen3.5:9b`.
 
 ---
 
@@ -203,6 +223,11 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → мягкая 
 
 Автоматического переключения на следующий провайдер при сбое **не происходит** — провайдер выбирается один раз при старте приложения.
 
+Для пользовательского интерфейса дополнительно доступен endpoint `/system/ai/providers`, который возвращает:
+- `default_provider`
+- `available_providers`
+и используется для выбора preferred provider на экране загрузки.
+
 ---
 
 ### Порог достоверности
@@ -241,12 +266,14 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → мягкая 
 
 | Значение | Режим | Описание |
 |---|---|---|
-| `generic` | По умолчанию | Универсальные benchmark’и для широкого набора компаний |
+| `auto` | По умолчанию | Автовыбор между `generic` и `retail_demo` по контексту документа |
+| `generic` | Универсальный | Универсальные benchmark’и для широкого набора компаний |
 | `retail_demo` | Demo-профиль | Retail-friendly benchmark’и для показов и кейсов крупного ритейла |
 
 Важно:
 - anomaly-blocking в скоринге (блокировка экстремальных ratio) остаётся включённым для всех профилей;
-- профиль влияет только на внутреннюю нормализацию/интерпретацию score, формат ответа API не меняется.
+- профиль влияет только на внутреннюю нормализацию/интерпретацию score, формат ответа API не меняется;
+- при `SCORING_PROFILE=auto` сервис сохраняет explainability в `score.methodology`: `benchmark_profile`, `period_basis`, `guardrails`, `leverage_basis`, `peer_context`.
 
 ---
 
@@ -257,7 +284,7 @@ GigaChat → HuggingFace (Qwen/Qwen3.5-9B-Instruct) → Ollama → мягкая 
 DATABASE_URL=postgresql+asyncpg://neofin:password@db:5432/neofin
 API_KEY=change-me-in-production
 CONFIDENCE_THRESHOLD=0.5
-SCORING_PROFILE=generic
+SCORING_PROFILE=auto
 
 # ── GigaChat (приоритет 1) ────────────────────────────────
 GIGACHAT_CLIENT_ID=your-client-id
@@ -269,7 +296,7 @@ HF_MODEL=Qwen/Qwen3.5-9B-Instruct
 
 # ── Ollama — локальный режим (приоритет 3) ─────────────────
 LLM_URL=http://ollama:11434/api/generate
-LLM_MODEL=llama3
+LLM_MODEL=qwen3.5:9b
 
 # ── Backend ───────────────────────────────────────────────
 API_HOST=0.0.0.0

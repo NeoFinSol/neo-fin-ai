@@ -180,12 +180,10 @@ class TestCorsConfiguration:
 
 
 class TestUvicornRun:
-    """Tests for uvicorn run command."""
+    """Tests for ASGI app module boundary."""
 
-    def test_uvicorn_run_when_main(self):
-        """Test uvicorn.run is called when script is main."""
-        # This is difficult to test directly without running the server
-        # Instead, verify the code path exists
+    def test_app_module_does_not_embed_uvicorn_runner(self):
+        """Application module should stay import-safe and not shell out to uvicorn directly."""
         import src.app
-        # The __main__ block should exist
-        assert hasattr(src.app, 'uvicorn')
+        assert hasattr(src.app, "app")
+        assert not hasattr(src.app, "uvicorn")

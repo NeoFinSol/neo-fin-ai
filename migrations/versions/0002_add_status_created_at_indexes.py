@@ -1,6 +1,6 @@
 """Add indexes on status and created_at
 
-Revision ID: 0002_add_status_created_at_indexes
+Revision ID: 0002_status_created_idx
 Revises: 0001_create_analyses
 Create Date: 2026-03-23 12:00:00
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0002_add_status_created_at_indexes"
+revision = "0002_status_created_idx"
 down_revision = "0001_create_analyses"
 branch_labels = None
 depends_on = None

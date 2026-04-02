@@ -157,3 +157,13 @@ async def metrics_endpoint():
         }
     """
     return metrics.get_metrics()
+
+
+@router.get("/ai/providers")
+async def ai_providers() -> dict[str, list[str] | str | None]:
+    """Return configured AI providers for UI/provider selection."""
+    available = list(dict.fromkeys(["auto", *ai_service.available_providers]))
+    return {
+        "default_provider": ai_service.provider,
+        "available_providers": available,
+    }

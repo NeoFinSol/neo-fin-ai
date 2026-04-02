@@ -87,7 +87,7 @@ def auth_enabled(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def client():
+def client(db_engine, monkeypatch):
     """
     Create test client with authentication properly configured.
     
@@ -100,6 +100,13 @@ def client():
         def test_endpoint(client):
             response = client.get("/endpoint")
     """
+    engine, _schema = db_engine
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    monkeypatch.setattr(db, "AsyncSessionLocal", session_maker)
+    monkeypatch.setattr(db, "get_session_maker", lambda: session_maker)
+    monkeypatch.setattr(crud, "get_session_maker", lambda: session_maker)
+
     from fastapi.testclient import TestClient
     from src.app import app
     from src.core.auth import get_api_key
@@ -117,7 +124,7 @@ def client():
     app.dependency_overrides.clear()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture()
 async def db_engine():
     base_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not base_url:
@@ -131,18 +138,19 @@ async def db_engine():
     await base_engine.dispose()
 
     url = make_url(base_url)
-    query = dict(url.query)
-    query["options"] = f"-csearch_path={schema}"
-    url = url.set(query=query)
-
-    engine = create_async_engine(url, future=True)
+    engine = create_async_engine(
+        url,
+        future=True,
+        connect_args={"server_settings": {"search_path": schema}},
+    )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine, schema
 
-    async with engine.begin() as conn:
+    async with base_engine.begin() as conn:
         await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    await engine.dispose()
     await base_engine.dispose()
 
 
@@ -152,7 +160,18 @@ async def db_session(db_engine, monkeypatch):
     session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     monkeypatch.setattr(db, "AsyncSessionLocal", session_maker)
-    monkeypatch.setattr(crud, "AsyncSessionLocal", session_maker)
+    monkeypatch.setattr(db, "get_session_maker", lambda: session_maker)
+    monkeypatch.setattr(crud, "get_session_maker", lambda: session_maker)
 
     async with session_maker() as session:
         yield session
+
+
+@pytest.fixture
+def benchmark():
+    """Minimal local benchmark fallback when pytest-benchmark plugin is absent."""
+
+    def runner(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    return runner

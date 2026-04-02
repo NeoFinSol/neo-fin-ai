@@ -32,6 +32,7 @@ class AppSettings(BaseSettings):
     analysis_runtime_stale_minutes: int = Field(60, alias="ANALYSIS_RUNTIME_STALE_MINUTES")
     multi_session_runtime_stale_minutes: int = Field(90, alias="MULTI_SESSION_RUNTIME_STALE_MINUTES")
     task_runtime: str = Field("background", alias="TASK_RUNTIME")
+    task_storage_dir: str | None = Field(None, alias="TASK_STORAGE_DIR")
     task_queue_broker_url: str | None = Field(None, alias="TASK_QUEUE_BROKER_URL")
     task_queue_result_backend: str | None = Field(None, alias="TASK_QUEUE_RESULT_BACKEND")
     task_events_redis_url: str | None = Field(None, alias="TASK_EVENTS_REDIS_URL")
@@ -105,9 +106,9 @@ class AppSettings(BaseSettings):
         description="Minimum confidence score to include an extracted metric [0.0–1.0]",
     )
     scoring_profile: str = Field(
-        "generic",
+        "auto",
         alias="SCORING_PROFILE",
-        description="Scoring benchmark profile: generic or retail_demo",
+        description="Scoring benchmark profile: auto, generic or retail_demo",
     )
 
     # LLM Extraction settings
@@ -196,16 +197,16 @@ class AppSettings(BaseSettings):
     @field_validator("scoring_profile", mode="before")
     @classmethod
     def validate_scoring_profile(cls, v: str | None) -> str:
-        """Validate scoring profile and fall back to generic profile."""
+        """Validate scoring profile and fall back to auto profile."""
         if v is None:
-            return "generic"
+            return "auto"
         value = str(v).strip().lower()
-        if value not in {"generic", "retail_demo"}:
+        if value not in {"auto", "generic", "retail_demo"}:
             logging.warning(
-                "Invalid SCORING_PROFILE=%r. Using default 'generic'",
+                "Invalid SCORING_PROFILE=%r. Using default 'auto'",
                 v,
             )
-            return "generic"
+            return "auto"
         return value
 
     @field_validator("llm_chunk_size", mode="before")

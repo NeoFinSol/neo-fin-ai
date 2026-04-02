@@ -3,10 +3,6 @@ node_modules
 npm-debug.log
 yarn-error.log
 
-# Source code (not needed in runtime image)
-src/
-public/
-
 # Build output (generated fresh)
 dist/
 
@@ -33,15 +29,3 @@ Thumbs.db
 .git/
 .gitignore
 *.md
-docker-compose*.yml
-Dockerfile
-Dockerfile.*
-nginx.conf
-nginx.prod.conf
-vite.config.ts
-tsconfig.json
-*.test.ts
-*.test.tsx
-__tests__/
-vitest.config.ts
-setupTests.ts

@@ -1,62 +1,102 @@
-# Runbook финального демо
+# Runbook финального демо НеоФин.Документы
 
-Этот документ фиксирует повторяемый сценарий показа NeoFin AI на финале конкурса.
+Документ фиксирует повторяемый сценарий показа `НеоФин.Документы` как первого модуля `НеоФин.Контур`.
 
-## 1. Primary path: локальный показ
+## 1. Цель демо
+
+Показать, что сервис:
+
+- загружает реальные PDF-отчёты;
+- извлекает показатели и коэффициенты;
+- считает explainable score с benchmark-aware методикой;
+- не скрывает качество данных и состояние AI-контурa.
+
+## 2. Primary path — локальный контур
 
 ### Предусловия
-- Заполнен `.env` с рабочими `API_KEY`, `DATABASE_URL`
-- Выбран runtime: `TASK_RUNTIME=celery`
-- Для финального demo-score включён профиль: `SCORING_PROFILE=retail_demo`
-- Локальные PDF-файлы доступны в `PDFforTests`
 
-### Шаги запуска
-1. Поднять стек:
-```bash
-docker compose up -d --build
-```
-2. Прогнать демо smoke:
+- заполнен `.env`;
+- стек поднят через `docker compose up -d --build`;
+- `SCORING_PROFILE=auto`;
+- доступны PDF из демо-набора;
+- при локальном AI-контуре загружена Ollama-модель.
+
+### Рекомендуемый сценарий
+
+1. Открыть интерфейс `http://127.0.0.1/`.
+2. Убедиться, что `/api/system/health` отвечает `200`.
+3. На главной выбрать `Ollama`, если нужен полностью локальный показ без внешних токенов.
+4. Загрузить один из сценариев из `tests/data/demo_manifest.json`.
+
+### Минимальный smoke перед показом
+
 ```bash
 python scripts/demo_smoke.py --base-url http://localhost --api-prefix /api --api-key <API_KEY>
 ```
 
-### Проверка готовности
-- Все три сценария из `tests/data/demo_manifest.json` прошли со статусом `OK`
-- Нет `failed/cancelled` в smoke-прогоне
-- Задачи видны в `/analyses`
+### Что считается готовностью
 
-## 2. Backup path: публичный стенд
+- сценарии из `tests/data/demo_manifest.json` проходят без `failed` и `cancelled`;
+- `docker compose ps` показывает `frontend`, `backend`, `worker`, `db`, `redis` в рабочем состоянии;
+- отчёт показывает не только score, но и benchmark badges + блок `Как рассчитано`.
 
-### Базовый порядок
-1. Применить миграции:
-```bash
-docker compose -f docker-compose.prod.yml run --rm backend-migrate
-```
-2. Поднять прод-контур:
-```bash
-docker compose -f docker-compose.prod.yml up -d --build
-```
-3. Проверить health:
-- `GET /api/system/health`
+## 3. Рекомендуемые сценарии показа
 
-### Smoke на публичном URL
+### `text_single`
+
+Цель:
+
+- показать быстрый текстовый PDF-path;
+- продемонстрировать extraction metadata и итоговый score.
+
+### `scanned_single`
+
+Цель:
+
+- показать OCR-контур и устойчивость к сканам;
+- объяснить, как confidence влияет на расчёт.
+
+### `multi_period_magnit`
+
+Цель:
+
+- показать truthful scoring на реальном retail-кейсе;
+- продемонстрировать benchmark-aware расчёт и period-basis;
+- объяснить, почему score сопровождается методикой, а не просто числом.
+
+## 4. Что проговаривать в демо
+
+- `НеоФин.Документы` — это не “ещё один AI-бот”, а explainable модуль анализа финансовых документов;
+- score возвращается вместе с `score.methodology`;
+- benchmark выбирается прозрачно: `generic` или `retail_demo`;
+- AI-контур не скрывает своё состояние: если модель не дала содержательного narrative, интерфейс это показывает честно.
+
+## 5. Backup path — публичный стенд
+
+Если используется отдельный публичный контур:
+
+1. применить миграции;
+2. поднять production compose;
+3. проверить `/api/system/health`;
+4. прогнать короткий smoke.
+
+Пример:
+
 ```bash
 python scripts/demo_smoke.py --base-url https://<public-host> --api-prefix /api --api-key <API_KEY> --scenario text_single --scenario multi_period_magnit
 ```
 
-### Минимальный gate
-- Публичный URL проходит `text_single` и `multi_period_magnit`
-- Если публичный smoke нестабилен, финальный показ переводится на локальный primary path
+## 6. Операторский fallback
 
-## 3. Restart sequence (операторский)
+Если публичный стенд нестабилен:
 
-При частичном падении сервисов:
-1. `backend-migrate` (one-shot, при необходимости после изменений схемы)
-2. `db`, `redis`
-3. `backend`, `worker`
-4. `frontend/nginx`
-5. Повторный smoke по одному сценарию (`text_single`)
+1. перейти на локальный контур;
+2. выбрать `Ollama` в интерфейсе, если нужен локальный AI-путь;
+3. продолжить тем же сценарием экранов.
 
-## 4. Ограничения текущего окна
-- HTTPS не блокирует финальный показ, если требует отдельной инфраструктурной итерации
-- Этот runbook не включает backup/restore drills, только demo-readiness контур
+## 7. Важные замечания
+
+- в demo-контуре рекомендуется `SCORING_PROFILE=auto`, а не принудительный `retail_demo`;
+- для retail-документов интерфейс сам покажет соответствующий benchmark;
+- low-confidence показатели не скрываются, а явно помечаются;
+- AI-провайдер не должен маскировать детерминированный результат.

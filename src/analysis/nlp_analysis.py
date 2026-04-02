@@ -14,46 +14,69 @@ _NARRATIVE_PROMPT_BUDGET = 4_000
 _NARRATIVE_MAX_LINES = 80
 
 
-async def analyze_narrative(full_text: str) -> dict[str, list[str]]:
+async def analyze_narrative(
+    full_text: str,
+    ai_provider: str | None = None,
+) -> dict[str, list[str]]:
+    result, _runtime = await analyze_narrative_with_runtime(full_text, ai_provider=ai_provider)
+    return result
+
+
+async def analyze_narrative_with_runtime(
+    full_text: str,
+    ai_provider: str | None = None,
+) -> tuple[dict[str, list[str]], dict[str, str | None]]:
     if not full_text:
-        return _empty_result()
+        return _empty_result(), {"status": "skipped", "reason_code": "insufficient_text"}
+
+    if not ai_service.is_provider_available(ai_provider):
+        logger.warning("NLP analysis skipped: AI provider unavailable")
+        return _empty_result(), {"status": "skipped", "reason_code": "provider_unavailable"}
 
     # Gate: if text is OCR garbage, skip LLM entirely — saves 80-90% tokens
     if not is_clean_financial_text(full_text):
         logger.warning("NLP analysis skipped: text quality too low (%d chars)", len(full_text))
-        return _empty_result()
+        return _empty_result(), {"status": "skipped", "reason_code": "insufficient_text"}
 
     narrative_text = _prepare_narrative_for_llm(full_text)
     if not narrative_text:
-        return _empty_result()
+        return _empty_result(), {"status": "skipped", "reason_code": "insufficient_text"}
 
     try:
-        response = await ai_service.invoke(
-            input={
+        invoke_kwargs: dict[str, Any] = {
+            "input": {
                 "tool_input": narrative_text,
                 "system": LLM_ANALYSIS_PROMPT,
+                "format": "json",
             },
-            timeout=120
-        )
+            "timeout": 120,
+        }
+        if ai_provider is not None:
+            invoke_kwargs["provider"] = ai_provider
+
+        response = await ai_service.invoke(**invoke_kwargs)
         
         if not response:
             logger.warning("AI service returned empty response")
-            return _empty_result()
+            return _empty_result(), {"status": "failed", "reason_code": "provider_error"}
             
         parsed = _parse_llm_json(response)
         if parsed is None:
             logger.warning("Failed to parse AI response, returning fallback")
-            return _empty_result()
+            return _empty_result(), {"status": "failed", "reason_code": "invalid_response"}
 
-        return {
+        result = {
             "risks": _ensure_list(parsed.get("risks")),
             "key_factors": _ensure_list(parsed.get("key_factors")),
             "recommendations": _ensure_list(parsed.get("recommendations")),
         }
+        if result["risks"] or result["key_factors"]:
+            return result, {"status": "succeeded", "reason_code": None}
+        return result, {"status": "empty", "reason_code": "no_nlp_content"}
         
     except Exception as exc:
         logger.warning("AI analysis failed: %s", exc)
-        return _empty_result()
+        return _empty_result(), {"status": "failed", "reason_code": "provider_error"}
 
 
 def _prepare_narrative_for_llm(full_text: str) -> str:

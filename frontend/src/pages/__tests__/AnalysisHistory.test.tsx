@@ -249,8 +249,11 @@ import { formatDate } from '../AnalysisHistory';
 describe('formatDate — property-based tests', () => {
     // Arbitrary: случайная дата в диапазоне 1970–2099, сериализованная в ISO 8601
     const isoDateArbitrary = fc
-        .date({ min: new Date('1970-01-01T00:00:00Z'), max: new Date('2099-12-31T23:59:59Z') })
-        .map((d) => d.toISOString());
+        .integer({
+            min: Date.parse('1970-01-01T00:00:00Z'),
+            max: Date.parse('2099-12-31T23:59:59Z'),
+        })
+        .map((timestamp) => new Date(timestamp).toISOString());
 
     it('Property 10: round-trip — DD.MM.YYYY совпадает с исходной датой (100 итераций)', () => {
         fc.assert(

@@ -200,17 +200,17 @@ class TestExtractTextFromScanned:
                 assert result == ""
 
     def test_convert_from_path_exception(self):
-        """Test exception in convert_from_path is re-raised."""
+        """Test exception in convert_from_path degrades gracefully to empty OCR text."""
         with patch('src.analysis.pdf_extractor.convert_from_path', side_effect=Exception("Conversion failed")):
-            with pytest.raises(Exception):
-                extract_text_from_scanned("/fake/path.pdf")
+            result = extract_text_from_scanned("/fake/path.pdf")
+            assert result == ""
 
 
 class TestExtractTables:
     """Tests for extract_tables function."""
 
-    def test_successful_table_extraction_lattice(self):
-        """Test successful table extraction with lattice flavor."""
+    def test_successful_table_extraction_prefers_stream(self):
+        """Test successful table extraction prefers stream flavor on the current path."""
         mock_table = MagicMock()
         mock_df = MagicMock()
         mock_df.empty = False
@@ -227,7 +227,7 @@ class TestExtractTables:
             with patch('src.analysis.pdf_extractor.is_scanned_pdf', return_value=False):
                 result = extract_tables("/fake/path.pdf")
                 assert len(result) > 0
-                assert result[0]["flavor"] == "lattice"
+                assert result[0]["flavor"] == "stream"
 
     def test_lattice_fails_stream_works(self):
         """Test that stream flavor is tried when lattice fails."""

@@ -2,18 +2,22 @@ import asyncio
 import logging
 import os
 import tempfile
+from typing import Annotated
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.auth import get_api_key
 from src.core.task_queue import dispatch_pdf_task
 from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
+from src.core.ai_service import ai_service
 from src.db.crud import create_analysis, get_analysis, is_analysis_cancellation_pending, update_analysis
 from src.exceptions import DatabaseError, TaskRuntimeError
+from src.models.settings import app_settings
 from src.tasks import process_pdf, request_analysis_cancellation
+from src.utils.file_utils import ensure_directory
 from src.utils.masking import mask_analysis_data
 
 logger = logging.getLogger(__name__)
@@ -52,10 +56,17 @@ def _analysis_runtime_status(analysis) -> str:
     return analysis.status
 
 
+def _task_storage_dir() -> str | None:
+    if app_settings.task_runtime != "celery":
+        return None
+    return ensure_directory(app_settings.task_storage_dir)
+
+
 @router.post("/upload")
 async def upload_pdf(
     file: UploadFile,
     background_tasks: BackgroundTasks,
+    ai_provider: Annotated[str | None, Form()] = None,
     api_key: str = Depends(get_api_key),
     request: Request = None  # keyword-only, not used directly (rate limiting via middleware)
 ):
@@ -80,7 +91,11 @@ async def upload_pdf(
         # Create temporary file and write in chunks
         suffix = ".pdf"
         # Use delete=False so we can pass the path to background task
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=suffix,
+            dir=_task_storage_dir(),
+        )
         temp_file.write(first_chunk)
 
         # Read remaining content in chunks
@@ -134,6 +149,17 @@ async def upload_pdf(
             await _cleanup_temp_file(tmp_path)
         raise HTTPException(status_code=500, detail="Failed to save uploaded file")
 
+    try:
+        requested_provider = ai_service.normalize_requested_provider(ai_provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if requested_provider and requested_provider not in ai_service.available_providers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"AI provider '{requested_provider}' is not available",
+        )
+
     task_id = str(uuid.uuid4())
     try:
         await create_analysis(task_id, "processing", {"filename": file.filename})
@@ -153,6 +179,7 @@ async def upload_pdf(
             task_id=task_id,
             file_path=tmp_path,
             background_callable=process_pdf,
+            ai_provider=requested_provider,
         )
     except TaskRuntimeError:
         await _cleanup_temp_file(tmp_path)

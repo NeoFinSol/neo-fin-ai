@@ -246,6 +246,28 @@ class TestPostMultiAnalysis:
         mock_apply_async.assert_called_once()
         assert mock_apply_async.call_args.kwargs["task_id"] == "celery-session"
 
+    def test_post_multi_analysis_uses_shared_storage_dir_in_celery_runtime(self, client, tmp_path):
+        files, data = self._make_multipart(["2022", "2023"])
+        shared_dir = tmp_path / "task-storage"
+        temp_a = SimpleNamespace(name=str(shared_dir / "period-a.pdf"), write=lambda *_: None, close=lambda: None)
+        temp_b = SimpleNamespace(name=str(shared_dir / "period-b.pdf"), write=lambda *_: None, close=lambda: None)
+
+        with patch("src.routers.multi_analysis.tempfile.NamedTemporaryFile", side_effect=[temp_a, temp_b]) as mock_temp:
+            with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
+                with patch("src.core.task_queue.celery_app", MagicMock()):
+                    with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
+                        with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
+                            with patch("src.core.task_queue.run_multi_analysis_task.apply_async"):
+                                with patch.object(__import__("src.routers.multi_analysis", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
+                                    with patch.object(__import__("src.routers.multi_analysis", fromlist=["app_settings"]).app_settings, "task_storage_dir", str(shared_dir)):
+                                        with patch("src.routers.multi_analysis.uuid4", return_value="shared-dir-session"):
+                                            response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 202
+        assert shared_dir.is_dir()
+        assert mock_temp.call_args_list[0].kwargs["dir"] == str(shared_dir)
+        assert mock_temp.call_args_list[1].kwargs["dir"] == str(shared_dir)
+
     def test_post_multi_analysis_dispatch_failure_returns_503_and_marks_session_failed(self):
         files, data = self._make_multipart(["2022", "2023"])
         temp_a = SimpleNamespace(name="/tmp/period-a.pdf", write=lambda *_: None, close=lambda: None)
@@ -334,6 +356,19 @@ class TestGetMultiAnalysisStatus:
                     "ratios": {},
                     "score": 75.0,
                     "risk_level": "low",
+                    "score_methodology": {
+                        "benchmark_profile": "retail_demo",
+                        "period_basis": "reported",
+                        "detection_mode": "auto",
+                        "reasons": ["retail_keyword"],
+                        "guardrails": [],
+                        "leverage_basis": "debt_only",
+                        "ifrs16_adjusted": True,
+                        "adjustments": ["leverage_debt_only"],
+                        "peer_context": [
+                            "Large food retail may operate with current ratio below 1; Walmart current ratio ~0.79 (Jan 2026 reference)."
+                        ],
+                    },
                     "extraction_metadata": {},
                 },
                 {
@@ -341,6 +376,19 @@ class TestGetMultiAnalysisStatus:
                     "ratios": {},
                     "score": 80.0,
                     "risk_level": "low",
+                    "score_methodology": {
+                        "benchmark_profile": "retail_demo",
+                        "period_basis": "reported",
+                        "detection_mode": "auto",
+                        "reasons": ["retail_keyword"],
+                        "guardrails": [],
+                        "leverage_basis": "debt_only",
+                        "ifrs16_adjusted": True,
+                        "adjustments": ["leverage_debt_only"],
+                        "peer_context": [
+                            "Large food retail may operate with current ratio below 1; Walmart current ratio ~0.79 (Jan 2026 reference)."
+                        ],
+                    },
                     "extraction_metadata": {},
                 },
             ]
@@ -355,6 +403,8 @@ class TestGetMultiAnalysisStatus:
         data = response.json()
         assert data["status"] == "completed"
         assert len(data["periods"]) == 2
+        assert data["periods"][0]["score_methodology"]["benchmark_profile"] == "retail_demo"
+        assert data["periods"][0]["score_methodology"]["leverage_basis"] == "debt_only"
 
     def test_get_multi_analysis_not_found(self, client):
         """

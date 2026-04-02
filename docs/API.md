@@ -1,4 +1,4 @@
-# API NeoFin AI
+# API НеоФин.Документы
 
 ## 1. Общая информация
 
@@ -67,6 +67,7 @@ X-API-Key: <ваш-ключ>
 | `text_regex` | 0.5 | Извлечение через регулярное выражение из текста |
 | `ocr` | 0.5 | Распознано через Tesseract OCR |
 | `derived` | 0.3 | Производный расчёт |
+| `issuer_fallback` | 1.0 | Точечная repo-versioned подмена для верифицированных спорных метрик |
 
 ### Фильтрация по порогу достоверности
 
@@ -116,6 +117,7 @@ X-API-Key: <ключ>
 | Поле | Тип | Обязательно | Описание |
 |---|---|---|---|
 | `file` | binary (PDF) | Да | Файл финансовой отчётности. Максимум 50 МБ. |
+| `ai_provider` | string | Нет | Предпочтительный AI-провайдер для narrative-контура: `auto`, `gigachat`, `huggingface`, `ollama` |
 
 **Ответ `200 OK`**
 
@@ -132,6 +134,9 @@ X-API-Key: <ключ>
 | `400` | Файл не является PDF (проверка magic header `%PDF`) |
 | `400` | Файл пустой |
 | `400` | Размер файла превышает 50 МБ |
+| `400` | Запрошенный `ai_provider` недоступен в текущем runtime |
+| `422` | Передан невалидный `ai_provider` |
+| `503` | Контур выполнения задач недоступен |
 | `500` | Ошибка при сохранении файла или создании записи в БД |
 
 **Пример**
@@ -139,7 +144,8 @@ X-API-Key: <ключ>
 ```bash
 curl -X POST http://localhost:8000/upload \
   -H "X-API-Key: secret" \
-  -F "file=@report_2024.pdf"
+  -F "file=@report_2024.pdf" \
+  -F "ai_provider=ollama"
 ```
 
 ---
@@ -233,19 +239,32 @@ X-API-Key: <ключ>
       "liabilities": 300000.0,
       "current_assets": 150000.0,
       "short_term_liabilities": 90000.0,
-      "accounts_receivable": 40000.0
+      "accounts_receivable": 40000.0,
+      "inventory": 25000.0,
+      "cash_and_equivalents": 18000.0,
+      "ebitda": 120000.0,
+      "ebit": 90000.0,
+      "interest_expense": 18000.0,
+      "cost_of_goods_sold": null,
+      "average_inventory": null,
+      "short_term_borrowings": 45000.0,
+      "long_term_borrowings": 90000.0,
+      "short_term_lease_liabilities": 12000.0,
+      "long_term_lease_liabilities": 35000.0
     },
     "ratios": {
       "current_ratio": 1.67,
       "quick_ratio": 1.22,
-      "absolute_liquidity": 0.31,
+      "absolute_liquidity_ratio": 0.31,
       "roa": 0.17,
       "roe": 0.43,
       "ros": 0.085,
       "ebitda_margin": 0.12,
       "equity_ratio": 0.40,
-      "leverage": 1.50,
-      "interest_coverage": null,
+      "financial_leverage": 0.68,
+      "financial_leverage_total": 1.50,
+      "financial_leverage_debt_only": 0.68,
+      "interest_coverage": 5.0,
       "asset_turnover": 2.0,
       "inventory_turnover": null,
       "receivables_turnover": 25.0
@@ -261,6 +280,17 @@ X-API-Key: <ключ>
       "normalized_scores": {
         "current_ratio": 0.87,
         "roa": 0.64
+      },
+      "methodology": {
+        "benchmark_profile": "generic",
+        "period_basis": "reported",
+        "detection_mode": "auto",
+        "reasons": [],
+        "guardrails": [],
+        "leverage_basis": "total_liabilities",
+        "ifrs16_adjusted": false,
+        "adjustments": [],
+        "peer_context": []
       }
     },
     "nlp": {
@@ -268,10 +298,17 @@ X-API-Key: <ключ>
       "key_factors": ["Рост выручки на 12%"],
       "recommendations": ["Сократить краткосрочные обязательства"]
     },
+    "ai_runtime": {
+      "requested_provider": "ollama",
+      "effective_provider": "ollama",
+      "status": "succeeded",
+      "reason_code": null
+    },
     "extraction_metadata": {
       "revenue": {"confidence": 0.9, "source": "table_exact"},
       "net_profit": {"confidence": 0.5, "source": "text_regex"},
-      "liabilities": {"confidence": 0.3, "source": "derived"}
+      "liabilities": {"confidence": 0.3, "source": "derived"},
+      "ebitda": {"confidence": 1.0, "source": "issuer_fallback"}
     }
   }
 }
@@ -303,13 +340,15 @@ X-API-Key: <ключ>
 | `status` | `processing` \| `cancelling` \| `completed` \| `cancelled` \| `failed` | Статус задачи |
 | `data.scanned` | boolean | `true` — документ распознан через OCR |
 | `data.metrics` | object | Извлечённые финансовые показатели (значение `null` — не найдено) |
-| `data.ratios` | object | 13 рассчитанных коэффициентов (значение `null` — нехватка данных) |
+| `data.ratios` | object | 15 публичных коэффициентов; 13 участвуют в интегральном скоринге, dual leverage-поля нужны для explainability |
 | `data.score.score` | float \[0–100\] | Интегральный скоринг |
 | `data.score.risk_level` | `low` \| `medium` \| `high` \| `critical` | Уровень риска (low ≥ 75, medium 55–74, high 35–54, critical < 35) |
 | `data.score.confidence_score` | float \[0.0–1.0\] | Достоверность отчёта (сумма весов найденных данных) |
 | `data.score.factors` | array | Факторы с полем `impact`: `positive` \| `neutral` \| `negative` |
 | `data.score.normalized_scores` | object | Нормализованные значения \[0.0–1.0\] по каждому коэффициенту |
+| `data.score.methodology` | object | Методика расчёта: `benchmark_profile`, `period_basis`, `guardrails`, `leverage_basis`, `peer_context` и связанные explainability-поля |
 | `data.nlp` | object | Текстовый ИИ-анализ (пустые массивы, если языковая модель не настроена или произошёл тайм-аут) |
+| `data.ai_runtime` | object | Правдивый статус AI-контура: `requested_provider`, `effective_provider`, `status`, `reason_code` |
 | `data.extraction_metadata` | object | Оценка достоверности и источник для каждого показателя |
 
 ### DELETE /cancel/{task_id}
@@ -329,8 +368,8 @@ X-API-Key: <ключ>
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `confidence` | float \[0.0–1.0\] | Оценка надёжности: 0.9 — `table_exact`, 0.7 — `table_partial`, 0.5 — `text_regex`, 0.3 — `derived`, 0.0 — не найден |
-| `source` | string | Метод извлечения: `table_exact`, `table_partial`, `text_regex`, `derived` |
+| `confidence` | float \[0.0–1.0\] | Оценка надёжности: 0.9 — `table_exact`, 0.7 — `table_partial`, 0.5 — `text_regex`/`ocr`, 0.3 — `derived`, 1.0 — `issuer_fallback`, 0.0 — не найден |
+| `source` | string | Метод извлечения: `table_exact`, `table_partial`, `text_regex`, `ocr`, `derived`, `issuer_fallback` |
 
 **Ошибки**
 
@@ -565,6 +604,17 @@ X-API-Key: <ключ>
       "score": 61.0,
       "risk_level": "medium",
       "confidence_score": 0.55,
+      "score_methodology": {
+        "benchmark_profile": "generic",
+        "period_basis": "reported",
+        "detection_mode": "auto",
+        "reasons": [],
+        "guardrails": [],
+        "leverage_basis": "total_liabilities",
+        "ifrs16_adjusted": false,
+        "adjustments": [],
+        "peer_context": []
+      },
       "extraction_metadata": {
         "revenue": {"confidence": 0.9, "source": "table_exact"},
         "equity": {"confidence": 0.3, "source": "derived"}
@@ -579,6 +629,17 @@ X-API-Key: <ключ>
       },
       "score": 72.5,
       "risk_level": "medium",
+      "score_methodology": {
+        "benchmark_profile": "retail_demo",
+        "period_basis": "reported",
+        "detection_mode": "auto",
+        "reasons": ["retail_keyword"],
+        "guardrails": [],
+        "leverage_basis": "debt_only",
+        "ifrs16_adjusted": true,
+        "adjustments": ["leverage_debt_only"],
+        "peer_context": []
+      },
       "extraction_metadata": {
         "revenue": {"confidence": 0.9, "source": "table_exact"},
         "equity": {"confidence": 0.7, "source": "table_partial"}
@@ -610,6 +671,7 @@ X-API-Key: <ключ>
 | `periods[].ratios` | object | Коэффициенты (значение `null` — нехватка данных) |
 | `periods[].score` | float \| null | Интегральный скоринг периода |
 | `periods[].risk_level` | `low` \| `medium` \| `high` \| `critical` \| null | Уровень риска |
+| `periods[].score_methodology` | object \| null | Методика скоринга для конкретного периода: benchmark, база периода и guardrails |
 | `periods[].extraction_metadata` | object | Оценка достоверности и источник по каждому показателю |
 
 **Сортировка:** периоды возвращаются в хронологическом порядке независимо от порядка передачи. Форматы меток: `YYYY` сортируется как `(год, 0)`, `Q{N}/YYYY` — как `(год, квартал)`. Нераспознанные метки помещаются в конец.
@@ -651,13 +713,19 @@ curl http://localhost:8000/multi-analysis/7c9e6679-7425-40de-944b-e07fc1f90ae7 \
 
 ### GET /system/health
 
-Базовая проверка доступности сервиса. Не проверяет зависимости.
+Базовая проверка доступности сервиса с проверкой базы данных и статуса AI/OCR-контура.
 
 **Ответ `200 OK`**
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "timestamp": "2026-04-02T12:00:00.000000",
+  "services": {
+    "db": "ok",
+    "ai": "ok",
+    "ocr": "ok"
+  }
 }
 ```
 
@@ -704,7 +772,7 @@ curl http://localhost:8000/system/health
 | Компонент | Возможные значения | Описание |
 |---|---|---|
 | `database` | `healthy` \| `unhealthy` | Результат служебной проверки PostgreSQL |
-| `ai_service` | `healthy` \| `not_configured` | Настроен ли хотя бы один провайдер языковой модели |
+| `ai_service` | `healthy` \| `degraded` \| `not_configured` | Состояние AI-контура и circuit breaker |
 
 **Примечание:** статус `degraded` возвращается с кодом `200`. Используйте поле `status` для оценки состояния системы. Текстовый ИИ-анализ недоступен при `ai_service: "not_configured"`, числовой анализ продолжает работать.
 
@@ -744,6 +812,21 @@ curl http://localhost:8000/system/ready
 
 ---
 
+### GET /system/ai/providers
+
+Возвращает список AI-провайдеров, доступных для интерфейса и выбора при загрузке файла.
+
+**Ответ `200 OK`**
+
+```json
+{
+  "default_provider": "ollama",
+  "available_providers": ["auto", "gigachat", "huggingface", "ollama"]
+}
+```
+
+---
+
 ## 6. Справочник
 
 ### Финансовые показатели (metrics)
@@ -758,6 +841,17 @@ curl http://localhost:8000/system/ready
 | `current_assets` | Оборотные активы |
 | `short_term_liabilities` | Краткосрочные обязательства |
 | `accounts_receivable` | Дебиторская задолженность |
+| `inventory` | Запасы |
+| `cash_and_equivalents` | Денежные средства и эквиваленты |
+| `ebitda` | EBITDA |
+| `ebit` | EBIT |
+| `interest_expense` | Процентные расходы |
+| `cost_of_goods_sold` | Себестоимость продаж |
+| `average_inventory` | Средние запасы |
+| `short_term_borrowings` | Краткосрочные кредиты и займы |
+| `long_term_borrowings` | Долгосрочные кредиты и займы |
+| `short_term_lease_liabilities` | Краткосрочные обязательства по аренде |
+| `long_term_lease_liabilities` | Долгосрочные обязательства по аренде |
 
 Значение `null` означает, что показатель не найден в документе или его уровень достоверности ниже порога `CONFIDENCE_THRESHOLD` (по умолчанию 0.5).
 
@@ -767,13 +861,15 @@ curl http://localhost:8000/system/ready
 |---|---|---|
 | `current_ratio` | Ликвидность | Коэффициент текущей ликвидности |
 | `quick_ratio` | Ликвидность | Коэффициент быстрой ликвидности |
-| `absolute_liquidity` | Ликвидность | Коэффициент абсолютной ликвидности |
+| `absolute_liquidity_ratio` | Ликвидность | Коэффициент абсолютной ликвидности |
 | `roa` | Рентабельность | Рентабельность активов |
 | `roe` | Рентабельность | Рентабельность собственного капитала |
 | `ros` | Рентабельность | Рентабельность продаж |
 | `ebitda_margin` | Рентабельность | Маржа EBITDA |
 | `equity_ratio` | Устойчивость | Коэффициент автономии |
-| `leverage` | Устойчивость | Финансовый рычаг |
+| `financial_leverage` | Устойчивость | Канонический display/scoring alias для финансового рычага |
+| `financial_leverage_total` | Устойчивость | Финансовый рычаг по всем обязательствам |
+| `financial_leverage_debt_only` | Устойчивость | Финансовый рычаг только по процентному долгу |
 | `interest_coverage` | Устойчивость | Покрытие процентов |
 | `asset_turnover` | Активность | Оборачиваемость активов |
 | `inventory_turnover` | Активность | Оборачиваемость запасов |
@@ -790,6 +886,7 @@ curl http://localhost:8000/system/ready
 | `text_regex` | 0.5 | Извлечение через регулярное выражение из текста |
 | `ocr` | 0.5 | Распознано через Tesseract OCR |
 | `derived` | 0.3 | Производный расчёт (например, обязательства = активы − капитал) |
+| `issuer_fallback` | 1.0 | Repo-versioned источник эмитента для верифицированных исключений |
 
 При `confidence = 0.0` показатель не найден в документе.
 

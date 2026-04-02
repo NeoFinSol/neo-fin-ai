@@ -30,7 +30,7 @@ import DetailedMetricsCard from '../components/report/DetailedMetricsCard';
 import ReportHeader from '../components/report/ReportHeader';
 import ScoreInsightsCard from '../components/report/ScoreInsightsCard';
 import TrendChart from '../components/TrendChart';
-import { LOW_CONFIDENCE_ALERT_THRESHOLD, REPORT_TOTAL_METRICS } from '../constants/report';
+import { LOW_CONFIDENCE_ALERT_THRESHOLD } from '../constants/report';
 import { useMultiAnalysisPolling } from '../hooks/useMultiAnalysisPolling';
 import { buildChartData } from '../utils/chartUtils';
 import { countReliableMetrics } from '../utils/reliability';
@@ -162,7 +162,12 @@ export const DetailedReport = ({ result, filename, multiSessionId }: DetailedRep
 
                     <Tabs.Panel value="overview">
                         <Stack gap="xl">
-                            <ScoreInsightsCard score={result.score} />
+                            <ScoreInsightsCard
+                                score={result.score}
+                                nlp={result.nlp}
+                                aiRuntime={result.ai_runtime}
+                                ratios={result.ratios}
+                            />
 
                             <Card padding="xl" radius="md" shadow="sm" bg="white" style={{ border: 'none' }}>
                                 <Text component="h3" size="xl" fw={700} mb="xl">
@@ -237,7 +242,6 @@ export const DetailedReport = ({ result, filename, multiSessionId }: DetailedRep
                                 metrics={result.metrics}
                                 extractionMetadata={result.extraction_metadata}
                                 reliableCount={reliableCount}
-                                totalMetrics={REPORT_TOTAL_METRICS}
                             />
                         </Stack>
                     </Tabs.Panel>

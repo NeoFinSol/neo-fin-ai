@@ -139,11 +139,16 @@ class TestAppSettings:
         settings = AppSettings(_env_file=None)
 
         assert settings.task_runtime == "background"
+        assert settings.task_storage_dir is None
         assert settings.task_queue_broker_url is None
         assert settings.task_queue_result_backend is None
         assert settings.task_events_redis_url is None
         assert settings.task_queue_name == "neofin"
         assert settings.task_queue_eager is False
+
+    def test_task_runtime_accepts_shared_storage_dir(self):
+        settings = AppSettings(_env_file=None, TASK_STORAGE_DIR="/shared/task-files")
+        assert settings.task_storage_dir == "/shared/task-files"
 
     def test_task_runtime_invalid_value_falls_back_to_background(self):
         """Invalid runtime values should not break local development."""
@@ -163,17 +168,17 @@ class TestAppSettings:
         assert settings.task_queue_result_backend == "redis://localhost:6379/1"
         assert settings.task_events_redis_url == "redis://localhost:6379/2"
 
-    def test_scoring_profile_defaults_to_generic(self):
+    def test_scoring_profile_defaults_to_auto(self):
         settings = AppSettings(_env_file=None)
-        assert settings.scoring_profile == "generic"
+        assert settings.scoring_profile == "auto"
 
     def test_scoring_profile_accepts_retail_demo(self):
         settings = AppSettings(_env_file=None, SCORING_PROFILE="retail_demo")
         assert settings.scoring_profile == "retail_demo"
 
-    def test_scoring_profile_invalid_value_falls_back_to_generic(self):
+    def test_scoring_profile_invalid_value_falls_back_to_auto(self):
         settings = AppSettings(_env_file=None, SCORING_PROFILE="invalid-profile")
-        assert settings.scoring_profile == "generic"
+        assert settings.scoring_profile == "auto"
 
 
 class TestGlobalAppSettings:

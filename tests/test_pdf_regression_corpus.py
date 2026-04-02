@@ -21,6 +21,19 @@ def _load_corpus() -> list[dict]:
         return json.load(fh)
 
 
+def _load_real_fixture_manifest() -> list[dict]:
+    manifest_path = Path(__file__).parent / "data" / "pdf_real_fixtures" / "manifest.json"
+    with manifest_path.open(encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _load_local_demo_cases() -> list[dict]:
+    manifest_path = Path(__file__).parent / "data" / "demo_manifest.json"
+    with manifest_path.open(encoding="utf-8") as fh:
+        payload = json.load(fh)
+    return payload["local_regression_cases"]
+
+
 CORPUS_CASES = _load_corpus()
 
 
@@ -48,3 +61,20 @@ def test_extract_first_numeric_cell_skips_year_markers() -> None:
     )
 
     assert value == 2300000.0
+
+
+def test_acceptance_corpus_covers_all_metric_keys() -> None:
+    covered: set[str] = set()
+
+    for case in _load_corpus():
+        covered.update(case.get("expected_values", {}).keys())
+
+    for case in _load_real_fixture_manifest():
+        covered.update(case.get("expected_values", {}).keys())
+
+    for case in _load_local_demo_cases():
+        covered.update(case.get("expected", {}).keys())
+
+    missing = set(pdf_extractor._METRIC_KEYWORDS) - covered
+
+    assert not missing, f"Missing acceptance coverage for metrics: {sorted(missing)}"

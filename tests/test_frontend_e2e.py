@@ -2,7 +2,7 @@
 Frontend integration tests.
 """
 import pytest
-from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 pytestmark = pytest.mark.frontend
@@ -38,7 +38,12 @@ class TestFrontendErrorHandling:
 
     def test_frontend_task_not_found_error(self, client):
         """Test frontend receives 404 for unknown task."""
-        response = client.get("/result/nonexistent-task-id")
+        with patch(
+            "src.routers.pdf_tasks.get_analysis",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = client.get("/result/nonexistent-task-id")
 
         assert response.status_code == 404
 
@@ -51,10 +56,12 @@ class TestFrontendSuccessPaths:
         pdf_path = tmp_path / "test.pdf"
         pdf_path.write_bytes(b"%PDF-1.4\n%EOF\n")
 
-        response = client.post(
-            "/upload",
-            files={"file": ("test.pdf", pdf_path.read_bytes(), "application/pdf")},
-        )
+        with patch("src.routers.pdf_tasks.create_analysis", new_callable=AsyncMock), \
+             patch("src.routers.pdf_tasks.dispatch_pdf_task", new_callable=AsyncMock):
+            response = client.post(
+                "/upload",
+                files={"file": ("test.pdf", pdf_path.read_bytes(), "application/pdf")},
+            )
 
         assert response.status_code == 200
         assert "task_id" in response.json()
@@ -64,15 +71,27 @@ class TestFrontendSuccessPaths:
         pdf_path = tmp_path / "test.pdf"
         pdf_path.write_bytes(b"%PDF-1.4\n%EOF\n")
 
-        # Upload
-        response = client.post(
-            "/upload",
-            files={"file": ("test.pdf", pdf_path.read_bytes(), "application/pdf")},
+        processing_analysis = MagicMock(
+            status="processing",
+            result=None,
+            cancel_requested_at=None,
+            cancelled_at=None,
         )
-        task_id = response.json()["task_id"]
 
-        # Poll
-        response = client.get(f"/result/{task_id}")
-        assert response.status_code == 200
-        data = response.json()
-        assert "status" in data
+        with patch("src.routers.pdf_tasks.create_analysis", new_callable=AsyncMock), \
+             patch("src.routers.pdf_tasks.dispatch_pdf_task", new_callable=AsyncMock), \
+             patch(
+                 "src.routers.pdf_tasks.get_analysis",
+                 new_callable=AsyncMock,
+                 return_value=processing_analysis,
+             ):
+            response = client.post(
+                "/upload",
+                files={"file": ("test.pdf", pdf_path.read_bytes(), "application/pdf")},
+            )
+            task_id = response.json()["task_id"]
+
+            response = client.get(f"/result/{task_id}")
+            assert response.status_code == 200
+            data = response.json()
+            assert "status" in data

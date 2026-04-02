@@ -6,7 +6,8 @@ import time
 from dataclasses import dataclass
 
 from src.analysis import pdf_extractor
-from src.analysis.nlp_analysis import analyze_narrative
+from src.analysis.issuer_fallback import apply_issuer_metric_overrides
+from src.analysis.nlp_analysis import analyze_narrative_with_runtime
 from src.analysis.pdf_extractor import (
     extract_metrics_regex,
     apply_confidence_filter,
@@ -19,12 +20,15 @@ from src.analysis.pdf_extractor import (
 
 # Alias expected by tests (БАГ 10 — module-level import requirement)
 _extract_metrics_with_regex = extract_metrics_regex
-from src.analysis.ratios import calculate_ratios, translate_ratios
+from src.analysis.ratios import calculate_ratios, translate_ratios  # backward-compatible test patch surface
 from src.analysis.recommendations import generate_recommendations
 from src.analysis.scoring import (
-    apply_data_quality_guardrails,
-    calculate_integral_score, 
-    build_score_payload
+    annualize_metrics_for_period,  # backward-compatible test patch surface
+    apply_data_quality_guardrails,  # backward-compatible test patch surface
+    build_score_payload,  # backward-compatible test patch surface
+    calculate_integral_score,  # backward-compatible test patch surface
+    calculate_score_with_context,
+    resolve_scoring_methodology,  # backward-compatible test patch surface
 )
 from src.core.runtime_events import broadcast_task_event
 from src.core.task_queue import revoke_runtime_task
@@ -115,7 +119,11 @@ async def _ensure_analysis_exists(task_id: str) -> bool:
     Returns:
         bool: True if record exists/created, False if DB unavailable
     """
-    existing = await get_analysis(task_id)
+    try:
+        existing = await get_analysis(task_id)
+    except SQLAlchemyError:
+        logger.exception("DB error reading analysis for task %s", task_id)
+        return False
     if existing is not None:
         return True
     
@@ -160,7 +168,11 @@ async def _maybe_cancel_analysis(task_id: str, task_logger: logging.Logger) -> b
 
 
 
-async def process_pdf(task_id: str, file_path: str) -> None:
+async def process_pdf(
+    task_id: str,
+    file_path: str,
+    ai_provider: str | None = None,
+) -> None:
     """
     Process PDF file and update analysis results.
     
@@ -196,7 +208,11 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         })
 
         # 1. Extraction Phase
-        extraction_results = await _run_extraction_phase(file_path, task_logger)
+        extraction_results = await _run_extraction_phase(
+            file_path,
+            task_logger,
+            ai_provider=ai_provider,
+        )
         text = extraction_results["text"]
         metrics_filtered = extraction_results["metrics"]
         metadata_payload = extraction_results["metadata"]
@@ -215,8 +231,19 @@ async def process_pdf(task_id: str, file_path: str) -> None:
             "progress": 55,
         })
 
+        analysis_record = await get_analysis(task_id)
+        filename = None
+        if analysis_record and isinstance(analysis_record.result, dict):
+            filename = analysis_record.result.get("filename")
+
         # 2. Ratios & Scoring Phase
-        scoring_results = await _run_scoring_phase(metrics_filtered, task_logger)
+        scoring_results = await _run_scoring_phase(
+            metrics_filtered,
+            task_logger,
+            filename=filename,
+            text=text,
+            extraction_metadata=metadata_payload,
+        )
         ratios_en = scoring_results["ratios_en"]
         score_payload = scoring_results["score_payload"]
 
@@ -233,7 +260,13 @@ async def process_pdf(task_id: str, file_path: str) -> None:
         })
 
         # 3. AI Analysis Phase
-        nlp_result = await _run_ai_analysis_phase(text, metrics_filtered, ratios_en, task_logger)
+        nlp_result, ai_runtime = await _run_ai_analysis_phase(
+            text,
+            metrics_filtered,
+            ratios_en,
+            task_logger,
+            ai_provider=ai_provider,
+        )
 
         await touch_analysis_runtime_heartbeat(task_id)
 
@@ -242,10 +275,6 @@ async def process_pdf(task_id: str, file_path: str) -> None:
 
         # 4. Save & Notify
         total_duration = (time.monotonic() - start_time) * 1000
-        analysis_record = await get_analysis(task_id)
-        filename = None
-        if analysis_record and isinstance(analysis_record.result, dict):
-            filename = analysis_record.result.get("filename")
         result_payload = {
             "filename": filename,
             "data": {
@@ -256,6 +285,7 @@ async def process_pdf(task_id: str, file_path: str) -> None:
                 "ratios": ratios_en,
                 "score": score_payload,
                 "nlp": nlp_result,
+                "ai_runtime": ai_runtime,
                 "extraction_metadata": metadata_payload,
             }
         }
@@ -273,6 +303,7 @@ async def _try_llm_extraction(
     text: str,
     tables: list,
     task_logger: logging.Logger,
+    ai_provider: str | None = None,
 ) -> dict:
     """Attempt LLM-based metric extraction with fallback to regex/camelot.
 
@@ -284,19 +315,20 @@ async def _try_llm_extraction(
         parse_financial_statements_with_metadata, tables, text
     )
 
-    if not ai_service.is_configured:
+    if not ai_service.is_provider_available(ai_provider):
         task_logger.warning(
             "LLM extraction skipped: reason=%s", "llm_unavailable"
         )
         return fallback
 
     try:
-        result = await extract_with_llm(
+        extraction_run = await extract_with_llm(
             text,
             ai_service,
             chunk_size=app_settings.llm_chunk_size,
             max_chunks=app_settings.llm_max_chunks,
             token_budget=app_settings.llm_token_budget,
+            ai_provider=ai_provider,
         )
     except Exception as exc:
         task_logger.warning(
@@ -304,34 +336,86 @@ async def _try_llm_extraction(
         )
         return fallback
 
-    if result is None:
+    if extraction_run.metrics is None:
         task_logger.warning(
-            "LLM extraction returned None: reason=%s", "llm_error"
+            "LLM extraction returned None: reason=%s",
+            extraction_run.failure_reason or "llm_error",
         )
         return fallback
 
+    llm_result = extraction_run.metrics
+
     # Count non-null metrics
-    non_null = sum(1 for m in result.values() if m.value is not None)
+    non_null = sum(1 for m in llm_result.values() if m.value is not None)
+
+    def _prefer_llm_metric(llm_meta, fallback_meta) -> bool:
+        if llm_meta is None or llm_meta.value is None:
+            return False
+        if fallback_meta is None or fallback_meta.value is None:
+            return True
+        if getattr(fallback_meta, "source", "derived") == "derived":
+            return True
+
+        fallback_confidence = float(getattr(fallback_meta, "confidence", 0.0) or 0.0)
+        llm_confidence = float(getattr(llm_meta, "confidence", 0.0) or 0.0)
+        if fallback_confidence > 0.3:
+            return False
+
+        fallback_value = float(fallback_meta.value)
+        llm_value = float(llm_meta.value)
+        if fallback_value == 0.0 or llm_value == 0.0:
+            return False
+        if fallback_value * llm_value < 0:
+            return False
+
+        ratio = max(abs(fallback_value), abs(llm_value)) / max(
+            min(abs(fallback_value), abs(llm_value)),
+            1e-9,
+        )
+        return llm_confidence >= 0.8 and ratio < 10.0
+
+    result = {}
+    llm_contributed: list[str] = []
+    llm_rejected: list[str] = []
+    for key, fallback_meta in fallback.items():
+        llm_meta = llm_result.get(key)
+        if _prefer_llm_metric(llm_meta, fallback_meta):
+            result[key] = llm_meta
+            llm_contributed.append(key)
+            continue
+
+        result[key] = fallback_meta
+        if llm_meta is not None and llm_meta.value is not None:
+            llm_rejected.append(key)
 
     if non_null < 3:
         missing = [
             k for k in ("revenue", "total_assets", "equity")
-            if result.get(k) is None or result[k].value is None
+            if llm_result.get(k) is None or llm_result[k].value is None
         ]
         task_logger.warning(
             "LLM extraction insufficient (%d metrics): reason=%s missing=%s",
             non_null, "insufficient_metrics", missing,
         )
-        # Merge: fill missing keys from fallback
-        for key, meta in fallback.items():
-            if result.get(key) is None or result[key].value is None:
-                result[key] = meta
-        return result
+    if llm_contributed:
+        task_logger.info(
+            "LLM extraction contributed metrics after fallback merge: %s",
+            llm_contributed,
+        )
+    if llm_rejected:
+        task_logger.warning(
+            "LLM extraction rejected for existing fallback metrics: %s",
+            llm_rejected,
+        )
 
     return result
 
 
-async def _run_extraction_phase(file_path: str, logger: logging.Logger) -> dict:
+async def _run_extraction_phase(
+    file_path: str,
+    logger: logging.Logger,
+    ai_provider: str | None = None,
+) -> dict:
     """Run text and table extraction from PDF."""
     start = time.monotonic()
     
@@ -354,11 +438,21 @@ async def _run_extraction_phase(file_path: str, logger: logging.Logger) -> dict:
     else:
         tables = await asyncio.to_thread(extract_tables, file_path)
     if app_settings.llm_extraction_enabled:
-        metadata = await _try_llm_extraction(text, tables, logger)
+        metadata = await _try_llm_extraction(
+            text,
+            tables,
+            logger,
+            ai_provider=ai_provider,
+        )
     else:
         metadata = await asyncio.to_thread(
             parse_financial_statements_with_metadata, tables, text
         )
+    metadata = apply_issuer_metric_overrides(
+        metadata,
+        filename=os.path.basename(file_path),
+        text=text,
+    )
     metrics_filtered, metadata_payload = apply_confidence_filter(metadata)
 
     # NOTE: scale factor is already applied inside parse_financial_statements_with_metadata.
@@ -368,6 +462,13 @@ async def _run_extraction_phase(file_path: str, logger: logging.Logger) -> dict:
     if (not metrics_filtered.get("revenue") or not metrics_filtered.get("total_assets")) and text:
         logger.warning("Critical metrics missing, using regex fallback")
         regex_metrics = extract_metrics_regex(text)
+        regex_blocklist: set[str] = set()
+        if (
+            metrics_filtered.get("revenue") is None
+            and metrics_filtered.get("net_profit") is not None
+            and metrics_filtered.get("total_assets") is not None
+        ):
+            regex_blocklist.add("revenue")
         min_monetary_abs = 1000.0
         monetary_keys = {
             "revenue",
@@ -383,6 +484,12 @@ async def _run_extraction_phase(file_path: str, logger: logging.Logger) -> dict:
         }
         for key, value in regex_metrics.items():
             if value is None:
+                continue
+            if key in regex_blocklist:
+                logger.info(
+                    "Skipping regex fallback for %s because deterministic parser kept stronger balance/P&L signals",
+                    key,
+                )
                 continue
             if key in monetary_keys and abs(value) < min_monetary_abs:
                 logger.debug(
@@ -404,41 +511,75 @@ async def _run_extraction_phase(file_path: str, logger: logging.Logger) -> dict:
     }
 
 
-async def _run_scoring_phase(metrics_filtered: dict, logger: logging.Logger) -> dict:
+async def _run_scoring_phase(
+    metrics_filtered: dict,
+    logger: logging.Logger,
+    filename: str | None = None,
+    text: str | None = None,
+    extraction_metadata: dict[str, dict] | None = None,
+) -> dict:
     """Calculate ratios and integral score."""
     start = time.monotonic()
-    
-    ratios_ru = await asyncio.to_thread(calculate_ratios, metrics_filtered)
-    raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
-    
-    ratios_en = translate_ratios(ratios_ru)
-    score_payload = build_score_payload(raw_score, ratios_en)
-    score_payload = apply_data_quality_guardrails(score_payload, metrics_filtered)
-    
+    score_context = calculate_score_with_context(
+        metrics_filtered,
+        filename=filename,
+        text=text,
+        extraction_metadata=extraction_metadata,
+    )
+
     logger.info("Scoring completed", extra={"duration_ms": (time.monotonic() - start) * 1000})
-    return {"ratios_en": ratios_en, "score_payload": score_payload}
+    return {
+        "ratios_en": score_context["ratios_en"],
+        "score_payload": score_context["score_payload"],
+    }
 
 
-async def _run_ai_analysis_phase(text: str, extracted_metrics: dict, ratios: dict, task_logger: logging.Logger) -> dict:
+async def _run_ai_analysis_phase(
+    text: str,
+    extracted_metrics: dict,
+    ratios: dict,
+    task_logger: logging.Logger,
+    ai_provider: str | None = None,
+) -> tuple[dict, dict]:
     """Run NLP narrative analysis and generate recommendations."""
     nlp_result = {"risks": [], "key_factors": [], "recommendations": []}
+    requested_provider = ai_provider or "auto"
+    ai_provider_available = ai_service.is_provider_available(ai_provider)
+    ai_runtime = {
+        "requested_provider": requested_provider,
+        "effective_provider": (ai_provider or ai_service.provider) if ai_provider_available else None,
+        "status": "skipped",
+        "reason_code": "insufficient_text",
+    }
 
     if text and len(text) > 500:
         try:
-            nlp_result = await asyncio.wait_for(analyze_narrative(text), timeout=60.0)
+            nlp_result, narrative_runtime = await asyncio.wait_for(
+                analyze_narrative_with_runtime(text, ai_provider=ai_provider),
+                timeout=60.0,
+            )
+            ai_runtime["status"] = narrative_runtime["status"]
+            ai_runtime["reason_code"] = narrative_runtime["reason_code"]
         except Exception as e:
             task_logger.warning("NLP analysis failed: %s", e)
+            ai_runtime["status"] = "failed"
+            ai_runtime["reason_code"] = "provider_error"
 
     try:
         recommendations = await asyncio.wait_for(
-            generate_recommendations(extracted_metrics, ratios, nlp_result),
+            generate_recommendations(
+                extracted_metrics,
+                ratios,
+                nlp_result,
+                ai_provider=ai_provider,
+            ),
             timeout=90.0
         )
         nlp_result["recommendations"] = recommendations
     except Exception as e:
         task_logger.warning("Recommendations generation failed: %s", e)
 
-    return nlp_result
+    return nlp_result, ai_runtime
 
 
 async def _finalize_task(task_id: str, payload: dict, duration: float, logger: logging.Logger) -> None:
@@ -604,20 +745,24 @@ async def _process_single_period(period_label: str, file_path: str, session_id: 
             pdf_extractor.parse_financial_statements_with_metadata, tables, text
         )
         metrics, extraction_metadata_payload = apply_confidence_filter(metadata)
-        ratios_ru = await asyncio.to_thread(calculate_ratios, metrics)
+        scoring_results = await _run_scoring_phase(
+            metrics,
+            logger,
+            filename=period_label,
+            text=text,
+            extraction_metadata=extraction_metadata_payload,
+        )
         if session_id is not None:
             await touch_multi_session_runtime_heartbeat(session_id)
-        raw_score = await asyncio.to_thread(calculate_integral_score, ratios_ru)
-
-        ratios_en = translate_ratios(ratios_ru)
-        score_payload = build_score_payload(raw_score, ratios_en)
-        score_payload = apply_data_quality_guardrails(score_payload, metrics)
+        ratios_en = scoring_results["ratios_en"]
+        score_payload = scoring_results["score_payload"]
 
         return {
             "period_label": period_label,
             "ratios": ratios_en,
             "score": score_payload.get("score", None),
             "risk_level": score_payload.get("risk_level", None),
+            "score_methodology": score_payload.get("methodology", None),
             "extraction_metadata": extraction_metadata_payload,
         }
     except FileNotFoundError:
@@ -776,5 +921,3 @@ async def process_multi_analysis(
     finally:
         for file_path in remaining_paths:
             cleanup_temp_file(file_path)
-
-

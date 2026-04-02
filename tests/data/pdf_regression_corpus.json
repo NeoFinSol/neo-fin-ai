@@ -127,5 +127,24 @@
       "liabilities": "table_exact",
       "short_term_liabilities": "derived"
     }
+  },
+  {
+    "name": "text_lines_cover_operating_support_metrics",
+    "tables": [],
+    "text": "EBITDA 123 456\nOperating profit 76 230\nInterest expense (5 872)\nCost of sales 456 789\nAverage inventory 12 345",
+    "expected_values": {
+      "ebitda": 123456.0,
+      "ebit": 76230.0,
+      "interest_expense": -5872.0,
+      "cost_of_goods_sold": 456789.0,
+      "average_inventory": 12345.0
+    },
+    "expected_sources": {
+      "ebitda": "text_regex",
+      "ebit": "text_regex",
+      "interest_expense": "text_regex",
+      "cost_of_goods_sold": "text_regex",
+      "average_inventory": "text_regex"
+    }
   }
 ]

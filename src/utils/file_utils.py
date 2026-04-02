@@ -5,6 +5,16 @@ from pathlib import Path, PurePath
 
 logger = logging.getLogger(__name__)
 
+
+def ensure_directory(path_value: str | os.PathLike | None) -> str | None:
+    """Ensure a directory exists and return its normalized string path."""
+    if path_value is None:
+        return None
+
+    path = Path(path_value)
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
+
 def cleanup_temp_file(file_path: str | os.PathLike | io.IOBase | None) -> None:
     """
     Safely cleanup temporary file or file-like object.

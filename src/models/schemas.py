@@ -47,7 +47,7 @@ class AnalyzeResponse(BaseModel):
 
 class ExtractionMetadataItem(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0, description="Уверенность извлечения [0.0–1.0]")
-    source: Literal["table_exact", "table_partial", "text_regex", "derived"] = Field(
+    source: Literal["table_exact", "table_partial", "text_regex", "derived", "issuer_fallback"] = Field(
         description="Метод извлечения показателя"
     )
 
@@ -58,12 +58,48 @@ class ScoreFactor(BaseModel):
     impact: Literal["positive", "negative", "neutral"] = Field(description="Тип влияния")
 
 
+class ScoreMethodologySchema(BaseModel):
+    benchmark_profile: Literal["generic", "retail_demo"] = Field(description="Профиль бенчмарка для нормализации")
+    period_basis: Literal["reported", "annualized_q1", "annualized_h1"] = Field(
+        description="База периода для скоринга"
+    )
+    detection_mode: Literal["auto"] = Field(description="Режим определения методики")
+    reasons: list[str] = Field(description="Причины выбора профиля и базы периода")
+    guardrails: list[str] = Field(description="Сработавшие data-quality guardrails")
+    leverage_basis: Literal["total_liabilities", "debt_only"] = Field(
+        description="Активная база финансового рычага"
+    )
+    ifrs16_adjusted: bool = Field(description="Применена ли IFRS 16-aware корректировка")
+    adjustments: list[str] = Field(description="Список применённых корректировок методики")
+    peer_context: list[str] = Field(description="Контекст отраслевых ориентиров")
+
+
 class ScoreSchema(BaseModel):
     score: float = Field(ge=0.0, le=100.0, description="Итоговый балл")
     risk_level: str = Field(description="Уровень риска (low, medium, high, critical)")
     confidence_score: float = Field(ge=0.0, le=1.0, description="Достоверность данных")
     factors: list[ScoreFactor] = Field(description="Список влияющих факторов")
     normalized_scores: dict[str, float | None] = Field(description="Нормализованные баллы по каждому коэффициенту")
+    methodology: ScoreMethodologySchema = Field(description="Методика расчёта интегрального скоринга")
+
+
+class AIRuntimeSchema(BaseModel):
+    requested_provider: Literal["auto", "gigachat", "huggingface", "qwen", "ollama"] = Field(
+        description="Провайдер, запрошенный UI или автоматическим режимом"
+    )
+    effective_provider: Literal["gigachat", "huggingface", "qwen", "ollama"] | None = Field(
+        description="Провайдер, который реально использовался в AI-контуре"
+    )
+    status: Literal["succeeded", "empty", "failed", "skipped"] = Field(
+        description="Результат выполнения AI-контура"
+    )
+    reason_code: Literal[
+        "no_nlp_content",
+        "provider_unavailable",
+        "provider_error",
+        "invalid_response",
+        "insufficient_text",
+    ] | None = Field(description="Машинно-читаемая причина статуса")
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +158,7 @@ class PeriodResult(BaseModel):
     ratios: dict[str, float | None]
     score: float | None
     risk_level: RiskLevel | None
+    score_methodology: ScoreMethodologySchema | None = None
     extraction_metadata: dict[str, ExtractionMetadataItem]
 
 

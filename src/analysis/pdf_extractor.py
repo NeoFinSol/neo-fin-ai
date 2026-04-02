@@ -49,7 +49,7 @@ except ValueError:
 # Extraction metadata types
 # ---------------------------------------------------------------------------
 
-ExtractionSource = Literal["table_exact", "table_partial", "text_regex", "derived"]
+ExtractionSource = Literal["table_exact", "table_partial", "text_regex", "derived", "issuer_fallback"]
 
 
 @dataclass
@@ -307,8 +307,7 @@ _METRIC_KEYWORDS = {
         # RSBU/IFRS Russian
         "ebitda",
         "ebit до амортизации",
-        "прибыль до налогов",
-        "прибыль до налогообложения",
+        "показатель ebitda",
         # IFRS English
         "ebitda",
         "earnings before interest, taxes, depreciation and amortization",
@@ -327,6 +326,7 @@ _METRIC_KEYWORDS = {
     ],
     "interest_expense": [
         # RSBU/IFRS Russian
+        "финансовые расходы",
         "процентные расходы",
         "процентные платежи",
         "расходы по процентам",
@@ -355,6 +355,30 @@ _METRIC_KEYWORDS = {
         # IFRS English
         "average inventory",
         "average stocks",
+    ],
+    "short_term_borrowings": [
+        "краткосрочные кредиты и займы",
+        "краткосрочные заемные средства",
+        "short-term borrowings",
+        "current borrowings",
+    ],
+    "long_term_borrowings": [
+        "долгосрочные кредиты и займы",
+        "долгосрочные заемные средства",
+        "long-term borrowings",
+        "non-current borrowings",
+    ],
+    "short_term_lease_liabilities": [
+        "краткосрочные обязательства по аренде",
+        "краткосрочная аренда",
+        "short-term lease liabilities",
+        "current lease liabilities",
+    ],
+    "long_term_lease_liabilities": [
+        "долгосрочные обязательства по аренде",
+        "долгосрочная аренда",
+        "long-term lease liabilities",
+        "non-current lease liabilities",
     ],
 }
 
@@ -1285,6 +1309,76 @@ def _metric_candidate_quality(metric_key: str, candidate_text: str) -> int | Non
             return 90
         return None
 
+    if metric_key == "short_term_borrowings":
+        total_tokens = (
+            "краткосрочные кредиты и займы",
+            "краткосрочные заемные средства",
+            "short-term borrowings",
+            "current borrowings",
+        )
+        if _contains_any(lower_text, ("аренд", "lease")):
+            return None
+        if _contains_any(lower_text, total_tokens):
+            return 88
+        return None
+
+    if metric_key == "long_term_borrowings":
+        total_tokens = (
+            "долгосрочные кредиты и займы",
+            "долгосрочные заемные средства",
+            "long-term borrowings",
+            "non-current borrowings",
+        )
+        if _contains_any(lower_text, ("аренд", "lease")):
+            return None
+        if _contains_any(lower_text, total_tokens):
+            return 88
+        return None
+
+    if metric_key == "short_term_lease_liabilities":
+        total_tokens = (
+            "краткосрочные обязательства по аренде",
+            "short-term lease liabilities",
+            "current lease liabilities",
+        )
+        if _contains_any(lower_text, total_tokens):
+            return 88
+        return None
+
+    if metric_key == "long_term_lease_liabilities":
+        total_tokens = (
+            "долгосрочные обязательства по аренде",
+            "long-term lease liabilities",
+            "non-current lease liabilities",
+        )
+        if _contains_any(lower_text, total_tokens):
+            return 88
+        return None
+
+    if metric_key == "liabilities":
+        total_tokens = (
+            "итого обязательств",
+            "итого обязательства",
+            "обязательства всего",
+            "total liabilities",
+            "liabilities total",
+        )
+        component_tokens = (
+            "по аренде",
+            "аренд",
+            "lease",
+            "краткосрочн",
+            "долгосрочн",
+            "non-current",
+            "current liabilities",
+            "other liabilities",
+        )
+        if _contains_any(lower_text, component_tokens) and not _contains_any(lower_text, total_tokens):
+            return None
+        if _contains_any(lower_text, total_tokens):
+            return 90
+        return None
+
     if metric_key == "accounts_receivable":
         if _contains_any(lower_text, ("долгосрочн", "long-term", "non-current")):
             return None
@@ -1362,6 +1456,8 @@ def _derive_current_assets_from_available(
 def _apply_form_like_pnl_sanity(
     raw: dict[str, tuple[float, str, bool, int]],
     code_candidates: dict[str, float],
+    *,
+    is_standalone_form: bool = False,
 ) -> None:
     revenue_entry = raw.get("revenue")
     net_profit_entry = raw.get("net_profit")
@@ -1377,6 +1473,30 @@ def _apply_form_like_pnl_sanity(
     if current_margin <= 0.6:
         return
 
+    if is_standalone_form:
+        return
+
+    revenue_code = code_candidates.get("revenue")
+    net_profit_code = code_candidates.get("net_profit")
+    if revenue_code is not None and net_profit_code is not None:
+        _raw_set(
+            raw,
+            "revenue",
+            revenue_code,
+            "text_regex",
+            True,
+            candidate_quality=120,
+        )
+        _raw_set(
+            raw,
+            "net_profit",
+            net_profit_code,
+            "text_regex",
+            True,
+            candidate_quality=120,
+        )
+        return
+
     revenue_priority = _source_priority(revenue_entry[1], revenue_entry[2])
     net_profit_priority = _source_priority(net_profit_entry[1], net_profit_entry[2])
     if revenue_priority >= 3 or net_profit_priority >= 3:
@@ -1386,8 +1506,6 @@ def _apply_form_like_pnl_sanity(
     best_net_profit = net_profit
     best_margin = current_margin
 
-    revenue_code = code_candidates.get("revenue")
-    net_profit_code = code_candidates.get("net_profit")
     candidate_pairs = [
         (revenue_code, net_profit),
         (revenue, net_profit_code),
@@ -1468,7 +1586,8 @@ def parse_financial_statements_with_metadata(
     Missing metrics: ExtractionMetadata(value=None, confidence=0.0, source="derived").
     Always returns exactly len(_METRIC_KEYWORDS) keys.
     """
-    text_lower = (text or "").lower()
+    text = _normalize_metric_text(text or "")
+    text_lower = text.lower()
     has_russian_balance_header = "бухгалтерский баланс" in text_lower
     has_russian_results_header = "отчет о финансовых результатах" in text_lower
     is_form_like = (
@@ -1515,18 +1634,7 @@ def parse_financial_statements_with_metadata(
         "1500": "short_term_liabilities", "1400": "long_term_liabilities",
         "1230": "accounts_receivable", "1210": "inventory",
         "1250": "cash_and_equivalents", "2120": "cost_of_goods_sold",
-        "2200": "ebit", "2110": "revenue",
-        # IFRS common line codes (vary by company, but these are frequent)
-        "3": "revenue",  # Revenue line in many IFRS statements
-        "4": "cost_of_goods_sold",  # Cost of sales
-        "5": "gross_profit",  # Gross profit (not tracked, but useful)
-        "11": "total_assets",  # Total assets in some IFRS templates
-        "12": "current_assets",  # Current assets
-        "13": "non_current_assets",  # Non-current assets
-        "14": "equity",  # Total equity
-        "15": "liabilities",  # Total liabilities
-        "16": "current_liabilities",  # Current liabilities
-        "17": "non_current_liabilities",  # Non-current liabilities
+        "2200": "ebit",
     }
     # IFRS English keyword map for table extraction
     _IFRS_ENGLISH_KEYWORDS: dict[str, str] = {
@@ -1563,7 +1671,14 @@ def parse_financial_statements_with_metadata(
         "current liabilities": "short_term_liabilities",
         "non-current liabilities": "long_term_liabilities",
         "trade payables": "liabilities",
-        "borrowings": "liabilities",
+        "short-term borrowings": "short_term_borrowings",
+        "current borrowings": "short_term_borrowings",
+        "long-term borrowings": "long_term_borrowings",
+        "non-current borrowings": "long_term_borrowings",
+        "short-term lease liabilities": "short_term_lease_liabilities",
+        "current lease liabilities": "short_term_lease_liabilities",
+        "long-term lease liabilities": "long_term_lease_liabilities",
+        "non-current lease liabilities": "long_term_lease_liabilities",
         # Components
         "cash and cash equivalents": "cash_and_equivalents",
         "trade receivables": "accounts_receivable",
@@ -1702,26 +1817,6 @@ def parse_financial_statements_with_metadata(
                             logger.debug("[EXTRACT] %s = %s (source=ifrs_english, kw=%s)", metric_key, value, english_kw)
                         break
 
-            # Strategy D: IFRS 1-2 digit line codes (single digit codes common in IFRS)
-            for ci, cell in enumerate(row):
-                if cell is None:
-                    continue
-                cs = str(cell).strip().replace("\xa0", "").replace(" ", "")
-                if cs.isdigit() and len(cs) <= 2 and cs in _LINE_CODE_MAP:
-                    metric_key = _LINE_CODE_MAP[cs]
-                    value = _extract_first_numeric_cell(row[ci + 1:])
-                    if value is not None and _is_valid_financial_value(value):
-                        _raw_set(
-                            raw,
-                            metric_key,
-                            value,
-                            "table",
-                            True,
-                            candidate_quality=100,
-                        )
-                        logger.debug("[EXTRACT] %s = %s (source=ifrs_line_code, code=%s)", metric_key, value, cs)
-
-
     for table in tables or []:
         rows = _table_to_rows(table)
         
@@ -1836,13 +1931,14 @@ def parse_financial_statements_with_metadata(
             if not _is_valid_financial_value(code_value):
                 continue
             form_pnl_code_candidates[metric_key] = code_value
+            candidate_quality = 110 if metric_key == "revenue" else 120
             _raw_set(
                 raw,
                 metric_key,
                 code_value,
                 "text_regex",
                 True,
-                candidate_quality=120,
+                candidate_quality=candidate_quality,
             )
 
     # Pass 2: free text keyword proximity (with context window)
@@ -1993,7 +2089,7 @@ def parse_financial_statements_with_metadata(
                     break
 
     # Pass 3.5: OCR section totals from Russian scanned balance forms.
-    if is_balance_like and not tables and "short_term_liabilities" not in raw:
+    if is_balance_like and "short_term_liabilities" not in raw:
         short_term_value = _extract_form_section_total(
             text,
             (
@@ -2075,7 +2171,7 @@ def parse_financial_statements_with_metadata(
                 inferred_short_term,
             )
 
-    if is_balance_like and not tables and "long_term_liabilities" not in raw:
+    if is_balance_like and "long_term_liabilities" not in raw:
         short_term_value = (
             raw["short_term_liabilities"][0]
             if "short_term_liabilities" in raw
@@ -2130,7 +2226,11 @@ def parse_financial_statements_with_metadata(
                 is_exact,
                 candidate_quality=quality,
             )
-        _apply_form_like_pnl_sanity(raw, form_pnl_code_candidates)
+        _apply_form_like_pnl_sanity(
+            raw,
+            form_pnl_code_candidates,
+            is_standalone_form=("консолид" not in text_lower and "consolidated" not in text_lower),
+        )
 
     # Pass 4: derive missing metrics
     if "liabilities" not in raw:
@@ -2169,6 +2269,24 @@ def parse_financial_statements_with_metadata(
                 if ratio >= 0.02:
                     logger.debug("Derived liabilities = assets - equity = %s", derived)
                     raw["liabilities"] = (derived, "derived_strong", False, 60)
+
+    if "short_term_liabilities" not in raw and "liabilities" in raw:
+        long_term = (
+            raw["long_term_liabilities"][0]
+            if "long_term_liabilities" in raw
+            else None
+        )
+        liabilities = raw["liabilities"][0]
+        if long_term is not None:
+            derived = liabilities - long_term
+            if _is_valid_financial_value(derived) and derived >= 0:
+                logger.debug(
+                    "Derived short_term_liabilities = liabilities(%s) - long_term(%s) = %s",
+                    liabilities,
+                    long_term,
+                    derived,
+                )
+                raw["short_term_liabilities"] = (derived, "derived", False, 30)
 
     # Derive current_assets from known components if still missing
     if "current_assets" not in raw:
@@ -2533,10 +2651,11 @@ def _extract_preferred_numeric_match(text: str) -> float | None:
 
     parsed_candidates: list[tuple[str, float]] = []
     for raw_match in matches:
-        value = _normalize_number(raw_match)
+        candidate_text = _split_non_ocr_grouped_period_values(raw_match)
+        value = _normalize_number(candidate_text)
         if value is None or _is_year(value):
             continue
-        parsed_candidates.append((raw_match, value))
+        parsed_candidates.append((candidate_text, value))
 
     if not parsed_candidates:
         return None
@@ -2582,6 +2701,23 @@ def _split_grouped_period_values(raw_match: str) -> str:
     if negative and not prefix.startswith("-"):
         prefix = f"-{prefix}"
     return prefix
+
+
+def _split_non_ocr_grouped_period_values(raw_match: str) -> str:
+    """Conservatively split two-period numeric runs from regular text extraction."""
+    if "\n" in raw_match:
+        return raw_match
+
+    groups = re.findall(r"\d+", raw_match)
+    if len(groups) != 4:
+        return raw_match
+
+    lengths = [len(group) for group in groups]
+    if lengths == [3, 3, 3, 3]:
+        return " ".join(groups[:2])
+    if lengths[1] == 3 and lengths[3] == 3 and lengths[0] <= 2 and lengths[2] <= 2:
+        return " ".join(groups[:2])
+    return raw_match
 
 
 def _extract_ocr_numeric_candidates(text: str) -> list[str]:
@@ -2640,6 +2776,36 @@ def _extract_preferred_ocr_numeric_match(text: str) -> float | None:
         return value
 
     return parsed_candidates[-1][1]
+
+
+def _extract_substantial_code_line_value(text: str) -> float | None:
+    """Extract a same-line financial value near a form code without following
+    explanatory note references."""
+    matches = _extract_ocr_numeric_candidates(text)
+    if not matches:
+        return None
+
+    parsed_candidates: list[tuple[float, int]] = []
+    for raw_match in matches:
+        value = _normalize_number(_split_grouped_period_values(raw_match))
+        if value is None or _is_year(value):
+            continue
+        parsed_candidates.append((value, sum(ch.isdigit() for ch in raw_match)))
+
+    if not parsed_candidates:
+        return None
+
+    if not any(digit_count >= 5 for _value, digit_count in parsed_candidates):
+        return None
+
+    for value, digit_count in parsed_candidates:
+        if digit_count < 5:
+            continue
+        if len(parsed_candidates) > 1 and abs(value) > 10_000_000_000:
+            continue
+        return value
+
+    return None
 
 
 def _extract_numeric_value_from_following_lines(lines: list[str]) -> float | None:
@@ -2830,7 +2996,7 @@ def _extract_form_like_pnl_section_candidates(
         lookahead_chars=1400,
     )
     if _is_valid_financial_value(revenue_code_value):
-        candidates["revenue"] = (revenue_code_value, 120, True)
+        candidates["revenue"] = (revenue_code_value, 110, True)
     else:
         for idx, line in enumerate(section_lines):
             lower_line = line.lower()
@@ -3022,9 +3188,6 @@ _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] =
         ),
     ),
     "cash_and_equivalents": (("1250",), ("денежные средства", "cash and cash equivalents")),
-    # IFRS additional codes (single and double digit codes common in IFRS)
-    "equity": (("1300", "14", "13"), None),
-    "liabilities": (("15", "17"), None),
 }
 
 
@@ -3039,24 +3202,28 @@ def _extract_value_near_text_codes(
     for code in codes:
         pattern = rf"(?<!\d){re.escape(code)}(?!\d)"
         for match in re.finditer(pattern, text_lower):
-            window = text[match.end(): match.end() + lookahead_chars]
-            if not window:
+            line_start = text.rfind("\n", 0, match.start()) + 1
+            line_end = text.find("\n", match.end())
+            if line_end == -1:
+                line_end = len(text)
+
+            current_line = text[line_start:line_end]
+            if not current_line:
                 continue
 
-            target_window = window
-            if anchor_keywords:
-                lowered_window = window.lower()
-                anchor_positions = [
-                    lowered_window.find(keyword)
-                    for keyword in anchor_keywords
-                    if lowered_window.find(keyword) != -1
-                ]
-                if anchor_positions:
-                    target_window = window[min(anchor_positions):]
-            else:
-                target_window = window[:140]
+            current_line_lower = current_line.lower()
+            is_code_row = bool(
+                re.search(rf"(^|\b)код\s+{re.escape(code)}(?!\d)", current_line_lower)
+            ) or current_line_lower.strip().startswith(code)
+            if (
+                anchor_keywords
+                and not any(keyword in current_line_lower for keyword in anchor_keywords)
+                and not is_code_row
+            ):
+                continue
 
-            value = _extract_preferred_ocr_numeric_match(target_window)
+            same_line_window = current_line[match.end() - line_start:]
+            value = _extract_substantial_code_line_value(same_line_window)
             if _is_valid_financial_value(value):
                 return value
 
@@ -3075,6 +3242,7 @@ def _extract_best_multiline_value(
     best_quality: int | None = None
     ordered_keywords = sorted(keywords, key=len, reverse=True)
     normalized_lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    prefer_smaller_on_tie = metric_key in {"accounts_receivable"}
 
     for index, line in enumerate(normalized_lines):
         lower_line = line.lower()
@@ -3105,9 +3273,18 @@ def _extract_best_multiline_value(
             same_line_source = line[line.lower().find(matched_keyword) + len(matched_keyword):]
             same_line_value = _extract_preferred_ocr_numeric_match(same_line_source)
             if _is_valid_financial_value(same_line_value):
-                if best_score is None or score > best_score or (
-                    score == best_score and abs(same_line_value) > abs(best_value or 0.0)
-                ):
+                same_line_is_better = False
+                if best_score is None or score > best_score:
+                    same_line_is_better = True
+                elif score == best_score:
+                    if prefer_smaller_on_tie:
+                        same_line_is_better = (
+                            best_value is None or abs(same_line_value) < abs(best_value)
+                        )
+                    else:
+                        same_line_is_better = abs(same_line_value) > abs(best_value or 0.0)
+
+                if same_line_is_better:
                     best_score = score
                     best_value = same_line_value
                     best_quality = metric_quality
@@ -3136,9 +3313,18 @@ def _extract_best_multiline_value(
                 followup_lines
             )
             if _is_valid_financial_value(line_value):
-                if best_score is None or score > best_score or (
-                    score == best_score and abs(line_value) > abs(best_value or 0.0)
-                ):
+                followup_is_better = False
+                if best_score is None or score > best_score:
+                    followup_is_better = True
+                elif score == best_score:
+                    if prefer_smaller_on_tie:
+                        followup_is_better = (
+                            best_value is None or abs(line_value) < abs(best_value)
+                        )
+                    else:
+                        followup_is_better = abs(line_value) > abs(best_value or 0.0)
+
+                if followup_is_better:
                     best_score = score
                     best_value = line_value
                     best_quality = metric_quality
@@ -3172,7 +3358,19 @@ def _extract_best_multiline_value(
     return best_value, best_quality
 
 
+def _normalize_metric_text(text: str) -> str:
+    return (
+        text.replace("\u2019", "'")
+        .replace("\u2018", "'")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+    )
+
+
 _LINE_NOISE_HINTS = (
+    "consolidated statements of",
+    "statement of stockholders",
+    "statement of shareholders",
     "increase",
     "decrease",
     "decline",
@@ -3199,10 +3397,14 @@ def _extract_best_line_value(
     best_score: int | None = None
     best_value: float | None = None
     best_quality: int | None = None
-    ordered_keywords = sorted(keywords, key=len, reverse=True)
+    ordered_keywords = sorted(
+        {_normalize_metric_text(keyword).lower() for keyword in keywords},
+        key=len,
+        reverse=True,
+    )
 
     for raw_line in text.splitlines():
-        line = " ".join(raw_line.split())
+        line = _normalize_metric_text(" ".join(raw_line.split()))
         if not line:
             continue
 
@@ -3234,11 +3436,13 @@ def _extract_best_line_value(
 
 
 def _extract_number_after_keyword(line: str, keyword: str) -> float | None:
-    keyword_index = line.lower().find(keyword)
+    normalized_line = _normalize_metric_text(line)
+    normalized_keyword = _normalize_metric_text(keyword).lower()
+    keyword_index = normalized_line.lower().find(normalized_keyword)
     if keyword_index == -1:
         return None
 
-    window = line[keyword_index + len(keyword):]
+    window = normalized_line[keyword_index + len(normalized_keyword):]
     return _extract_preferred_numeric_match(window)
 
 
@@ -3247,6 +3451,9 @@ def _score_metric_line(lower_line: str, keyword: str, line: str) -> int:
     score = 0
     keyword_index = lower_line.find(keyword)
     number_count = len(_NUMBER_PATTERN.findall(line))
+    keyword_specificity_bonus = min(4, max(0, len(keyword.split()) - 1))
+
+    score += keyword_specificity_bonus
 
     if keyword_index == 0:
         score += 5

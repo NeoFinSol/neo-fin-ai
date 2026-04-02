@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "neofin-documents",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -14,7 +14,6 @@
     "coverage": "vitest --run --coverage"
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
     "@mantine/charts": "^8.3.18",
     "@mantine/core": "^8.3.18",
     "@mantine/dropzone": "^8.3.18",
@@ -26,8 +25,6 @@
     "@vitejs/plugin-react": "^5.0.4",
     "axios": "^1.13.6",
     "clsx": "^2.1.1",
-    "dotenv": "^17.2.3",
-    "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.0",
@@ -41,7 +38,6 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",

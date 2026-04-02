@@ -1,7 +1,7 @@
 """Add multi_analysis_sessions table
 
-Revision ID: 0003_add_multi_analysis_sessions
-Revises: 0002_add_status_created_at_indexes
+Revision ID: 0003_multi_analysis_sessions
+Revises: 0002_status_created_idx
 Create Date: 2026-03-24 12:00:00
 
 Supports multi-period financial analysis sessions (neofin-competition-release).
@@ -12,8 +12,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "0003_add_multi_analysis_sessions"
-down_revision = "0002_add_status_created_at_indexes"
+revision = "0003_multi_analysis_sessions"
+down_revision = "0002_status_created_idx"
 branch_labels = None
 depends_on = None
 

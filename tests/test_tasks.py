@@ -8,6 +8,7 @@ from fastapi import BackgroundTasks
 from cryptography.utils import CryptographyDeprecationWarning
 
 from src.analysis.pdf_extractor import extract_text
+from src.analysis.llm_extractor import LlmExtractionRunResult, _build_empty_result
 from src.analysis.ratios import translate_ratios
 from src.analysis.scoring import build_score_payload
 from src.core.task_queue import (
@@ -17,7 +18,7 @@ from src.core.task_queue import (
     revoke_runtime_task,
 )
 from src.exceptions import TaskRuntimeError
-from src.tasks import process_pdf
+from src.tasks import _run_extraction_phase, _try_llm_extraction, process_pdf
 
 warnings.filterwarnings(
     "ignore",
@@ -345,6 +346,115 @@ class TestProcessPdf:
             # Let's check src/tasks.py:108
             mock_cleanup.assert_called_once_with(file_path)
 
+    @pytest.mark.asyncio
+    async def test_regex_fallback_does_not_restore_revenue_after_parser_conflict(self):
+        logger = MagicMock()
+        filtered_metrics = {
+            "revenue": None,
+            "net_profit": 1_348_503_000.0,
+            "total_assets": 435_659_511_000.0,
+        }
+
+        with patch("src.tasks.is_scanned_pdf", return_value=True), \
+             patch("src.tasks.extract_text_from_scanned", return_value="OCR text"), \
+             patch("src.tasks.is_clean_financial_text", return_value=True), \
+             patch("src.tasks.parse_financial_statements_with_metadata", return_value={}), \
+             patch("src.tasks.apply_confidence_filter", return_value=(filtered_metrics.copy(), {})), \
+             patch("src.tasks.extract_metrics_regex", return_value={"revenue": 123_618_123_618.0}), \
+             patch.object(__import__("src.tasks", fromlist=["app_settings"]).app_settings, "llm_extraction_enabled", False):
+
+            result = await _run_extraction_phase("/tmp/scanned.pdf", logger)
+
+        assert result["metrics"]["revenue"] is None
+        assert result["metrics"]["net_profit"] == 1_348_503_000.0
+        assert result["metrics"]["total_assets"] == 435_659_511_000.0
+
+
+class TestTryLlmExtraction:
+    @pytest.mark.asyncio
+    async def test_invalid_schema_reason_uses_fallback(self, caplog):
+        fallback = _build_empty_result()
+        fallback["revenue"] = fallback["revenue"].__class__(
+            value=1_000_000.0,
+            confidence=0.5,
+            source="text_regex",
+        )
+
+        with patch("src.tasks.parse_financial_statements_with_metadata", return_value=fallback), \
+             patch("src.tasks.ai_service") as mock_ai_service, \
+             patch("src.tasks.extract_with_llm", new_callable=AsyncMock) as mock_extract:
+            mock_ai_service.is_configured = True
+            mock_extract.return_value = LlmExtractionRunResult(
+                metrics=None,
+                failure_reason="invalid_schema",
+            )
+
+            with caplog.at_level("WARNING"):
+                result = await _try_llm_extraction(
+                    "Выручка 1 000 000",
+                    [],
+                    __import__("logging").getLogger("test"),
+                )
+
+        assert result["revenue"].value == 1_000_000.0
+        assert "reason=invalid_schema" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_llm_only_fills_missing_or_derived_metrics(self, caplog):
+        fallback = _build_empty_result()
+        fallback["revenue"] = fallback["revenue"].__class__(
+            value=1_000_000.0,
+            confidence=0.5,
+            source="text_regex",
+        )
+        fallback["total_assets"] = fallback["total_assets"].__class__(
+            value=None,
+            confidence=0.0,
+            source="derived",
+        )
+
+        llm_metrics = _build_empty_result()
+        llm_metrics["revenue"] = llm_metrics["revenue"].__class__(
+            value=1_000.0,
+            confidence=0.98,
+            source="llm",
+        )
+        llm_metrics["total_assets"] = llm_metrics["total_assets"].__class__(
+            value=2_500_000.0,
+            confidence=0.95,
+            source="llm",
+        )
+        llm_metrics["cash_and_equivalents"] = llm_metrics["cash_and_equivalents"].__class__(
+            value=250_000.0,
+            confidence=0.93,
+            source="llm",
+        )
+
+        with patch("src.tasks.parse_financial_statements_with_metadata", return_value=fallback), \
+             patch("src.tasks.ai_service") as mock_ai_service, \
+             patch("src.tasks.extract_with_llm", new_callable=AsyncMock) as mock_extract:
+            mock_ai_service.is_configured = True
+            mock_extract.return_value = LlmExtractionRunResult(
+                metrics=llm_metrics,
+                failure_reason=None,
+            )
+
+            with caplog.at_level("INFO"):
+                result = await _try_llm_extraction(
+                    "Выручка 1 000 000",
+                    [],
+                    __import__("logging").getLogger("test"),
+                )
+
+        assert result["revenue"].value == 1_000_000.0
+        assert result["revenue"].source == "text_regex"
+        assert result["total_assets"].value == 2_500_000.0
+        assert result["total_assets"].source == "llm"
+        assert result["cash_and_equivalents"].value == 250_000.0
+        assert result["cash_and_equivalents"].source == "llm"
+        assert "contributed metrics" in caplog.text
+        assert "rejected for existing fallback metrics" in caplog.text
+
 
 class TestTaskQueueDispatch:
     """Tests for persistent runtime dispatch helpers."""
@@ -385,6 +495,27 @@ class TestTaskQueueDispatch:
             args=["task-123", "/tmp/test.pdf"],
             task_id="task-123",
             queue="neofin",
+        )
+
+    @pytest.mark.asyncio
+    async def test_dispatch_pdf_task_forwards_ai_provider(self):
+        background_tasks = MagicMock(spec=BackgroundTasks)
+        background_callable = MagicMock()
+
+        with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "background"):
+            await dispatch_pdf_task(
+                background_tasks,
+                task_id="task-123",
+                file_path="/tmp/test.pdf",
+                background_callable=background_callable,
+                ai_provider="ollama",
+            )
+
+        background_tasks.add_task.assert_called_once_with(
+            background_callable,
+            "task-123",
+            "/tmp/test.pdf",
+            "ollama",
         )
 
     @pytest.mark.asyncio

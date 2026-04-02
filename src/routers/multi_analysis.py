@@ -23,6 +23,7 @@ from src.db.crud import (
     update_multi_session,
 )
 from src.exceptions import DatabaseError, TaskRuntimeError
+from src.models.settings import app_settings
 from src.models.schemas import (
     MultiAnalysisAcceptedResponse,
     MultiAnalysisCancelledResponse,
@@ -32,6 +33,7 @@ from src.models.schemas import (
     PeriodInput,
 )
 from src.tasks import process_multi_analysis, request_multi_session_cancellation
+from src.utils.file_utils import ensure_directory
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/multi-analysis", tags=["multi-analysis"])
@@ -52,6 +54,12 @@ def _multi_session_runtime_status(session) -> str:
     if is_multi_session_cancellation_pending(session):
         return "cancelling"
     return session.status
+
+
+def _task_storage_dir() -> str | None:
+    if app_settings.task_runtime != "celery":
+        return None
+    return ensure_directory(app_settings.task_storage_dir)
 
 
 @router.post("", status_code=202, response_model=MultiAnalysisAcceptedResponse)
@@ -76,7 +84,11 @@ async def start_multi_analysis(
     session_id = ""
     try:
         for file, label in zip(files, periods):
-            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=".pdf",
+                dir=_task_storage_dir(),
+            )
             temp_paths.append(tmp.name)
             try:
                 content = await file.read()

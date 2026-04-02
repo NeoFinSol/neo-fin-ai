@@ -181,12 +181,15 @@ class GigaChatAgent(BaseAIAgent):
             ValueError: If agent is not configured
         """
         self._ensure_configured()
-        
-        return await self.request(
-            messages=input.get("tool_input", ""),
-            system=input.get("system"),
-            timeout=timeout
-        )
+
+        request_kwargs = {
+            "messages": input.get("tool_input", ""),
+            "system": input.get("system"),
+        }
+        if timeout is not None:
+            request_kwargs["timeout"] = timeout
+
+        return await self.request(**request_kwargs)
 
     async def request(
         self, 
@@ -263,37 +266,37 @@ class GigaChatAgent(BaseAIAgent):
                             await asyncio.sleep(delay)
                             continue
                         return None
-                        
-                        try:
-                            data = await res.json()
-                            
-                            # GigaChat response format:
-                            # {
-                            #   "choices": [
-                            #     {
-                            #       "message": {
-                            #         "role": "assistant",
-                            #         "content": "..."
-                            #       }
-                            #     }
-                            #   ]
-                            # }
-                            choices = data.get("choices", [])
-                            if choices and len(choices) > 0:
-                                message = choices[0].get("message", {})
-                                response = message.get("content", "")
-                                
-                                if response:
-                                    logger.info("Successfully received response from GigaChat")
-                                    return response
-                            
-                            logger.warning("Empty response from GigaChat API")
-                            return None
-                            
-                        except ContentTypeError:
-                            text = await res.text()
-                            logger.error("Unexpected content type from GigaChat API: %s", text[:200])
-                            return text
+
+                    try:
+                        data = await res.json()
+
+                        # GigaChat response format:
+                        # {
+                        #   "choices": [
+                        #     {
+                        #       "message": {
+                        #         "role": "assistant",
+                        #         "content": "..."
+                        #       }
+                        #     }
+                        #   ]
+                        # }
+                        choices = data.get("choices", [])
+                        if choices and len(choices) > 0:
+                            message = choices[0].get("message", {})
+                            response = message.get("content", "")
+
+                            if response:
+                                logger.info("Successfully received response from GigaChat")
+                                return response
+
+                        logger.warning("Empty response from GigaChat API")
+                        return None
+
+                    except ContentTypeError:
+                        text = await res.text()
+                        logger.error("Unexpected content type from GigaChat API: %s", text[:200])
+                        return text
                             
             except asyncio.TimeoutError as e:
                 last_exception = e

@@ -45,6 +45,14 @@ beforeEach(() => {
 });
 
 describe('Auth — API key validation', () => {
+    it('renders updated product branding and legal footer', () => {
+        renderAuth();
+
+        expect(screen.getByRole('heading', { name: 'НеоФин.Документы' })).toBeInTheDocument();
+        expect(screen.getByText(/модуль экосистемы НеоФин\.Контур/i)).toBeInTheDocument();
+        expect(screen.getByText(/НеоФин\. Все права защищены, 2026\./i)).toBeInTheDocument();
+    });
+
     it('shows error when key field is empty and form is submitted', async () => {
         renderAuth();
         fireEvent.click(screen.getByRole('button', { name: /войти/i }));

@@ -1,25 +1,19 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import base64
 import os
 
-from io import BytesIO
-
-import pytest
-
 import src.routers.pdf_tasks as pdf_tasks
-import src.routers.analyze as analyze_router
-from src.controllers import analyze as analyze_controller
 
 
 class FakeAnalysis:
     def __init__(self, status: str, result: dict | None = None):
         self.status = status
         self.result = result
+        self.cancel_requested_at = None
 
 
 def test_upload_and_result(client, monkeypatch, tmp_path):
-    """Test complete upload → result flow."""
+    """Test complete upload -> result flow."""
     store: dict[str, FakeAnalysis] = {}
 
     async def fake_create(task_id: str, status: str, result: dict | None = None):
@@ -60,6 +54,7 @@ def test_upload_and_result(client, monkeypatch, tmp_path):
 
 def test_result_not_found(client, monkeypatch):
     """Test 404 for unknown task_id."""
+
     async def fake_get(_task_id: str):
         return None
 
@@ -69,95 +64,98 @@ def test_result_not_found(client, monkeypatch):
     assert response.status_code == 404
 
 
-def test_analyze_pdf_file_success(client, monkeypatch, tmp_path):
-    """Test /analyze/pdf/file endpoint with valid PDF."""
-    async def fake_analyze(file, task_id=None):
-        return {"status": "completed", "data": {"ratios": {}, "score": {"score": 75}}}
+def test_upload_forwards_requested_ai_provider(client, monkeypatch, tmp_path):
+    """Upload flow forwards requested ai_provider into the processing task."""
+    store: dict[str, FakeAnalysis] = {}
+    captured: dict[str, str | None] = {"provider": None}
 
-    monkeypatch.setattr(analyze_controller, "analyze_pdf", fake_analyze)
+    async def fake_create(task_id: str, status: str, result: dict | None = None):
+        store[task_id] = FakeAnalysis(status=status, result=result)
+        return store[task_id]
 
-    pdf_path = tmp_path / "test.pdf"
+    async def fake_get(task_id: str):
+        return store.get(task_id)
+
+    async def fake_process(task_id: str, file_path: str, ai_provider: str | None = None):
+        captured["provider"] = ai_provider
+        analysis = store.get(task_id)
+        if analysis:
+            analysis.status = "completed"
+            analysis.result = {"data": {"ratios": {}, "score": {"score": 0}}}
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    monkeypatch.setattr(pdf_tasks, "create_analysis", fake_create)
+    monkeypatch.setattr(pdf_tasks, "get_analysis", fake_get)
+    monkeypatch.setattr(pdf_tasks, "process_pdf", fake_process)
+
+    pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\n%EOF\n")
 
     response = client.post(
-        "/analyze/pdf/file",
-        files={"file": ("test.pdf", pdf_path.read_bytes(), "application/pdf")},
+        "/upload",
+        files={"file": ("sample.pdf", pdf_path.read_bytes(), "application/pdf")},
+        data={"ai_provider": "ollama"},
     )
 
     assert response.status_code == 200
+    assert captured["provider"] == "ollama"
 
 
-def test_analyze_pdf_file_invalid_content_type(client, tmp_path):
-    """Test rejection of non-PDF file."""
-    pdf_path = tmp_path / "test.txt"
-    pdf_path.write_bytes(b"not a pdf")
+def test_result_returns_score_methodology(client, monkeypatch):
+    """Completed result exposes scoring methodology in score payload."""
 
-    response = client.post(
-        "/analyze/pdf/file",
-        files={"file": ("test.txt", pdf_path.read_bytes(), "text/plain")},
+    analysis = FakeAnalysis(
+        status="completed",
+        result={
+            "filename": "report.pdf",
+            "data": {
+                "ratios": {},
+                "score": {
+                    "score": 60.78,
+                    "risk_level": "medium",
+                    "confidence_score": 0.95,
+                    "factors": [],
+                    "normalized_scores": {},
+                    "methodology": {
+                        "benchmark_profile": "retail_demo",
+                        "period_basis": "reported",
+                        "detection_mode": "auto",
+                        "reasons": ["retail_keyword"],
+                        "guardrails": [],
+                        "leverage_basis": "debt_only",
+                        "ifrs16_adjusted": True,
+                        "adjustments": [
+                            "interest_coverage_sign_corrected",
+                            "leverage_debt_only",
+                        ],
+                        "peer_context": [
+                            "Large food retail may operate with current ratio below 1; Walmart current ratio ~0.79 (Jan 2026 reference).",
+                        ],
+                    },
+                },
+                "ai_runtime": {
+                    "requested_provider": "ollama",
+                    "effective_provider": "ollama",
+                    "status": "succeeded",
+                    "reason_code": None,
+                },
+            },
+        },
     )
 
-    assert response.status_code == 400
+    async def fake_get(_task_id: str):
+        return analysis
 
-
-def test_analyze_pdf_file_empty_file(client, tmp_path):
-    """Test rejection of empty file."""
-    pdf_path = tmp_path / "empty.pdf"
-    pdf_path.write_bytes(b"")
-
-    response = client.post(
-        "/analyze/pdf/file",
-        files={"file": ("empty.pdf", pdf_path.read_bytes(), "application/pdf")},
-    )
-
-    assert response.status_code == 400
-
-
-def test_analyze_pdf_file_too_large(client, tmp_path, monkeypatch):
-    """Test rejection of oversized file."""
-    monkeypatch.setenv("MAX_FILE_SIZE", "100")
-    
-    large_content = b"x" * 1000
-    
-    response = client.post(
-        "/analyze/pdf/file",
-        files={"file": ("large.pdf", large_content, "application/pdf")},
-    )
-
-    assert response.status_code == 400
-
-
-def test_analyze_pdf_base64_success(client, monkeypatch):
-    """Test /analyze/pdf/base64 with valid data."""
-    pdf_content = b"%PDF-1.4 test"
-    base64_data = base64.b64encode(pdf_content).decode()
-
-    async def fake_analyze(file, task_id=None):
-        return {"status": "completed", "data": {"ratios": {}, "score": {"score": 75}}}
-
-    monkeypatch.setattr(analyze_controller, "analyze_pdf", fake_analyze)
-
-    response = client.post("/analyze/pdf/base64", json={"file_data": base64_data})
+    monkeypatch.setattr(pdf_tasks, "get_analysis", fake_get)
+    response = client.get("/result/task-with-methodology")
 
     assert response.status_code == 200
-
-
-def test_analyze_pdf_base64_invalid_base64(client):
-    """Test rejection of invalid base64."""
-    response = client.post("/analyze/pdf/base64", json={"file_data": "not-valid!!!"})
-
-    assert response.status_code == 400
-
-
-def test_analyze_pdf_base64_empty_data(client):
-    """Test rejection of empty base64 data."""
-    response = client.post("/analyze/pdf/base64", json={"file_data": ""})
-
-    assert response.status_code == 400
-
-
-def test_analyze_pdf_base64_missing_data(client):
-    """Test rejection of missing data field."""
-    response = client.post("/analyze/pdf/base64", json={})
-
-    assert response.status_code == 422
+    payload = response.json()
+    assert payload["data"]["score"]["methodology"]["benchmark_profile"] == "retail_demo"
+    assert payload["data"]["score"]["methodology"]["period_basis"] == "reported"
+    assert payload["data"]["score"]["methodology"]["leverage_basis"] == "debt_only"
+    assert payload["data"]["score"]["methodology"]["ifrs16_adjusted"] is True
+    assert "leverage_debt_only" in payload["data"]["score"]["methodology"]["adjustments"]
+    assert payload["data"]["ai_runtime"]["effective_provider"] == "ollama"
+    assert payload["data"]["ai_runtime"]["status"] == "succeeded"

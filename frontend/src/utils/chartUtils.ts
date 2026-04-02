@@ -18,6 +18,8 @@ const RATIO_LABELS: Partial<Record<keyof FinancialRatios, string>> = {
     ebitda_margin: 'EBITDA margin',
     equity_ratio: 'Автономия',
     financial_leverage: 'Фин. рычаг',
+    financial_leverage_total: 'Фин. рычаг (все обяз.)',
+    financial_leverage_debt_only: 'Фин. рычаг (долг)',
     interest_coverage: 'Покрытие %',
     asset_turnover: 'Оборач. активов',
     inventory_turnover: 'Оборач. запасов',
@@ -40,6 +42,9 @@ export function getBarColor(key: keyof FinancialRatios, value: number): string {
 export function buildChartData(ratios: FinancialRatios): ChartDataPoint[] {
     return (Object.keys(ratios) as Array<keyof FinancialRatios>)
         .filter((key) => {
+            if (key === 'financial_leverage_total' || key === 'financial_leverage_debt_only') {
+                return false;
+            }
             const v = ratios[key];
             return v !== null && v !== 0;
         })

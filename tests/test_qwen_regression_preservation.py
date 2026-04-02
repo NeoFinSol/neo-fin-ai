@@ -23,18 +23,18 @@ from hypothesis import strategies as st
 
 @given(
     st.one_of(
-        # Large values (> 1000, not years)
-        st.floats(min_value=1001.0, max_value=1e15 - 1, allow_nan=False, allow_infinity=False),
+        # Large values within the current parser sanity bound (> 1000, not years)
+        st.floats(min_value=1001.0, max_value=1e13 - 1, allow_nan=False, allow_infinity=False),
         # Small values (0 < v < 1000) — financial ratios, small business metrics
         st.floats(min_value=0.001, max_value=999.99, allow_nan=False, allow_infinity=False),
-        # Negative values (losses, liabilities)
-        st.floats(min_value=-(1e15 - 1), max_value=-0.001, allow_nan=False, allow_infinity=False),
+        # Negative values (losses, liabilities) within the same sanity bound
+        st.floats(min_value=-(1e13 - 1), max_value=-0.001, allow_nan=False, allow_infinity=False),
     )
 )
 @settings(max_examples=300, deadline=None)
 def test_prop_financial_value_filter(v: float) -> None:
     """
-    Property: _is_valid_financial_value(v) == True for all v in (-1e15, 1e15)
+    Property: _is_valid_financial_value(v) == True for all v in (-1e13, 1e13)
     that are not integers in the year range 1900-2100.
 
     After the fix, this covers small values (ratios, small business) too.

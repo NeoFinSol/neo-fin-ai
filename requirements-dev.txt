@@ -8,10 +8,8 @@
 # -----------------------------------------------------------------------------
 # Database (Development)
 # -----------------------------------------------------------------------------
-# psycopg2-binary — ТОЛЬКО для локальных миграций через Alembic CLI
-# Если запускаешь миграции через Docker — можно удалить
-# В production используется asyncpg (в requirements.txt)
-# psycopg2-binary~=2.9.9
+# Sync PostgreSQL driver for Alembic migrations is installed via requirements.txt.
+# Keep this section only for future dev-only DB helpers.
 
 # -----------------------------------------------------------------------------
 # Testing

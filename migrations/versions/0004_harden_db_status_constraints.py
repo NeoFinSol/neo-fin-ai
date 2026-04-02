@@ -1,15 +1,15 @@
 """Harden status constraints and session lifecycle indexes.
 
-Revision ID: 0004_harden_db_status_constraints
-Revises: 0003_add_multi_analysis_sessions
+Revision ID: 0004_status_constraints
+Revises: 0003_multi_analysis_sessions
 Create Date: 2026-03-28 18:30:00
 """
 from __future__ import annotations
 
 from alembic import op
 
-revision = "0004_harden_db_status_constraints"
-down_revision = "0003_add_multi_analysis_sessions"
+revision = "0004_status_constraints"
+down_revision = "0003_multi_analysis_sessions"
 branch_labels = None
 depends_on = None
 

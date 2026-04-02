@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { apiClient } from '../api/client';
-import { AnalysisData } from '../api/interfaces';
+import { AIProvider, AnalysisData } from '../api/interfaces';
 import { notifications } from '@mantine/notifications';
 import { useAnalysisSocket, WSMessage } from '../hooks/useAnalysisSocket';
 
@@ -14,7 +14,7 @@ interface AnalysisContextType {
     result: AnalysisData | null;
     filename: string;
     error: string | null;
-    analyze: (file: File) => Promise<void>;
+    analyze: (file: File, aiProvider?: AIProvider) => Promise<void>;
     reset: () => void;
 }
 
@@ -69,7 +69,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         };
     }, []);
 
-    const analyze = useCallback(async (file: File) => {
+    const analyze = useCallback(async (file: File, aiProvider: AIProvider = 'auto') => {
         setFilename(file.name);
         setStatus('uploading');
         setError(null);
@@ -85,6 +85,9 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         const formData = new FormData();
         formData.append('file', file);
+        if (aiProvider !== 'auto') {
+            formData.append('ai_provider', aiProvider);
+        }
 
         let cancelled = false;
 

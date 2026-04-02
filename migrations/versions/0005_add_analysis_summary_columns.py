@@ -1,7 +1,7 @@
 """Add typed analysis summary columns and backfill from JSONB.
 
-Revision ID: 0005_add_analysis_summary_columns
-Revises: 0004_harden_db_status_constraints
+Revision ID: 0005_analysis_summary_cols
+Revises: 0004_status_constraints
 Create Date: 2026-03-28 23:10:00
 """
 from __future__ import annotations
@@ -9,8 +9,8 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0005_add_analysis_summary_columns"
-down_revision = "0004_harden_db_status_constraints"
+revision = "0005_analysis_summary_cols"
+down_revision = "0004_status_constraints"
 branch_labels = None
 depends_on = None
 

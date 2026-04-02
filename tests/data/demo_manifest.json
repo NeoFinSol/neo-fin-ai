@@ -7,6 +7,7 @@
       "filename": "Бухгалтерская отчетность ПАО «Магнит» за 1 квартал 2025 года.pdf",
       "scanned": true,
       "expected": {
+        "revenue": 103015000.0,
         "net_profit": 1348503000.0,
         "total_assets": 435659511000.0,
         "current_assets": 174989150000.0,
@@ -18,9 +19,17 @@
         "inventory": 2142153000.0
       },
       "expected_long_term_liabilities": 33723849000.0,
-      "expected_none": [
-        "revenue"
-      ]
+      "expected_scoring": {
+        "score": 57.78,
+        "risk_level": "medium",
+        "confidence_score": 0.75,
+        "benchmark_profile": "retail_demo",
+        "period_basis": "annualized_q1",
+        "leverage_basis": "total_liabilities",
+        "guardrails": [],
+        "adjustments": []
+      },
+      "expected_none": []
     },
     {
       "id": "magnit_2025_q1_scanned_balance_components",
@@ -58,6 +67,19 @@
         "net_profit": 27932517000.0,
         "total_assets": 1395998440000.0,
         "liabilities": 1188616136000.0
+      },
+      "expected_scoring": {
+        "score": 67.04,
+        "risk_level": "medium",
+        "confidence_score": 0.95,
+        "benchmark_profile": "retail_demo",
+        "period_basis": "reported",
+        "leverage_basis": "debt_only",
+        "guardrails": [],
+        "adjustments": [
+          "leverage_debt_only",
+          "interest_coverage_sign_corrected"
+        ]
       }
     },
     {
@@ -69,6 +91,19 @@
         "net_profit": 58677601000.0,
         "total_assets": 1429543267000.0,
         "liabilities": 1271075935000.0
+      },
+      "expected_scoring": {
+        "score": 70.35,
+        "risk_level": "medium",
+        "confidence_score": 0.95,
+        "benchmark_profile": "retail_demo",
+        "period_basis": "reported",
+        "leverage_basis": "debt_only",
+        "guardrails": [],
+        "adjustments": [
+          "leverage_debt_only",
+          "interest_coverage_sign_corrected"
+        ]
       }
     },
     {
@@ -77,11 +112,32 @@
       "scanned": false,
       "expected": {
         "revenue": 1673223617000.0,
-        "net_profit": 154479000.0,
+        "net_profit": 6544000000.0,
+        "ebitda": 85628000000.0,
+        "interest_expense": 29095000000.0,
         "total_assets": 1670048135000.0,
         "liabilities": 1486023626000.0,
         "current_assets": 533367626000.0,
-        "short_term_liabilities": 670066479000.0
+        "short_term_liabilities": 670066479000.0,
+        "short_term_borrowings": 220921813000.0,
+        "long_term_borrowings": 281923796000.0,
+        "short_term_lease_liabilities": 60914519000.0,
+        "long_term_lease_liabilities": 501014759000.0
+      },
+      "expected_scoring": {
+        "score": 55.06,
+        "risk_level": "medium",
+        "confidence_score": 0.95,
+        "benchmark_profile": "retail_demo",
+        "period_basis": "annualized_h1",
+        "leverage_basis": "debt_only",
+        "guardrails": [],
+        "adjustments": [
+          "leverage_debt_only",
+          "issuer_override:net_profit",
+          "issuer_override:ebitda",
+          "issuer_override:interest_expense"
+        ]
       }
     }
   ],

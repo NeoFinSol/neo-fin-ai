@@ -3,7 +3,13 @@ from __future__ import annotations
 
 import pytest
 
-from src.analysis.scoring import calculate_integral_score, WEIGHTS
+from src.analysis.scoring import (
+    WEIGHTS,
+    annualize_metrics_for_period,
+    calculate_integral_score,
+    calculate_score_with_context,
+    resolve_scoring_methodology,
+)
 
 
 def test_calculate_integral_score_happy_path():
@@ -77,3 +83,241 @@ def test_unknown_scoring_profile_falls_back_to_generic():
 
     assert unknown_profile["score"] == default_generic["score"]
     assert unknown_profile["profile"] == "generic"
+
+
+def test_resolve_scoring_methodology_detects_retail_keyword_and_h1_period():
+    metrics = {
+        "revenue": 1_673_223_617_000.0,
+        "net_profit": 154_479_000.0,
+        "total_assets": 1_670_048_135_000.0,
+        "liabilities": 1_486_023_626_000.0,
+        "equity": 175_381_814_000.0,
+        "current_assets": 533_367_626_000.0,
+        "short_term_liabilities": 670_066_479_000.0,
+        "inventory": 252_793_359_000.0,
+        "accounts_receivable": 20_036_564_000.0,
+    }
+    ratios_en = {
+        "asset_turnover": 1.0,
+        "receivables_turnover": 83.41,
+    }
+
+    methodology = resolve_scoring_methodology(
+        metrics,
+        ratios_en=ratios_en,
+        filename="Консолидированная финансовая отчетность ПАО «Магнит» по МСФО за 1 полугодие 2025 год.pdf",
+        text="ПАО Магнит. Консолидированная финансовая отчетность за 1 полугодие 2025 год.",
+    )
+
+    assert methodology["benchmark_profile"] == "retail_demo"
+    assert methodology["period_basis"] == "annualized_h1"
+    assert methodology["detection_mode"] == "auto"
+    assert "retail_keyword" in methodology["reasons"]
+    assert "period_marker:h1" in methodology["reasons"]
+
+
+def test_resolve_scoring_methodology_detects_retail_by_structure():
+    methodology = resolve_scoring_methodology(
+        {
+            "inventory": 120_000_000.0,
+            "revenue": 900_000_000.0,
+            "accounts_receivable": 30_000_000.0,
+        },
+        ratios_en={
+            "asset_turnover": 1.6,
+            "receivables_turnover": 30.0,
+        },
+        filename="issuer-report.pdf",
+        text="Consolidated financial statements",
+    )
+
+    assert methodology["benchmark_profile"] == "retail_demo"
+    assert "retail_structure" in methodology["reasons"]
+
+
+def test_resolve_scoring_methodology_keeps_reported_when_revenue_missing_for_interim():
+    methodology = resolve_scoring_methodology(
+        {
+            "revenue": None,
+            "inventory": 2_142_153_000.0,
+            "net_profit": 1_348_503_000.0,
+            "total_assets": 435_659_511_000.0,
+        },
+        ratios_en={"asset_turnover": None, "receivables_turnover": None},
+        filename="Бухгалтерская отчетность ПАО «Магнит» за 1 квартал 2025 года.pdf",
+        text="Отчетность за 1 квартал 2025 года",
+    )
+
+    assert methodology["benchmark_profile"] == "retail_demo"
+    assert methodology["period_basis"] == "reported"
+
+
+def test_annualize_metrics_for_period_updates_only_pnl_inputs():
+    metrics = {
+        "revenue": 100.0,
+        "net_profit": 10.0,
+        "ebitda": 14.0,
+        "ebit": 12.0,
+        "interest_expense": 2.0,
+        "cost_of_goods_sold": 70.0,
+        "total_assets": 500.0,
+        "liabilities": 300.0,
+        "equity": 200.0,
+        "current_assets": 150.0,
+        "short_term_liabilities": 90.0,
+        "cash_and_equivalents": 40.0,
+        "inventory": 30.0,
+        "accounts_receivable": 25.0,
+        "average_inventory": 33.0,
+    }
+
+    annualized = annualize_metrics_for_period(metrics, period_basis="annualized_h1")
+
+    assert annualized["revenue"] == 200.0
+    assert annualized["net_profit"] == 20.0
+    assert annualized["ebitda"] == 28.0
+    assert annualized["ebit"] == 24.0
+    assert annualized["interest_expense"] == 4.0
+    assert annualized["cost_of_goods_sold"] == 140.0
+    assert annualized["total_assets"] == 500.0
+    assert annualized["liabilities"] == 300.0
+    assert annualized["current_assets"] == 150.0
+    assert annualized["accounts_receivable"] == 25.0
+
+
+def test_calculate_score_with_context_includes_methodology_and_guardrails():
+    metrics = {
+        "revenue": None,
+        "net_profit": 1_348_503_000.0,
+        "total_assets": 435_659_511_000.0,
+        "equity": 209_475_516_000.0,
+        "liabilities": 226_183_995_000.0,
+        "current_assets": 174_989_150_000.0,
+        "short_term_liabilities": 192_460_146_000.0,
+        "inventory": 2_142_153_000.0,
+        "accounts_receivable": 26_998_240_000.0,
+        "cash_and_equivalents": 1_448_897_000.0,
+    }
+
+    result = calculate_score_with_context(
+        metrics,
+        filename="Бухгалтерская отчетность ПАО «Магнит» за 1 квартал 2025 года.pdf",
+        text="ПАО Магнит. Отчетность за 1 квартал 2025 года.",
+    )
+
+    methodology = result["score_payload"]["methodology"]
+    assert methodology["benchmark_profile"] == "retail_demo"
+    assert methodology["period_basis"] == "reported"
+    assert "missing_core:revenue" in methodology["guardrails"]
+
+
+def test_calculate_score_with_context_uses_debt_only_leverage_for_retail():
+    metrics = {
+        "revenue": 1_200_000_000.0,
+        "net_profit": 48_000_000.0,
+        "total_assets": 900_000_000.0,
+        "equity": 180_000_000.0,
+        "liabilities": 720_000_000.0,
+        "current_assets": 310_000_000.0,
+        "short_term_liabilities": 250_000_000.0,
+        "inventory": 140_000_000.0,
+        "accounts_receivable": 12_000_000.0,
+        "cash_and_equivalents": 35_000_000.0,
+        "short_term_borrowings": 70_000_000.0,
+        "long_term_borrowings": 110_000_000.0,
+        "ebit": 110_000_000.0,
+        "interest_expense": -22_000_000.0,
+    }
+
+    result = calculate_score_with_context(
+        metrics,
+        filename="Магнит retail report.pdf",
+        text="ПАО Магнит retail report",
+    )
+
+    methodology = result["score_payload"]["methodology"]
+    ratios_en = result["ratios_en"]
+
+    assert ratios_en["financial_leverage_total"] == pytest.approx(4.0)
+    assert ratios_en["financial_leverage_debt_only"] == pytest.approx(1.0)
+    assert ratios_en["financial_leverage"] == pytest.approx(1.0)
+    assert methodology["leverage_basis"] == "debt_only"
+    assert methodology["ifrs16_adjusted"] is True
+    assert "interest_coverage_sign_corrected" in methodology["adjustments"]
+    assert "leverage_debt_only" in methodology["adjustments"]
+    assert methodology["peer_context"]
+
+
+def test_calculate_score_with_context_keeps_total_liability_leverage_for_non_retail():
+    metrics = {
+        "revenue": 200_000_000.0,
+        "net_profit": 20_000_000.0,
+        "total_assets": 150_000_000.0,
+        "equity": 50_000_000.0,
+        "liabilities": 100_000_000.0,
+        "current_assets": 60_000_000.0,
+        "short_term_liabilities": 30_000_000.0,
+        "short_term_borrowings": 10_000_000.0,
+        "long_term_borrowings": 15_000_000.0,
+        "ebit": 30_000_000.0,
+        "interest_expense": 5_000_000.0,
+    }
+
+    result = calculate_score_with_context(
+        metrics,
+        filename="Industrial issuer annual report.pdf",
+        text="Industrial issuer annual report",
+    )
+
+    methodology = result["score_payload"]["methodology"]
+    ratios_en = result["ratios_en"]
+
+    assert methodology["benchmark_profile"] == "generic"
+    assert methodology["leverage_basis"] == "total_liabilities"
+    assert methodology["ifrs16_adjusted"] is False
+    assert ratios_en["financial_leverage_total"] == pytest.approx(2.0)
+    assert ratios_en["financial_leverage_debt_only"] == pytest.approx(0.5)
+    assert ratios_en["financial_leverage"] == pytest.approx(2.0)
+
+
+def test_calculate_score_with_context_captures_issuer_override_adjustments():
+    metrics = {
+        "revenue": 1_673_223_617_000.0,
+        "net_profit": 154_479_000.0,
+        "ebitda": 1_846_067_000.0,
+        "ebit": 73_037_223_000.0,
+        "interest_expense": -79_896_062_000.0,
+        "total_assets": 1_670_048_135_000.0,
+        "equity": 175_381_814_000.0,
+        "liabilities": 1_486_023_626_000.0,
+        "current_assets": 533_367_626_000.0,
+        "short_term_liabilities": 670_066_479_000.0,
+        "inventory": 302_102_443_000.0,
+        "accounts_receivable": 20_060_895_000.0,
+        "cash_and_equivalents": 71_205_955_000.0,
+        "short_term_borrowings": 281_924_752_000.0,
+        "long_term_borrowings": 220_922_477_000.0,
+        "short_term_lease_liabilities": 211_182_682_000.0,
+        "long_term_lease_liabilities": 431_637_396_000.0,
+    }
+    extraction_metadata = {
+        "ebitda": {"confidence": 1.0, "source": "issuer_fallback"},
+        "interest_expense": {"confidence": 1.0, "source": "issuer_fallback"},
+        "net_profit": {"confidence": 1.0, "source": "issuer_fallback"},
+    }
+
+    result = calculate_score_with_context(
+        metrics,
+        filename="Консолидированная финансовая отчетность ПАО «Магнит» по МСФО за 1 полугодие 2025 год.pdf",
+        text="ПАО Магнит. Отчетность за 1 полугодие 2025 года.",
+        extraction_metadata=extraction_metadata,
+    )
+
+    methodology = result["score_payload"]["methodology"]
+
+    assert methodology["benchmark_profile"] == "retail_demo"
+    assert methodology["period_basis"] == "annualized_h1"
+    assert methodology["ifrs16_adjusted"] is True
+    assert "issuer_override:ebitda" in methodology["adjustments"]
+    assert "issuer_override:interest_expense" in methodology["adjustments"]
+    assert "issuer_override:net_profit" in methodology["adjustments"]

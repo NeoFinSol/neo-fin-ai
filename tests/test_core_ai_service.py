@@ -121,6 +121,30 @@ class TestAIServiceInvoke:
                 assert result == "ollama response"
                 mock_ollama.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_invoke_uses_requested_provider_override(self):
+        with patch("src.core.ai_service.app_settings") as mock_settings, \
+             patch("src.core.ai_service.gigachat_agent") as mock_gc:
+            mock_settings.use_gigachat = True
+            mock_settings.use_huggingface = False
+            mock_settings.use_qwen = False
+            mock_settings.use_local_llm = True
+            mock_settings.gigachat_client_id = "cid"
+            mock_settings.gigachat_client_secret = "csec"
+            mock_settings.gigachat_auth_url = "https://auth.url"
+            mock_settings.gigachat_chat_url = "https://chat.url"
+            mock_gc._configured = True
+            mock_gc.invoke = AsyncMock(return_value="gigachat response")
+            svc = AIService()
+
+            with patch.object(svc, "_invoke_ollama", new_callable=AsyncMock) as mock_ollama:
+                mock_ollama.return_value = "ollama response"
+                result = await svc.invoke({"tool_input": "test"}, provider="ollama")
+
+            assert result == "ollama response"
+            mock_ollama.assert_awaited_once()
+            mock_gc.invoke.assert_not_awaited()
+
 
 class TestAIServiceInvokeWithRetry:
     """Tests for AIService.invoke_with_retry method."""
@@ -263,3 +287,67 @@ class TestAIServiceInvokeOllama:
             with patch("aiohttp.ClientSession", side_effect=Exception("connection refused")):
                 result = await svc._invoke_ollama({"tool_input": "hello"})
                 assert result is None
+
+    @pytest.mark.asyncio
+    async def test_ollama_forwards_system_prompt_and_format(self):
+        with patch("src.core.ai_service.app_settings") as mock_settings:
+            mock_settings.use_gigachat = False
+            mock_settings.use_huggingface = False
+            mock_settings.use_qwen = False
+            mock_settings.use_local_llm = True
+            mock_settings.llm_model = "qwen3:8b"
+            mock_settings.llm_url = "http://localhost:11434/api/generate"
+            svc = AIService()
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={"response": "{\"ok\": true}"})
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+
+            mock_session = AsyncMock()
+            mock_session.post = MagicMock(return_value=mock_response)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=False)
+
+            with patch("aiohttp.ClientSession", return_value=mock_session):
+                result = await svc._invoke_ollama(
+                    {
+                        "tool_input": "return a JSON object",
+                        "system": "Reply only with valid JSON.",
+                        "format": "json",
+                    }
+                )
+
+            assert result == "{\"ok\": true}"
+            _, kwargs = mock_session.post.call_args
+            assert kwargs["json"]["system"] == "Reply only with valid JSON."
+            assert kwargs["json"]["format"] == "json"
+
+    @pytest.mark.asyncio
+    async def test_ollama_disables_thinking_by_default(self):
+        with patch("src.core.ai_service.app_settings") as mock_settings:
+            mock_settings.use_gigachat = False
+            mock_settings.use_huggingface = False
+            mock_settings.use_qwen = False
+            mock_settings.use_local_llm = True
+            mock_settings.llm_model = "qwen3.5:9b"
+            mock_settings.llm_url = "http://localhost:11434/api/generate"
+            svc = AIService()
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value={"response": "{\"ok\": true}"})
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=False)
+
+            mock_session = AsyncMock()
+            mock_session.post = MagicMock(return_value=mock_response)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=False)
+
+            with patch("aiohttp.ClientSession", return_value=mock_session):
+                await svc._invoke_ollama({"tool_input": "return JSON"})
+
+            _, kwargs = mock_session.post.call_args
+            assert kwargs["json"]["think"] is False

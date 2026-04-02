@@ -51,7 +51,11 @@ class TestAppSettingsProperties:
     """Tests for use_* properties — covers lines 155-199."""
 
     def test_use_gigachat_false_when_not_configured(self):
-        s = AppSettings(_env_file=None)
+        s = AppSettings(
+            GIGACHAT_CLIENT_ID=None,
+            GIGACHAT_CLIENT_SECRET=None,
+            _env_file=None,
+        )
         assert s.use_gigachat is False
 
     def test_use_gigachat_false_with_placeholder_values(self):
@@ -71,7 +75,7 @@ class TestAppSettingsProperties:
         assert s.use_gigachat is True
 
     def test_use_qwen_false_when_not_configured(self):
-        s = AppSettings(_env_file=None)
+        s = AppSettings(QWEN_API_KEY=None, QWEN_API_URL=None, _env_file=None)
         assert s.use_qwen is False
 
     def test_use_qwen_false_with_placeholder_key(self):

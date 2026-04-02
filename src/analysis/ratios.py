@@ -18,6 +18,8 @@ RATIO_KEY_MAP = {
     # Financial stability
     "Коэффициент автономии": "equity_ratio",
     "Финансовый рычаг": "financial_leverage",
+    "Финансовый рычаг (обязательства/капитал)": "financial_leverage_total",
+    "Финансовый рычаг (долг/капитал)": "financial_leverage_debt_only",
     "Покрытие процентов": "interest_coverage",
     # Business activity
     "Оборачиваемость активов": "asset_turnover",
@@ -94,6 +96,8 @@ def calculate_ratios(financial_data: dict[str, Any]) -> dict[str, float | None]:
     liabilities = _to_number(financial_data.get("liabilities"))
     current_assets = _to_number(financial_data.get("current_assets"))
     short_term_liabilities = _to_number(financial_data.get("short_term_liabilities"))
+    short_term_borrowings = _to_number(financial_data.get("short_term_borrowings"))
+    long_term_borrowings = _to_number(financial_data.get("long_term_borrowings"))
 
     # New fields for extended ratios
     inventory = _to_number(financial_data.get("inventory"))
@@ -104,6 +108,8 @@ def calculate_ratios(financial_data: dict[str, Any]) -> dict[str, float | None]:
     cost_of_goods_sold = _to_number(financial_data.get("cost_of_goods_sold"))
     accounts_receivable = _to_number(financial_data.get("accounts_receivable"))
     average_inventory = _to_number(financial_data.get("average_inventory"))
+    interest_bearing_debt = _sum_required(short_term_borrowings, long_term_borrowings)
+    normalized_interest_expense = _abs_value(interest_expense)
 
     # Log missing data for critical calculations
     _log_missing_data(financial_data)
@@ -129,7 +135,9 @@ def calculate_ratios(financial_data: dict[str, Any]) -> dict[str, float | None]:
         # ===== FINANCIAL STABILITY RATIOS =====
         "Коэффициент автономии": _safe_div(equity, total_assets),
         "Финансовый рычаг": _safe_div(liabilities, equity),
-        "Покрытие процентов": _safe_div(ebit, interest_expense),
+        "Финансовый рычаг (обязательства/капитал)": _safe_div(liabilities, equity),
+        "Финансовый рычаг (долг/капитал)": _safe_div(interest_bearing_debt, equity),
+        "Покрытие процентов": _safe_div(ebit, normalized_interest_expense),
 
         # ===== BUSINESS ACTIVITY RATIOS =====
         "Оборачиваемость активов": _safe_div(revenue, total_assets),
@@ -178,6 +186,19 @@ def _subtract(minuend: float | None, subtrahend: float | None) -> float | None:
     except Exception as exc:
         logger.warning("Failed to compute subtraction: %s", exc)
         return None
+
+
+def _sum_required(left: float | None, right: float | None) -> float | None:
+    """Return sum only when both components are available."""
+    if left is None or right is None:
+        return None
+    return left + right
+
+
+def _abs_value(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return abs(value)
 
 
 def _to_number(value: Any) -> float | None:
