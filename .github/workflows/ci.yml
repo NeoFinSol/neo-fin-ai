@@ -236,7 +236,7 @@ jobs:
     needs: [lint, test]
     
     # Изолированная сеть для безопасности - нет доступа к хосту
-    environment:
+    env:
       COMPOSE_DOCKER_CLI_BUILD: "1"
       DOCKER_BUILDKIT: "1"
     

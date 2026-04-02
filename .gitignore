@@ -79,6 +79,7 @@ run_final.bat
 run_ocr.bat
 # Re-include only the small heavy-tier test driver; real PDF fixtures stay under
 # explicit fixture paths and are governed separately.
+!tests/test_github_workflows.py
 !tests/test_pdf_real_heavy_fixtures.py
 !tests/test_pdf_local_magnit_regression.py
 
