@@ -277,7 +277,7 @@ curl http://localhost/api/multi-analysis/xyz-456 \
 
 Актуальный релизный baseline:
 
-- Backend: `895` собранных тестов, подтверждённый зелёный baseline `890 passed, 4 skipped, 2 xfailed`
+- Backend: `897` собранных тестов, подтверждённый зелёный baseline `892 passed, 4 skipped, 2 xfailed`
 - Backend coverage: `83.23% lines`, `84.91% statements`, `78.67% branches`
 - Интерфейс: `96` тестов, `96 passed`
 - Интерфейс coverage: `65.05% lines`, `63.99% statements`, `68.88% functions`, `53.21% branches`
