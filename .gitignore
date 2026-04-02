@@ -10,8 +10,8 @@ nul
 con
 prn
 aux
-com*
-lpt*
+/[Cc][Oo][Mm][1-9]
+/[Ll][Pp][Tt][1-9]
 
 __pycache__/
 *.pyc

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 import yaml
 
 WORKFLOWS_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 REQUIREMENTS_DEV = Path(__file__).resolve().parents[1] / "requirements-dev.txt"
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_all_github_workflows_are_valid_yaml() -> None:
@@ -194,3 +196,22 @@ def test_code_quality_runner_job_exposes_postgres_port_and_uses_localhost_url() 
 def test_requirements_dev_includes_hypothesis_for_property_based_tests() -> None:
     requirements = REQUIREMENTS_DEV.read_text(encoding="utf-8").lower()
     assert "hypothesis" in requirements
+
+
+def test_gitignore_does_not_hide_frontend_components_required_for_build() -> None:
+    critical_paths = [
+        "frontend/src/components/AppFooter.tsx",
+        "frontend/src/components/ConfidenceBadge.tsx",
+        "frontend/src/components/Layout.tsx",
+        "frontend/src/components/ProtectedRoute.tsx",
+        "frontend/src/components/TrendChart.tsx",
+        "frontend/src/components/upload/AiProviderMenu.tsx",
+    ]
+
+    for relative_path in critical_paths:
+        result = subprocess.run(
+            ["git", "check-ignore", "-q", relative_path],
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        assert result.returncode != 0, f"{relative_path} must not be ignored by git"
