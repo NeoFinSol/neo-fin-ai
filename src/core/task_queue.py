@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import atexit
 import asyncio
+import atexit
 import logging
 from typing import Any, Awaitable, Callable
 
@@ -34,7 +34,9 @@ def _close_worker_loop() -> None:
     try:
         loop.run_until_complete(loop.shutdown_asyncgens())
     except Exception:
-        logger.debug("Failed to shutdown async generators for worker loop", exc_info=True)
+        logger.debug(
+            "Failed to shutdown async generators for worker loop", exc_info=True
+        )
     finally:
         loop.close()
         _worker_loop = None
@@ -106,7 +108,6 @@ if celery_app is not None:
 
         _run_worker_job(process_pdf(task_id, file_path, ai_provider=ai_provider))
 
-
     @celery_app.task(name="neofin.process_multi_analysis")
     def run_multi_analysis_task(
         session_id: str,
@@ -115,6 +116,7 @@ if celery_app is not None:
         from src.tasks import process_multi_analysis
 
         _run_worker_job(process_multi_analysis(session_id, periods_payload))
+
 else:
 
     class _MissingCeleryTask:
@@ -137,7 +139,9 @@ async def dispatch_pdf_task(
         if ai_provider is None:
             background_tasks.add_task(background_callable, task_id, file_path)
         else:
-            background_tasks.add_task(background_callable, task_id, file_path, ai_provider)
+            background_tasks.add_task(
+                background_callable, task_id, file_path, ai_provider
+            )
         return
 
     _ensure_celery_runtime()

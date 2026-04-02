@@ -4,8 +4,8 @@ import warnings
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import BackgroundTasks, HTTPException, UploadFile
 from cryptography.utils import CryptographyDeprecationWarning
+from fastapi import BackgroundTasks, HTTPException, UploadFile
 from sqlalchemy.exc import SQLAlchemyError
 
 warnings.filterwarnings(
@@ -14,8 +14,13 @@ warnings.filterwarnings(
     category=CryptographyDeprecationWarning,
 )
 
-from src.routers.pdf_tasks import _validate_pdf_file, cancel_analysis, get_result, upload_pdf
 from src.exceptions import DatabaseError, TaskRuntimeError
+from src.routers.pdf_tasks import (
+    _validate_pdf_file,
+    cancel_analysis,
+    get_result,
+    upload_pdf,
+)
 
 
 class TestValidatePdfFile:
@@ -279,7 +284,7 @@ class TestUploadPdf:
         mock_file.file = MagicMock()
         
         from src.core.constants import MAX_FILE_SIZE
-        
+
         # First read header, then large chunk that exceeds limit
         mock_file.file.read.side_effect = [
             b"%PDF-",

@@ -1,14 +1,14 @@
 """Tests for background tasks module."""
+import warnings
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-import warnings
 
 import pytest
-from fastapi import BackgroundTasks
 from cryptography.utils import CryptographyDeprecationWarning
+from fastapi import BackgroundTasks
 
-from src.analysis.pdf_extractor import extract_text
 from src.analysis.llm_extractor import LlmExtractionRunResult, _build_empty_result
+from src.analysis.pdf_extractor import extract_text
 from src.analysis.ratios import translate_ratios
 from src.analysis.scoring import build_score_payload
 from src.core.task_queue import (

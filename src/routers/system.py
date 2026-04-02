@@ -17,11 +17,11 @@ router = APIRouter(prefix="/system", tags=["system"])
 async def health_check() -> dict:
     """
     Comprehensive health check endpoint.
-    
+
     Returns status and health of all components:
     - status: "ok", "degraded", or "down"
     - services: individual component health
-    
+
     Returns:
         dict: {
             "status": "ok|degraded|down",
@@ -41,7 +41,7 @@ async def health_check() -> dict:
             "ocr": "ok",  # OCR is bundled with the app, always "ok" if configured
         },
     }
-    
+
     # Check database
     try:
         engine = get_engine()
@@ -52,7 +52,7 @@ async def health_check() -> dict:
         logger.error("Database health check failed: %s", e)
         health_status["services"]["db"] = "down"
         health_status["status"] = "down"
-    
+
     # Check AI service
     if not ai_service.is_configured:
         health_status["services"]["ai"] = "not_configured"
@@ -62,13 +62,13 @@ async def health_check() -> dict:
         cb_status = ai_service.get_circuit_breaker_status()
         health_status["services"]["ai"] = "degraded"
         health_status["ai_circuit_breaker"] = cb_status
-        
+
         # Only mark as degraded (not down) since core functionality still works
         if health_status["status"] == "ok":
             health_status["status"] = "degraded"
     else:
         health_status["services"]["ai"] = "ok"
-    
+
     return health_status
 
 
@@ -76,7 +76,7 @@ async def health_check() -> dict:
 async def healthz_check() -> dict:
     """
     Extended health check with dependency verification.
-    
+
     Returns:
         dict: Health status with timestamp and component status
     """
@@ -86,7 +86,7 @@ async def healthz_check() -> dict:
         "components": {
             "database": "unknown",
             "ai_service": "unknown",
-        }
+        },
     }
 
     # Check database connection with actual query
@@ -134,7 +134,7 @@ async def readiness_check() -> dict[str, str]:
         logger.error("Readiness check failed: %s", e)
         raise HTTPException(
             status_code=503,
-            detail=f"Service not ready: database connection failed - {str(e)}"
+            detail=f"Service not ready: database connection failed - {str(e)}",
         )
 
     return {"status": "ready"}
@@ -144,9 +144,9 @@ async def readiness_check() -> dict[str, str]:
 async def metrics_endpoint():
     """
     Application metrics endpoint.
-    
+
     Returns metrics in JSON format for monitoring systems.
-    
+
     Returns:
         dict: {
             "total_tasks": int,

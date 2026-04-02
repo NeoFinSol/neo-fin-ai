@@ -17,19 +17,18 @@ Run: pytest tests/test_confidence_properties.py -v
 """
 
 import pytest
-from hypothesis import given, settings, assume, HealthCheck
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from src.analysis.pdf_extractor import (
+    CONFIDENCE_THRESHOLD,
     ExtractionMetadata,
     ExtractionSource,
-    determine_source,
 )
 from src.analysis.pdf_extractor import (
     apply_confidence_filter as _apply_confidence_filter,
-    CONFIDENCE_THRESHOLD,
 )
-
+from src.analysis.pdf_extractor import determine_source
 
 # =============================================================================
 # Hypothesis Strategies

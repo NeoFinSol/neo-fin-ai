@@ -3,9 +3,9 @@
 
 Чистая функция без side effects, без импортов FastAPI/SQLAlchemy.
 """
+
 import copy
 import math
-
 
 MASKED_NONE_VALUE = "—"
 

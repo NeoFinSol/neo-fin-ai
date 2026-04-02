@@ -32,7 +32,7 @@ class AIService:
     - Retry with exponential backoff (handles transient failures)
     - Timeout control (prevents hanging)
     - Graceful degradation (returns None instead of crashing)
-    
+
     Priority order:
     1. GigaChat (if configured)
     2. Qwen (if configured)
@@ -201,7 +201,7 @@ class AIService:
     ) -> Optional[str]:
         """
         Invoke AI service with resilience patterns.
-        
+
         Features:
         - Circuit breaker (blocks requests if service is failing)
         - Retry with exponential backoff (handles transient failures)
@@ -217,7 +217,7 @@ class AIService:
             Optional[str]: AI response or None (on failure/timeout/circuit open)
         """
         actual_timeout = timeout or AI_TIMEOUT
-        
+
         resolved_provider = self._resolve_provider(provider)
 
         if resolved_provider is None:
@@ -255,7 +255,7 @@ class AIService:
                     input,
                     timeout=actual_timeout,
                 )
-            
+
             # Execute with or without retry
             if use_retry and AI_RETRY_COUNT > 0:
                 result = await retry_with_timeout(
@@ -268,7 +268,7 @@ class AIService:
                 )
             else:
                 result = await asyncio.wait_for(ai_operation(), timeout=actual_timeout)
-            
+
             # Success
             duration_ms = (time.monotonic() - start_time) * 1000
             logger.info("AI invocation completed", extra={"duration_ms": duration_ms})
@@ -336,11 +336,11 @@ class AIService:
     ) -> Optional[str]:
         """
         Invoke local LLM via Ollama HTTP API.
-        
+
         Args:
             input: Input dictionary with prompt
             timeout: Request timeout in seconds
-        
+
         Returns:
             Optional[str]: Generated text or None
         """

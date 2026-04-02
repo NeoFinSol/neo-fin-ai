@@ -38,7 +38,14 @@ _RETAIL_KEYWORDS = (
     "магазин",
 )
 _Q1_MARKERS = ("1 квартал", "q1", "three months", "январь - март", "январь-март")
-_H1_MARKERS = ("1 полугодие", "h1", "half-year", "six months", "январь - июнь", "январь-июнь")
+_H1_MARKERS = (
+    "1 полугодие",
+    "h1",
+    "half-year",
+    "six months",
+    "январь - июнь",
+    "январь-июнь",
+)
 _ANNUALIZATION_FACTORS = {
     _PERIOD_ANNUALIZED_Q1: 4.0,
     _PERIOD_ANNUALIZED_H1: 2.0,
@@ -145,7 +152,9 @@ _ANOMALY_LIMITS: dict[str, tuple[float, float]] = {
 
 
 def _resolve_scoring_profile(profile: str | None = None) -> str:
-    resolved_profile = (profile or app_settings.scoring_profile or "auto").strip().lower()
+    resolved_profile = (
+        (profile or app_settings.scoring_profile or "auto").strip().lower()
+    )
     if resolved_profile == "auto":
         return "generic"
     if resolved_profile not in BENCHMARKS_BY_PROFILE:
@@ -222,7 +231,9 @@ def resolve_scoring_methodology(
         "leverage_basis": _LEVERAGE_BASIS_TOTAL,
         "ifrs16_adjusted": False,
         "adjustments": [],
-        "peer_context": list(_RETAIL_PEER_CONTEXT) if benchmark_profile == "retail_demo" else [],
+        "peer_context": (
+            list(_RETAIL_PEER_CONTEXT) if benchmark_profile == "retail_demo" else []
+        ),
     }
 
 
@@ -293,9 +304,13 @@ def build_score_payload(
     """
     details = raw_score.get("details", {})
     normalized_methodology = _normalize_methodology(
-        methodology or raw_score.get("methodology") or {"benchmark_profile": raw_score.get("profile")}
+        methodology
+        or raw_score.get("methodology")
+        or {"benchmark_profile": raw_score.get("profile")}
     )
-    active_profile = _resolve_scoring_profile(normalized_methodology.get("benchmark_profile"))
+    active_profile = _resolve_scoring_profile(
+        normalized_methodology.get("benchmark_profile")
+    )
     benchmarks = BENCHMARKS_BY_PROFILE[active_profile]
 
     factors = []
@@ -322,11 +337,13 @@ def build_score_payload(
         friendly_name = FRIENDLY_NAMES.get(ru_name, ru_name)
         benchmark = benchmarks.get(ru_name)
         description = _build_factor_description(ru_name, actual_val, benchmark)
-        factors.append({
-            "name": friendly_name,
-            "description": description,
-            "impact": impact,
-        })
+        factors.append(
+            {
+                "name": friendly_name,
+                "description": description,
+                "impact": impact,
+            }
+        )
 
     return {
         "score": raw_score.get("score", 0.0),
@@ -352,7 +369,9 @@ def apply_data_quality_guardrails(
     confidence_score = float(adjusted.get("confidence_score", 0.0) or 0.0)
 
     missing_core = [key for key in _CORE_SCORE_KEYS if metrics.get(key) is None]
-    missing_supporting = [key for key in _SUPPORTING_SCORE_KEYS if metrics.get(key) is None]
+    missing_supporting = [
+        key for key in _SUPPORTING_SCORE_KEYS if metrics.get(key) is None
+    ]
 
     capped_score = current_score
     applied_guardrails: list[str] = []
@@ -492,20 +511,34 @@ def _normalize_methodology(methodology: dict[str, Any] | None) -> dict[str, Any]
 
     benchmark_profile = _resolve_scoring_profile(methodology.get("benchmark_profile"))
     normalized["benchmark_profile"] = benchmark_profile
-    period_basis = str(methodology.get("period_basis") or _PERIOD_REPORTED).strip().lower()
-    if period_basis not in {_PERIOD_REPORTED, _PERIOD_ANNUALIZED_Q1, _PERIOD_ANNUALIZED_H1}:
+    period_basis = (
+        str(methodology.get("period_basis") or _PERIOD_REPORTED).strip().lower()
+    )
+    if period_basis not in {
+        _PERIOD_REPORTED,
+        _PERIOD_ANNUALIZED_Q1,
+        _PERIOD_ANNUALIZED_H1,
+    }:
         period_basis = _PERIOD_REPORTED
     normalized["period_basis"] = period_basis
     normalized["detection_mode"] = _SCORING_DETECTION_MODE
     normalized["reasons"] = _merge_unique_strings([], methodology.get("reasons", []))
-    normalized["guardrails"] = _merge_unique_strings([], methodology.get("guardrails", []))
-    leverage_basis = str(methodology.get("leverage_basis") or _LEVERAGE_BASIS_TOTAL).strip().lower()
+    normalized["guardrails"] = _merge_unique_strings(
+        [], methodology.get("guardrails", [])
+    )
+    leverage_basis = (
+        str(methodology.get("leverage_basis") or _LEVERAGE_BASIS_TOTAL).strip().lower()
+    )
     if leverage_basis not in {_LEVERAGE_BASIS_TOTAL, _LEVERAGE_BASIS_DEBT_ONLY}:
         leverage_basis = _LEVERAGE_BASIS_TOTAL
     normalized["leverage_basis"] = leverage_basis
     normalized["ifrs16_adjusted"] = bool(methodology.get("ifrs16_adjusted", False))
-    normalized["adjustments"] = _merge_unique_strings([], methodology.get("adjustments", []))
-    normalized["peer_context"] = _merge_unique_strings([], methodology.get("peer_context", []))
+    normalized["adjustments"] = _merge_unique_strings(
+        [], methodology.get("adjustments", [])
+    )
+    normalized["peer_context"] = _merge_unique_strings(
+        [], methodology.get("peer_context", [])
+    )
     return normalized
 
 
@@ -560,7 +593,9 @@ def _apply_scoring_methodology_adjustments(
         for key in ("short_term_lease_liabilities", "long_term_lease_liabilities")
     )
     adjusted_methodology["ifrs16_adjusted"] = bool(
-        leverage_basis == _LEVERAGE_BASIS_DEBT_ONLY or has_lease_metrics or issuer_adjustments
+        leverage_basis == _LEVERAGE_BASIS_DEBT_ONLY
+        or has_lease_metrics
+        or issuer_adjustments
     )
     if adjusted_methodology["benchmark_profile"] == "retail_demo":
         adjusted_methodology["peer_context"] = _merge_unique_strings(

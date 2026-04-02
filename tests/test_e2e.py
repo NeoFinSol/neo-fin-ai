@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # Mark all tests in this module as e2e
 pytestmark = pytest.mark.e2e
 

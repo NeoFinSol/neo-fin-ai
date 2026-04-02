@@ -47,15 +47,15 @@ CIRCUIT_BREAKER_TIMEOUT = int(os.getenv("AI_CIRCUIT_BREAKER_TIMEOUT", "120"))
 
 class CircuitState(Enum):
     """Circuit breaker states."""
-    
-    CLOSED = "closed"      # Normal operation, requests allowed
-    OPEN = "open"          # Circuit tripped, requests blocked
+
+    CLOSED = "closed"  # Normal operation, requests allowed
+    OPEN = "open"  # Circuit tripped, requests blocked
     HALF_OPEN = "half_open"  # Testing if service recovered
 
 
 class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open and request is rejected."""
-    
+
     def __init__(self, service_name: str, retry_after: int):
         self.service_name = service_name
         self.retry_after = retry_after
@@ -67,19 +67,19 @@ class CircuitBreakerOpenError(Exception):
 class CircuitBreaker:
     """
     Circuit breaker for protecting against cascading failures.
-    
+
     State transitions:
     - CLOSED → OPEN: When failure_count >= threshold
     - OPEN → HALF_OPEN: After recovery_timeout seconds
     - HALF_OPEN → CLOSED: On successful call
     - HALF_OPEN → OPEN: On failed call
-    
+
     Attributes:
         name: Service name for logging
         failure_threshold: Number of failures before opening circuit
         recovery_timeout: Seconds to wait before testing recovery
     """
-    
+
     def __init__(
         self,
         name: str,
@@ -89,7 +89,7 @@ class CircuitBreaker:
         self.name = name
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
-        
+
         self._state = CircuitState.CLOSED
         self._failure_count = 0
         self._success_count = 0
@@ -98,7 +98,7 @@ class CircuitBreaker:
         self._lock = asyncio.Lock()
 
         self._logger = get_logger(__name__)
-    
+
     @property
     def state(self) -> CircuitState:
         """Get current circuit state (read-only, no lock needed)."""
@@ -110,22 +110,22 @@ class CircuitBreaker:
         """Check if circuit allows requests (read-only, no lock needed)."""
         self._check_state_transition_unlocked()
         return self._state != CircuitState.OPEN
-    
+
     @property
     def failure_count(self) -> int:
         """Get current failure count."""
         return self._failure_count
-    
+
     @property
     def time_until_retry(self) -> int:
         """Get seconds until circuit might transition to HALF_OPEN."""
         if self._last_failure_time is None:
             return 0
-        
+
         elapsed = time.monotonic() - self._last_failure_time
         remaining = self.recovery_timeout - elapsed
         return max(0, int(remaining))
-    
+
     def _check_state_transition(self) -> None:
         """Check if state should transition (must be called with lock held)."""
         if self._state == CircuitState.OPEN and self._last_failure_time:
@@ -147,7 +147,7 @@ class CircuitBreaker:
                     "Circuit breaker for %s transitioned to HALF_OPEN (testing recovery)",
                     self.name,
                 )
-    
+
     async def record_success(self) -> None:
         """
         Record successful call.
@@ -187,7 +187,8 @@ class CircuitBreaker:
             if self._state == CircuitState.HALF_OPEN:
                 self._state = CircuitState.OPEN
                 self._logger.error(
-                    "Circuit breaker for %s stayed OPEN (recovery test failed)", self.name
+                    "Circuit breaker for %s stayed OPEN (recovery test failed)",
+                    self.name,
                 )
             elif self._state == CircuitState.CLOSED:
                 if self._failure_count >= self.failure_threshold:
@@ -208,7 +209,7 @@ class CircuitBreaker:
             self._success_count = 0
             self._last_failure_time = None
             self._logger.info("Circuit breaker for %s manually reset", self.name)
-    
+
     @asynccontextmanager
     async def track_call(self):
         """
@@ -225,7 +226,7 @@ class CircuitBreaker:
         except Exception:
             await self.record_failure()
             raise
-    
+
     def get_status(self) -> dict:
         """
         Get circuit breaker status as dict.
@@ -238,7 +239,9 @@ class CircuitBreaker:
             "state": self._state.value,
             "failure_count": self._failure_count,
             "threshold": self.failure_threshold,
-            "time_until_retry": self.time_until_retry if self._state == CircuitState.OPEN else 0,
+            "time_until_retry": (
+                self.time_until_retry if self._state == CircuitState.OPEN else 0
+            ),
         }
 
 

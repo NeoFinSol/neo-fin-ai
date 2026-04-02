@@ -111,7 +111,7 @@ class TestCalculateIntegralScore:
     def test_unknown_ratio_ignored(self):
         """Test unknown ratio names are ignored."""
         from src.analysis.scoring import _normalize_ratio
-        
+
         # Unknown ratio should return None
         result = _normalize_ratio("Unknown Ratio Name", 5.0)
         assert result is None

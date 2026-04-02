@@ -1,7 +1,8 @@
 """Tests for core/ai_service.py — unified AI service."""
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.core.ai_service import AIService
 

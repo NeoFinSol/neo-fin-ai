@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  CI_DB_PASSWORD: neofin_ci_password
+
 jobs:
   lint:
     name: Code Linting
@@ -50,7 +53,7 @@ jobs:
         # Only check paths that exist
         ISORT_PATHS="src/ tests/"
         [ -d "scripts" ] && ISORT_PATHS="$ISORT_PATHS scripts/"
-        isort --check-only $ISORT_PATHS
+        isort --profile black --check-only $ISORT_PATHS
 
   test:
     name: Run Tests
@@ -62,7 +65,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ env.CI_DB_PASSWORD }}
           POSTGRES_DB: neofin
         # ports убраны для безопасности - используем internal network
         options: >-
@@ -76,7 +79,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ env.CI_DB_PASSWORD }}
           POSTGRES_DB: neofin_test
         # ports убраны для безопасности - используем internal network
         options: >-
@@ -110,8 +113,8 @@ jobs:
 
     - name: Run database migrations
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-main:5432/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-test:5432/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -123,8 +126,8 @@ jobs:
 
     - name: Run unit tests
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-main:5432/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-test:5432/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -136,8 +139,8 @@ jobs:
 
     - name: Run API tests
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-main:5432/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-test:5432/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -149,8 +152,8 @@ jobs:
 
     - name: Run DB integration tests
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-main:5432/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-test:5432/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -162,8 +165,8 @@ jobs:
 
     - name: Run coverage check
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-main:5432/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@postgres-test:5432/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}

@@ -38,7 +38,8 @@ def pytest_configure(config):
         "markers", "e2e: mark test as end-to-end test (requires full app setup)"
     )
     config.addinivalue_line(
-        "markers", "benchmark: mark test as performance benchmark (slow, run separately)"
+        "markers",
+        "benchmark: mark test as performance benchmark (slow, run separately)",
     )
     config.addinivalue_line(
         "markers", "frontend: mark test as frontend integration test"
@@ -47,7 +48,8 @@ def pytest_configure(config):
         "markers", "pdf_real: mark test as real-PDF smoke regression corpus"
     )
     config.addinivalue_line(
-        "markers", "pdf_real_heavy: mark test as optional heavy real-PDF regression corpus"
+        "markers",
+        "pdf_real_heavy: mark test as optional heavy real-PDF regression corpus",
     )
 
 
@@ -90,36 +92,39 @@ def auth_enabled(monkeypatch):
 def client(db_engine, monkeypatch):
     """
     Create test client with authentication properly configured.
-    
+
     This fixture:
     1. Imports app AFTER environment variables are set
     2. Overrides auth dependency to bypass authentication
     3. Returns configured TestClient
-    
+
     Usage:
         def test_endpoint(client):
             response = client.get("/endpoint")
     """
     engine, _schema = db_engine
-    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    session_maker = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
 
     monkeypatch.setattr(db, "AsyncSessionLocal", session_maker)
     monkeypatch.setattr(db, "get_session_maker", lambda: session_maker)
     monkeypatch.setattr(crud, "get_session_maker", lambda: session_maker)
 
     from fastapi.testclient import TestClient
+
     from src.app import app
     from src.core.auth import get_api_key
-    
+
     # Override auth dependency to always return test user
     async def override_auth():
         return "test-user"
-    
+
     app.dependency_overrides[get_api_key] = override_auth
-    
+
     with TestClient(app) as test_client:
         yield test_client
-    
+
     # Cleanup
     app.dependency_overrides.clear()
 
@@ -157,7 +162,9 @@ async def db_engine():
 @pytest_asyncio.fixture()
 async def db_session(db_engine, monkeypatch):
     engine, _schema = db_engine
-    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    session_maker = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
 
     monkeypatch.setattr(db, "AsyncSessionLocal", session_maker)
     monkeypatch.setattr(db, "get_session_maker", lambda: session_maker)

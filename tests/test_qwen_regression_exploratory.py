@@ -8,8 +8,8 @@ GOAL: Reproduce bugs and document counterexamples.
 Validates: Requirements 1.1, 1.7, 1.13, 1.17
 """
 import os
-import pytest
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Test 1: БАГ 1 — AnalysisContext.tsx uses wrong endpoint
@@ -170,6 +170,7 @@ def test_cors_no_name_error():
         pytest.skip(f"Could not import src.app: {exc}")
 
     import inspect
+
     import src.app as app_module
 
     source = inspect.getsource(app_module)

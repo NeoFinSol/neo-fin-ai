@@ -7,6 +7,7 @@ insufficient data.
 
 Architecture rule: this module must NOT import FastAPI or SQLAlchemy.
 """
+
 import json
 import logging
 import re
@@ -14,8 +15,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from src.analysis.pdf_extractor import (
-    ExtractionMetadata,
     _METRIC_KEYWORDS,
+    ExtractionMetadata,
     _is_valid_financial_value,
 )
 from src.core.prompts import LLM_EXTRACTION_PROMPT, LLM_EXTRACTION_RETRY_PROMPT
@@ -127,6 +128,7 @@ _ANOMALY_RULES: dict[str, tuple[float | None, float | None]] = {
 # 2.1  _normalize_number_str
 # ---------------------------------------------------------------------------
 
+
 def _normalize_number_str(value_str: str) -> float | None:
     """Normalise a string representation of a number to float.
 
@@ -207,6 +209,7 @@ def _normalize_number_str(value_str: str) -> float | None:
 # 2.3  _apply_anomaly_check
 # ---------------------------------------------------------------------------
 
+
 def _apply_anomaly_check(
     key: str,
     value: float,
@@ -233,7 +236,10 @@ def _apply_anomaly_check(
         adjusted = min(confidence, 0.3)
         logger.warning(
             "Anomalous value for metric %s: %s (confidence reduced from %.2f to %.2f)",
-            key, value, confidence, adjusted,
+            key,
+            value,
+            confidence,
+            adjusted,
         )
         return value, adjusted
 
@@ -243,6 +249,7 @@ def _apply_anomaly_check(
 # ---------------------------------------------------------------------------
 # 2.5  parse_llm_extraction_response
 # ---------------------------------------------------------------------------
+
 
 def _is_metric_object(payload: object) -> bool:
     """Return True when payload looks like a single metric item."""
@@ -461,7 +468,9 @@ def _is_likely_noise_line(line: str) -> bool:
     if any(pattern.fullmatch(compact) for pattern in _NOISE_LINE_PATTERNS):
         return True
 
-    punctuation = sum(1 for char in compact if not char.isalnum() and not char.isspace())
+    punctuation = sum(
+        1 for char in compact if not char.isalnum() and not char.isspace()
+    )
     if compact and punctuation / len(compact) > 0.35:
         return True
 
@@ -492,7 +501,7 @@ def _split_oversized_paragraph(
     chunks: list[str] = []
 
     for start in range(0, len(paragraph), step):
-        part = paragraph[start:start + chunk_size]
+        part = paragraph[start : start + chunk_size]
         if not part:
             break
         chunks.append(part)
@@ -548,6 +557,7 @@ def _compact_financial_lines(
 # ---------------------------------------------------------------------------
 # 2.7  chunk_text
 # ---------------------------------------------------------------------------
+
 
 def chunk_text(
     text: str,
@@ -633,6 +643,7 @@ def chunk_text(
 # 2.9  merge_extraction_results
 # ---------------------------------------------------------------------------
 
+
 def merge_extraction_results(
     results: list[dict[str, ExtractionMetadata]],
 ) -> dict[str, ExtractionMetadata]:
@@ -678,6 +689,7 @@ def build_extraction_invoke_input(
 # 2.11  extract_with_llm
 # ---------------------------------------------------------------------------
 
+
 async def extract_with_llm(
     text: str,
     ai_service: "AIService",
@@ -714,7 +726,8 @@ async def extract_with_llm(
     if len(text) > token_budget:
         logger.info(
             "LLM extraction input compacted to budget boundary: %d -> %d chars",
-            len(text), token_budget,
+            len(text),
+            token_budget,
         )
         text = text[:token_budget]
 
@@ -738,9 +751,7 @@ async def extract_with_llm(
                 **invoke_kwargs,
             )
         except Exception as exc:
-            logger.warning(
-                "LLM invoke error for chunk %d: %s", chunk_idx, repr(exc)
-            )
+            logger.warning("LLM invoke error for chunk %d: %s", chunk_idx, repr(exc))
             failure_reason = failure_reason or "llm_error"
             continue
 
@@ -811,16 +822,43 @@ async def extract_with_llm(
 
     return LlmExtractionRunResult(metrics=merged, failure_reason=None)
 
+
 # ---------------------------------------------------------------------------
 # Text preprocessing — filter OCR garbage before sending to LLM
 # ---------------------------------------------------------------------------
 
 _FINANCIAL_KEYWORDS = [
-    "выручка", "прибыль", "актив", "капитал", "руб", "тыс", "млн", "млрд",
-    "баланс", "обязательств", "ликвидност", "дебитор", "кредитор", "запас",
-    "revenue", "profit", "asset", "equity", "liabilit", "cash",
-    "риск", "убыт", "задолж", "снижен", "рост", "падени", "debt", "loss",
-    "risk", "decline", "growth",
+    "выручка",
+    "прибыль",
+    "актив",
+    "капитал",
+    "руб",
+    "тыс",
+    "млн",
+    "млрд",
+    "баланс",
+    "обязательств",
+    "ликвидност",
+    "дебитор",
+    "кредитор",
+    "запас",
+    "revenue",
+    "profit",
+    "asset",
+    "equity",
+    "liabilit",
+    "cash",
+    "риск",
+    "убыт",
+    "задолж",
+    "снижен",
+    "рост",
+    "падени",
+    "debt",
+    "loss",
+    "risk",
+    "decline",
+    "growth",
 ]
 
 _EXTRACTION_LINE_KEYWORDS = tuple(
@@ -897,7 +935,8 @@ def clean_for_llm(
     result = "\n".join(compacted)
     logger.info(
         "clean_for_llm: %d chars -> %d chars (%.0f%% reduction)",
-        len(raw_text), len(result),
+        len(raw_text),
+        len(result),
         (1 - len(result) / max(len(raw_text), 1)) * 100,
     )
     return result
@@ -914,14 +953,18 @@ def _is_extraction_neighbor_candidate(line: str) -> bool:
 def _score_extraction_line(line: str) -> int:
     """Score a line by extraction relevance rather than narrative usefulness."""
     lowered = line.lower()
-    metric_hits = sum(
-        1 for keyword in _EXTRACTION_LINE_KEYWORDS if keyword in lowered
-    )
+    metric_hits = sum(1 for keyword in _EXTRACTION_LINE_KEYWORDS if keyword in lowered)
     total_hits = sum(1 for token in _EXTRACTION_TOTAL_TOKENS if token in lowered)
     unit_hits = sum(1 for token in _EXTRACTION_UNIT_TOKENS if token in lowered)
     digit_groups = len(re.findall(r"\d{3,}", line))
     dense_numbers = 3 if digit_groups >= 2 else 0
-    return metric_hits * 6 + total_hits * 3 + unit_hits * 2 + digit_groups * 2 + dense_numbers
+    return (
+        metric_hits * 6
+        + total_hits * 3
+        + unit_hits * 2
+        + digit_groups * 2
+        + dense_numbers
+    )
 
 
 def clean_for_llm_extraction(
@@ -952,7 +995,9 @@ def clean_for_llm_extraction(
         if narrative_noise:
             continue
 
-        if not (metric_hit or total_hit or (unit_hit and digit_groups > 0) or dense_numeric):
+        if not (
+            metric_hit or total_hit or (unit_hit and digit_groups > 0) or dense_numeric
+        ):
             continue
 
         dedup_key = _line_dedup_key(stripped)

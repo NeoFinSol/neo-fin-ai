@@ -138,7 +138,7 @@ class TestExtractMetricsRegex:
     def test_normalize_russian_number_formats(self):
         """Test regex extraction handles Russian number formats correctly."""
         from src.analysis.pdf_extractor import extract_metrics_regex
-        
+
         # Space as thousand separator, comma as decimal
         text = "Выручка | 1 234 567,89"
         result = extract_metrics_regex(text)

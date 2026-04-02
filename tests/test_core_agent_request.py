@@ -1,7 +1,8 @@
 """Tests for Agent.request method — covers the aiohttp HTTP call paths."""
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from aiohttp import ClientError, ContentTypeError
 
 from src.core.agent import Agent, ConfigurationError

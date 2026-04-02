@@ -11,11 +11,10 @@ Validates: Requirements 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.11, 3.12
 """
 import asyncio
 import os
+
 import pytest
-
-from hypothesis import given, settings, assume
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
-
 
 # ---------------------------------------------------------------------------
 # Test 1: prop_financial_value_filter (Property-based)
@@ -330,8 +329,8 @@ def test_recommendations_fallback() -> None:
     """
     try:
         from src.analysis.recommendations import (
-            generate_recommendations,
             FALLBACK_RECOMMENDATIONS,
+            generate_recommendations,
         )
     except ImportError as exc:
         pytest.skip("Could not import recommendations module: %s" % exc)
@@ -382,7 +381,9 @@ def test_tesseract_env_cmd_respected() -> None:
 
         try:
             import pytesseract
+
             import src.analysis.pdf_extractor  # noqa: F401
+
             # After import, tesseract_cmd should be set to our env value
             assert pytesseract.pytesseract.tesseract_cmd == "/usr/local/bin/tesseract", (
                 "REGRESSION: TESSERACT_CMD env var not respected. "

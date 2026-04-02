@@ -1,26 +1,34 @@
 import asyncio
 import logging
-from typing import Optional, Any
+from typing import Any, Optional
+
 import aiohttp
 from aiohttp import ClientTimeout
 
 logger = logging.getLogger(__name__)
 
+
 class AIAgentError(Exception):
     """Base class for AI agent errors."""
+
     pass
+
 
 class ConfigurationError(AIAgentError):
     """Raised when agent is not properly configured."""
+
     pass
+
 
 class AIAgentTimeoutError(AIAgentError):
     """Raised when AI agent request times out."""
+
     pass
+
 
 class BaseAIAgent:
     """Base class for all AI agents with common functionality."""
-    
+
     def __init__(self, timeout: int = 120):
         self.timeout = timeout
         self._configured: bool = False
@@ -49,11 +57,11 @@ class BaseAIAgent:
     async def invoke(self, input: dict, timeout: Optional[int] = None) -> Optional[str]:
         """
         Unified invoke interface for all agents.
-        
+
         Args:
             input: Input dictionary (context, prompts, etc.)
             timeout: Optional override for default timeout
-            
+
         Returns:
             Optional[str]: Agent response or None
         """

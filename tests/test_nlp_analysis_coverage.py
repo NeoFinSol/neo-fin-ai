@@ -1,13 +1,14 @@
 """Tests for analysis/nlp_analysis.py — covers missing branches."""
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from src.analysis.nlp_analysis import (
-    analyze_narrative,
+    _empty_result,
+    _ensure_list,
     _extract_narrative,
     _parse_llm_json,
-    _ensure_list,
-    _empty_result,
+    analyze_narrative,
 )
 
 

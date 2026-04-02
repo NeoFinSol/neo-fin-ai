@@ -1,5 +1,6 @@
 """Additional tests for models/settings.py — covers validators and properties."""
 import pytest
+
 from src.models.settings import AppSettings
 
 

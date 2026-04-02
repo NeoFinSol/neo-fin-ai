@@ -1,8 +1,9 @@
 """Tests for models/settings module."""
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import pytest
 from pydantic import ValidationError
-from unittest.mock import patch, MagicMock
 
 from src.models.settings import AppSettings, app_settings
 
@@ -13,6 +14,7 @@ class TestAppSettings:
     def test_default_settings_no_env(self):
         """Test default settings when no env vars provided (env vars cleared)."""
         import os
+
         # Clear relevant env vars and bypass .env file reading
         env_keys = ["QWEN_API_KEY", "QWEN_API_URL"]
         saved = {k: os.environ.pop(k, None) for k in env_keys}
@@ -210,7 +212,7 @@ class TestSettingsExceptionHandling:
         # This is difficult to test directly without reloading the module
         # Verify the fallback app_settings is created properly
         from src.models import settings
-        
+
         # Should have app_settings defined
         assert hasattr(settings, 'app_settings')
         assert settings.app_settings is not None

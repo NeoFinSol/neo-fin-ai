@@ -87,7 +87,10 @@ def _should_override(
 ) -> bool:
     if current is None or current.value is None:
         return True
-    return _calculate_discrepancy(current.value, issuer_value) > _OVERRIDE_DISCREPANCY_THRESHOLD
+    return (
+        _calculate_discrepancy(current.value, issuer_value)
+        > _OVERRIDE_DISCREPANCY_THRESHOLD
+    )
 
 
 def _calculate_discrepancy(current_value: float | None, issuer_value: float) -> float:

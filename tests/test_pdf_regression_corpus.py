@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from cryptography.utils import CryptographyDeprecationWarning
+
 from src.analysis import pdf_extractor
 
 warnings.filterwarnings(

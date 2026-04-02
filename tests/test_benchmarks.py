@@ -21,7 +21,6 @@ from src.analysis.ratios import calculate_ratios
 from src.analysis.scoring import calculate_integral_score
 from src.db.crud import create_analysis, get_analysis, update_analysis
 
-
 pytestmark = pytest.mark.benchmark
 
 

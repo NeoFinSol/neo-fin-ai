@@ -1,7 +1,8 @@
 """Tests for core/gigachat_agent.py — GigaChat API agent."""
 import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.core.gigachat_agent import GigaChatAgent
 

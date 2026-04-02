@@ -10,33 +10,65 @@ class FinanceMetric(BaseModel):
     name: str = Field(description="Человекочитаемое имя показателя")
     value: float = Field(description="Числовое значение показателя")
     unit: str = Field(description="Единицы измерения (например, RUB, млн RUB, %)")
-    year: int | None = Field(description="Год, к которому относится показатель (если удалось определить)")
-    confidence_score: float = Field(ge=0.0, le=1.0, description="Оценка уверенности извлечения (0–1)")
-    source_fragment: str = Field(description="Фрагмент текста отчёта, из которого был извлечён показатель")
+    year: int | None = Field(
+        description="Год, к которому относится показатель (если удалось определить)"
+    )
+    confidence_score: float = Field(
+        ge=0.0, le=1.0, description="Оценка уверенности извлечения (0–1)"
+    )
+    source_fragment: str = Field(
+        description="Фрагмент текста отчёта, из которого был извлечён показатель"
+    )
 
 
 class FinanceRatio(BaseModel):
     name: str = Field(description="Название коэффициента")
-    value: float | None = Field(description="Числовое значение коэффициента (None, если рассчитать не удалось)")
+    value: float | None = Field(
+        description="Числовое значение коэффициента (None, если рассчитать не удалось)"
+    )
     unit: str = Field(description="Единицы измерения коэффициента (например, %, x)")
-    year: int | None = Field(description="Год, к которому относится коэффициент (если удалось определить)")
+    year: int | None = Field(
+        description="Год, к которому относится коэффициент (если удалось определить)"
+    )
     formula: str = Field(description="Формула коэффициента в текстовом виде")
-    category: str | None = Field(description="Категория коэффициента (ликвидность, рентабельность и т.п.)")
+    category: str | None = Field(
+        description="Категория коэффициента (ликвидность, рентабельность и т.п.)"
+    )
 
 
 class AnalyzeResponse(BaseModel):
-    raw_text: str = Field(description="Сырой текст, извлечённый из PDF (для отладки и прозрачности)")
-    warnings: list[str] = Field(description="Предупреждения, связанные с качеством данных и обработкой")
-    metrics: list[FinanceMetric] = Field(description="Извлечённые ключевые финансовые показатели")
-    ratios: list[FinanceRatio] = Field(description="Рассчитанные финансовые коэффициенты")
-    score: float | None = Field(description="Интегральный скоринг компании по 100-балльной шкале (если рассчитан)")
+    raw_text: str = Field(
+        description="Сырой текст, извлечённый из PDF (для отладки и прозрачности)"
+    )
+    warnings: list[str] = Field(
+        description="Предупреждения, связанные с качеством данных и обработкой"
+    )
+    metrics: list[FinanceMetric] = Field(
+        description="Извлечённые ключевые финансовые показатели"
+    )
+    ratios: list[FinanceRatio] = Field(
+        description="Рассчитанные финансовые коэффициенты"
+    )
+    score: float | None = Field(
+        description="Интегральный скоринг компании по 100-балльной шкале (если рассчитан)"
+    )
 
     # Заглушки под будущие модули NLP, рекомендаций и новостей
-    nlp_summary: str | None = Field(description="Краткое текстовое резюме пояснительной записки (будет заполняться на неделе 3)")
-    risks: list[str] = Field(description="Список выявленных рисков (пока пустой, будет реализовано позже)")
-    opportunities: list[str] = Field(description="Список выявленных перспектив/возможностей (пока пустой)")
-    recommendations: list[str] = Field(description="Список рекомендаций (пока заглушка, будет реализовано позже)")
-    news: list[str] = Field(description="Краткий список новостей и их тональности (опциональный модуль)")
+    nlp_summary: str | None = Field(
+        description="Краткое текстовое резюме пояснительной записки (будет заполняться на неделе 3)"
+    )
+    risks: list[str] = Field(
+        description="Список выявленных рисков (пока пустой, будет реализовано позже)"
+    )
+    opportunities: list[str] = Field(
+        description="Список выявленных перспектив/возможностей (пока пустой)"
+    )
+    recommendations: list[str] = Field(
+        description="Список рекомендаций (пока заглушка, будет реализовано позже)"
+    )
+    news: list[str] = Field(
+        description="Краткий список новостей и их тональности (опциональный модуль)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -46,20 +78,26 @@ class AnalyzeResponse(BaseModel):
 
 
 class ExtractionMetadataItem(BaseModel):
-    confidence: float = Field(ge=0.0, le=1.0, description="Уверенность извлечения [0.0–1.0]")
-    source: Literal["table_exact", "table_partial", "text_regex", "derived", "issuer_fallback"] = Field(
-        description="Метод извлечения показателя"
+    confidence: float = Field(
+        ge=0.0, le=1.0, description="Уверенность извлечения [0.0–1.0]"
     )
+    source: Literal[
+        "table_exact", "table_partial", "text_regex", "derived", "issuer_fallback"
+    ] = Field(description="Метод извлечения показателя")
 
 
 class ScoreFactor(BaseModel):
     name: str = Field(description="Название фактора")
     description: str = Field(description="Описание влияния фактора")
-    impact: Literal["positive", "negative", "neutral"] = Field(description="Тип влияния")
+    impact: Literal["positive", "negative", "neutral"] = Field(
+        description="Тип влияния"
+    )
 
 
 class ScoreMethodologySchema(BaseModel):
-    benchmark_profile: Literal["generic", "retail_demo"] = Field(description="Профиль бенчмарка для нормализации")
+    benchmark_profile: Literal["generic", "retail_demo"] = Field(
+        description="Профиль бенчмарка для нормализации"
+    )
     period_basis: Literal["reported", "annualized_q1", "annualized_h1"] = Field(
         description="База периода для скоринга"
     )
@@ -69,8 +107,12 @@ class ScoreMethodologySchema(BaseModel):
     leverage_basis: Literal["total_liabilities", "debt_only"] = Field(
         description="Активная база финансового рычага"
     )
-    ifrs16_adjusted: bool = Field(description="Применена ли IFRS 16-aware корректировка")
-    adjustments: list[str] = Field(description="Список применённых корректировок методики")
+    ifrs16_adjusted: bool = Field(
+        description="Применена ли IFRS 16-aware корректировка"
+    )
+    adjustments: list[str] = Field(
+        description="Список применённых корректировок методики"
+    )
     peer_context: list[str] = Field(description="Контекст отраслевых ориентиров")
 
 
@@ -79,27 +121,34 @@ class ScoreSchema(BaseModel):
     risk_level: str = Field(description="Уровень риска (low, medium, high, critical)")
     confidence_score: float = Field(ge=0.0, le=1.0, description="Достоверность данных")
     factors: list[ScoreFactor] = Field(description="Список влияющих факторов")
-    normalized_scores: dict[str, float | None] = Field(description="Нормализованные баллы по каждому коэффициенту")
-    methodology: ScoreMethodologySchema = Field(description="Методика расчёта интегрального скоринга")
+    normalized_scores: dict[str, float | None] = Field(
+        description="Нормализованные баллы по каждому коэффициенту"
+    )
+    methodology: ScoreMethodologySchema = Field(
+        description="Методика расчёта интегрального скоринга"
+    )
 
 
 class AIRuntimeSchema(BaseModel):
-    requested_provider: Literal["auto", "gigachat", "huggingface", "qwen", "ollama"] = Field(
-        description="Провайдер, запрошенный UI или автоматическим режимом"
+    requested_provider: Literal["auto", "gigachat", "huggingface", "qwen", "ollama"] = (
+        Field(description="Провайдер, запрошенный UI или автоматическим режимом")
     )
-    effective_provider: Literal["gigachat", "huggingface", "qwen", "ollama"] | None = Field(
-        description="Провайдер, который реально использовался в AI-контуре"
+    effective_provider: Literal["gigachat", "huggingface", "qwen", "ollama"] | None = (
+        Field(description="Провайдер, который реально использовался в AI-контуре")
     )
     status: Literal["succeeded", "empty", "failed", "skipped"] = Field(
         description="Результат выполнения AI-контура"
     )
-    reason_code: Literal[
-        "no_nlp_content",
-        "provider_unavailable",
-        "provider_error",
-        "invalid_response",
-        "insufficient_text",
-    ] | None = Field(description="Машинно-читаемая причина статуса")
+    reason_code: (
+        Literal[
+            "no_nlp_content",
+            "provider_unavailable",
+            "provider_error",
+            "invalid_response",
+            "insufficient_text",
+        ]
+        | None
+    ) = Field(description="Машинно-читаемая причина статуса")
 
 
 # ---------------------------------------------------------------------------

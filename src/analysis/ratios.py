@@ -31,16 +31,16 @@ RATIO_KEY_MAP = {
 def translate_ratios(ratios: dict) -> dict:
     """
     Convert Russian ratio keys to snake_case English for frontend.
-    
+
     Args:
         ratios: Dictionary with Russian keys from calculate_ratios
-        
+
     Returns:
         dict: Dictionary with English keys
     """
     result = {}
     unknown_keys = []
-    
+
     for k, v in ratios.items():
         en_key = RATIO_KEY_MAP.get(k)
         if en_key:
@@ -48,10 +48,10 @@ def translate_ratios(ratios: dict) -> dict:
         else:
             # Drop unknown keys — do not forward Russian keys to the frontend
             unknown_keys.append(k)
-    
+
     if unknown_keys:
         logger.warning("Unmapped ratio keys (frontend may break): %s", unknown_keys)
-    
+
     return result
 
 
@@ -116,33 +116,32 @@ def calculate_ratios(financial_data: dict[str, Any]) -> dict[str, float | None]:
 
     ratios: dict[str, float | None] = {
         # ===== LIQUIDITY RATIOS =====
-        "Коэффициент текущей ликвидности": _safe_div(current_assets, short_term_liabilities),
+        "Коэффициент текущей ликвидности": _safe_div(
+            current_assets, short_term_liabilities
+        ),
         "Коэффициент быстрой ликвидности": _safe_div(
-            _subtract(current_assets, inventory), 
-            short_term_liabilities
+            _subtract(current_assets, inventory), short_term_liabilities
         ),
         "Коэффициент абсолютной ликвидности": _safe_div(
-            cash_and_equivalents, 
-            short_term_liabilities
+            cash_and_equivalents, short_term_liabilities
         ),
-
         # ===== PROFITABILITY RATIOS =====
         "Рентабельность активов (ROA)": _safe_div(net_profit, total_assets),
         "Рентабельность собственного капитала (ROE)": _safe_div(net_profit, equity),
         "Рентабельность продаж (ROS)": _safe_div(net_profit, revenue),
         "EBITDA маржа": _safe_div(ebitda, revenue),
-
         # ===== FINANCIAL STABILITY RATIOS =====
         "Коэффициент автономии": _safe_div(equity, total_assets),
         "Финансовый рычаг": _safe_div(liabilities, equity),
         "Финансовый рычаг (обязательства/капитал)": _safe_div(liabilities, equity),
         "Финансовый рычаг (долг/капитал)": _safe_div(interest_bearing_debt, equity),
         "Покрытие процентов": _safe_div(ebit, normalized_interest_expense),
-
         # ===== BUSINESS ACTIVITY RATIOS =====
         "Оборачиваемость активов": _safe_div(revenue, total_assets),
         "Оборачиваемость запасов": _safe_div(cost_of_goods_sold, average_inventory),
-        "Оборачиваемость дебиторской задолженности": _safe_div(revenue, accounts_receivable),
+        "Оборачиваемость дебиторской задолженности": _safe_div(
+            revenue, accounts_receivable
+        ),
     }
 
     return ratios
@@ -227,8 +226,13 @@ def _log_missing_data(financial_data: dict[str, Any]) -> None:
         financial_data: Dictionary of financial metrics
     """
     critical_fields = [
-        "revenue", "net_profit", "total_assets", "equity", 
-        "liabilities", "current_assets", "short_term_liabilities"
+        "revenue",
+        "net_profit",
+        "total_assets",
+        "equity",
+        "liabilities",
+        "current_assets",
+        "short_term_liabilities",
     ]
 
     for field in critical_fields:
@@ -237,9 +241,14 @@ def _log_missing_data(financial_data: dict[str, Any]) -> None:
 
     # Log warning for extended fields used in new ratios
     extended_fields = [
-        "inventory", "cash_and_equivalents", "ebitda", "ebit",
-        "interest_expense", "cost_of_goods_sold", "average_inventory", 
-        "accounts_receivable"
+        "inventory",
+        "cash_and_equivalents",
+        "ebitda",
+        "ebit",
+        "interest_expense",
+        "cost_of_goods_sold",
+        "average_inventory",
+        "accounts_receivable",
     ]
 
     for field in extended_fields:

@@ -1,7 +1,13 @@
 """Additional tests for core/security.py — covers regex error paths."""
-import pytest
 from unittest.mock import patch
-from src.core.security import redact_url, redact_credentials, get_safe_db_url_for_logging
+
+import pytest
+
+from src.core.security import (
+    get_safe_db_url_for_logging,
+    redact_credentials,
+    redact_url,
+)
 
 
 class TestRedactUrlEdgeCases:

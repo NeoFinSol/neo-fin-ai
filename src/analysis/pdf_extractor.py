@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import camelot
-from pdf2image import convert_from_path
 import PyPDF2
 import pytesseract
+from pdf2image import convert_from_path
 from pytesseract import Output
 
 logger = logging.getLogger(__name__)
@@ -36,12 +36,14 @@ try:
     CONFIDENCE_THRESHOLD: float = float(_RAW_THRESHOLD)
     if not (0.0 <= CONFIDENCE_THRESHOLD <= 1.0):
         logger.warning(
-            "CONFIDENCE_THRESHOLD=%s out of [0.0, 1.0], using default 0.5", _RAW_THRESHOLD
+            "CONFIDENCE_THRESHOLD=%s out of [0.0, 1.0], using default 0.5",
+            _RAW_THRESHOLD,
         )
         CONFIDENCE_THRESHOLD = 0.5
 except ValueError:
     logger.warning(
-        "CONFIDENCE_THRESHOLD=%r is not a valid float, using default 0.5", _RAW_THRESHOLD
+        "CONFIDENCE_THRESHOLD=%r is not a valid float, using default 0.5",
+        _RAW_THRESHOLD,
     )
     CONFIDENCE_THRESHOLD = 0.5
 
@@ -49,7 +51,9 @@ except ValueError:
 # Extraction metadata types
 # ---------------------------------------------------------------------------
 
-ExtractionSource = Literal["table_exact", "table_partial", "text_regex", "derived", "issuer_fallback"]
+ExtractionSource = Literal[
+    "table_exact", "table_partial", "text_regex", "derived", "issuer_fallback"
+]
 
 
 @dataclass
@@ -400,7 +404,9 @@ def extract_text(pdf_path: str) -> str:
             try:
                 texts.append(page.extract_text() or "")
             except Exception as exc:
-                logger.warning("Failed to extract text from page %s: %s", page_index, exc)
+                logger.warning(
+                    "Failed to extract text from page %s: %s", page_index, exc
+                )
         return "\n".join(texts).strip()
     except Exception as exc:
         logger.error("Failed to read PDF for text extraction: %s", exc)
@@ -417,17 +423,18 @@ def _is_glyph_encoded(text: str) -> bool:
     if not text or len(text) < 20:
         return False
     import re as _re
+
     tokens = text.split()
     if not tokens:
         return False
-    glyph_tokens = sum(1 for t in tokens if _re.fullmatch(r'/\d+', t))
+    glyph_tokens = sum(1 for t in tokens if _re.fullmatch(r"/\d+", t))
     return (glyph_tokens / len(tokens)) > 0.3
 
 
 def is_scanned_pdf(pdf_path: str) -> bool:
     """
     Check if PDF is scanned or has a searchable text layer.
-    
+
     Checks first 3 pages for text. If very little text is found,
     also checks for image presence to confirm it's likely a scan.
     """
@@ -435,28 +442,28 @@ def is_scanned_pdf(pdf_path: str) -> bool:
         reader = PyPDF2.PdfReader(pdf_path)
         num_pages = len(reader.pages)
         check_pages = reader.pages[: min(3, num_pages)]
-        
+
         text_parts = []
         has_images = False
-        
+
         for page in check_pages:
             try:
                 # 1. Try to extract text
                 page_text = (page.extract_text() or "").strip()
                 text_parts.append(page_text)
-                
+
                 # 2. Check for images/xobjects
-                if '/XObject' in page['/Resources']:
-                    xobjs = page['/Resources']['/XObject'].get_object()
+                if "/XObject" in page["/Resources"]:
+                    xobjs = page["/Resources"]["/XObject"].get_object()
                     for obj_name in xobjs:
-                        if xobjs[obj_name]['/Subtype'] == '/Image':
+                        if xobjs[obj_name]["/Subtype"] == "/Image":
                             has_images = True
                             break
             except Exception as exc:
                 logger.debug("Page check failed: %s", exc)
-                
+
         text = "".join(text_parts).strip()
-        
+
         # If we have significant text, check if it's actually readable
         if len(text) > 200:
             if _is_glyph_encoded(text):
@@ -465,14 +472,14 @@ def is_scanned_pdf(pdf_path: str) -> bool:
                 )
                 return True
             return False
-            
+
         # If very little text but has images, it's likely a scan
         if has_images and len(text) < 50:
             return True
-            
+
         # Fallback to old simple check for robustness
         return len(text) < 50
-        
+
     except Exception as exc:
         logger.exception("Failed to check PDF for text: %s", exc)
         return True
@@ -481,6 +488,7 @@ def is_scanned_pdf(pdf_path: str) -> bool:
 def _get_poppler_path() -> str | None:
     """Return poppler bin path on Windows if not in PATH, else None."""
     import shutil
+
     if shutil.which("pdftoppm"):
         return None  # already in PATH
     # Common Windows install locations
@@ -492,6 +500,7 @@ def _get_poppler_path() -> str | None:
     ]
     for path in candidates:
         import os
+
         if os.path.isfile(os.path.join(path, "pdftoppm.exe")):
             return path
     return None
@@ -552,7 +561,9 @@ def extract_text_from_scanned(pdf_path: str) -> str:
                 layout_totals = _extract_layout_section_total_lines(image, page_text)
                 layout_metric_lines: list[str] = []
                 if _should_run_layout_metric_row_crop(page_text):
-                    layout_metric_lines = _extract_layout_metric_value_lines(image, page_text)
+                    layout_metric_lines = _extract_layout_metric_value_lines(
+                        image, page_text
+                    )
                 synthesized_layout_lines = [*layout_totals, *layout_metric_lines]
                 if synthesized_layout_lines:
                     page_text = "\n".join([page_text, *synthesized_layout_lines])
@@ -624,7 +635,9 @@ def _extract_layout_section_total_lines(image: object, page_text: str) -> list[s
             continue
 
         near_numbers.sort(key=lambda x: x[0])
-        synthesized_line = f"{marker_text} {' '.join(token for _, token in near_numbers)}"
+        synthesized_line = (
+            f"{marker_text} {' '.join(token for _, token in near_numbers)}"
+        )
         if synthesized_line not in seen:
             synthesized.append(synthesized_line)
             seen.add(synthesized_line)
@@ -633,7 +646,13 @@ def _extract_layout_section_total_lines(image: object, page_text: str) -> list[s
 
 
 _LAYOUT_BALANCE_ROW_SPECS: tuple[tuple[str, tuple[str, ...], str, int, bool], ...] = (
-    ("1200", ("итого по разделу п", "итого по разделу ii"), "Итого по разделу П", 3, False),
+    (
+        "1200",
+        ("итого по разделу п", "итого по разделу ii"),
+        "Итого по разделу П",
+        3,
+        False,
+    ),
     ("1210", ("запас",), "Запасы", 2, False),
     ("1230", ("дебитор",), "Дебиторская задолженность", 2, False),
     ("1250", ("денежн",), "Денежные средства", 2, False),
@@ -817,7 +836,13 @@ def _extract_layout_metric_value_lines(image: object, page_text: str) -> list[st
     max_attempts_per_spec = 4
     max_row_crop_attempts_per_page = 14
     row_crop_attempts = 0
-    for expected_code, markers, label, min_groups, require_code_match in _LAYOUT_BALANCE_ROW_SPECS:
+    for (
+        expected_code,
+        markers,
+        label,
+        min_groups,
+        require_code_match,
+    ) in _LAYOUT_BALANCE_ROW_SPECS:
         if row_crop_attempts >= max_row_crop_attempts_per_page:
             break
         candidate_rows = [
@@ -827,9 +852,7 @@ def _extract_layout_metric_value_lines(image: object, page_text: str) -> list[st
         ]
         if require_code_match:
             candidate_rows = [
-                row
-                for row in candidate_rows
-                if expected_code in str(row["lower"])
+                row for row in candidate_rows if expected_code in str(row["lower"])
             ]
         if not candidate_rows:
             continue
@@ -904,11 +927,16 @@ def _should_stop_scanned_ocr(text: str, processed_pages: int) -> bool:
         or ("1400" in text_lower and "1500" in text_lower)
         or (
             "итого по разделу iv" in text_lower
-            and ("итого по разделу v" in text_lower or "итого по разделу у" in text_lower)
+            and (
+                "итого по разделу v" in text_lower or "итого по разделу у" in text_lower
+            )
         )
         or (
             "total liabilities" in text_lower
-            and ("current liabilities" in text_lower or "non-current liabilities" in text_lower)
+            and (
+                "current liabilities" in text_lower
+                or "non-current liabilities" in text_lower
+            )
         )
     )
 
@@ -926,9 +954,21 @@ def _is_financial_table(rows: list) -> bool:
        PDFs with encoding issues where Cyrillic appears as pseudographics)
     """
     financial_keywords = [
-        "выручка", "прибыль", "актив", "обязательств", "капитал",
-        "revenue", "profit", "assets", "liabilities", "equity",
-        "баланс", "отчёт", "финансов", "оборотн", "внеоборотн",
+        "выручка",
+        "прибыль",
+        "актив",
+        "обязательств",
+        "капитал",
+        "revenue",
+        "profit",
+        "assets",
+        "liabilities",
+        "equity",
+        "баланс",
+        "отчёт",
+        "финансов",
+        "оборотн",
+        "внеоборотн",
     ]
 
     text = " ".join(str(cell).lower() for row in rows for cell in row if cell)
@@ -1005,7 +1045,9 @@ def _table_financial_signal_score(rows: list[list[Any]]) -> tuple[int, int, int]
     numeric_rows = 0
 
     for row in rows:
-        row_cells = [str(cell).strip() for cell in row if cell is not None and str(cell).strip()]
+        row_cells = [
+            str(cell).strip() for cell in row if cell is not None and str(cell).strip()
+        ]
         if not row_cells:
             continue
 
@@ -1076,15 +1118,28 @@ def _detect_scale_factor(text: str) -> float:
     text_lower = text.lower()
     # Common Russian financial report scale indicators
     patterns_millions = [
-        "в миллионах рублей", "млн руб", "млн. руб", "в млн.", "тыс. млн",
-        "in millions", "millions of rubles",
+        "в миллионах рублей",
+        "млн руб",
+        "млн. руб",
+        "в млн.",
+        "тыс. млн",
+        "in millions",
+        "millions of rubles",
     ]
     patterns_thousands = [
-        "в тысячах рублей", "тыс. руб", "тыс.руб", "в тыс.", "в тысячах",
-        "in thousands", "thousands of rubles",
+        "в тысячах рублей",
+        "тыс. руб",
+        "тыс.руб",
+        "в тыс.",
+        "в тысячах",
+        "in thousands",
+        "thousands of rubles",
     ]
     patterns_billions = [
-        "в миллиардах рублей", "млрд руб", "млрд. руб", "в млрд.",
+        "в миллиардах рублей",
+        "млрд руб",
+        "млрд. руб",
+        "в млрд.",
         "in billions",
     ]
 
@@ -1118,7 +1173,7 @@ def _detect_scale_factor(text: str) -> float:
                 continue
             if len(line) > len(marker) + 80:
                 continue
-            window = "\n".join(lines[max(0, index - 1): index + 6])
+            window = "\n".join(lines[max(0, index - 1) : index + 6])
             statement_windows.append(window)
             break
 
@@ -1145,7 +1200,7 @@ def extract_tables(pdf_path: str, force_ocr: bool = False) -> list[dict[str, Any
     """
     Extract tables from PDF using camelot.
     For image-based pages, use OCR via pdf2image + pytesseract.
-    
+
     Args:
         pdf_path: Path to PDF file
         force_ocr: If True, skip camelot and use OCR directly (for complex scanned PDFs)
@@ -1153,22 +1208,24 @@ def extract_tables(pdf_path: str, force_ocr: bool = False) -> list[dict[str, Any
     import concurrent.futures
 
     tables_data: list[dict[str, Any]] = []
-    
+
     # If force_ocr, skip camelot entirely
     if force_ocr:
         logger.info("Force OCR mode, skipping camelot...")
         try:
             ocr_text = extract_text_from_scanned(pdf_path)
             if ocr_text:
-                tables_data.append({
-                    "flavor": "ocr",
-                    "rows": [["OCR_TEXT", ocr_text]],
-                })
+                tables_data.append(
+                    {
+                        "flavor": "ocr",
+                        "rows": [["OCR_TEXT", ocr_text]],
+                    }
+                )
                 logger.info("OCR extracted %d characters", len(ocr_text))
         except Exception as ocr_exc:
             logger.warning("OCR extraction failed: %s", ocr_exc)
         return tables_data
-    
+
     financial_tables_found = False
 
     # Try stream first — for product PDFs it usually finds useful statement rows
@@ -1186,7 +1243,11 @@ def extract_tables(pdf_path: str, force_ocr: bool = False) -> list[dict[str, Any
                 try:
                     tables = future.result(timeout=_CAMELOT_TIMEOUT)
                 except concurrent.futures.TimeoutError:
-                    logger.warning("Camelot timed out after %ds (flavor=%s), skipping", _CAMELOT_TIMEOUT, flavor)
+                    logger.warning(
+                        "Camelot timed out after %ds (flavor=%s), skipping",
+                        _CAMELOT_TIMEOUT,
+                        flavor,
+                    )
                     continue
         except Exception as exc:
             logger.warning("Camelot failed with flavor=%s: %s", flavor, exc)
@@ -1197,40 +1258,50 @@ def extract_tables(pdf_path: str, force_ocr: bool = False) -> list[dict[str, Any
                 df = table.df
                 if df is None or df.empty:
                     continue
-                
+
                 rows = df.values.tolist()
-                
+
                 # Check if this is a real financial table
                 if _is_financial_table(rows):
                     financial_tables_found = True
-                    tables_data.append({
-                        "flavor": flavor,
-                        "rows": rows,
-                    })
+                    tables_data.append(
+                        {
+                            "flavor": flavor,
+                            "rows": rows,
+                        }
+                    )
                     logger.debug("Found financial table with %d rows", len(rows))
 
         if financial_tables_found:
             break
-    
+
     # If too many tables found, keep only the most data-rich ones (not OCR fallback)
     if len(tables_data) > 20:
-        logger.info("Many tables found (%d), keeping top 10 by financial relevance", len(tables_data))
+        logger.info(
+            "Many tables found (%d), keeping top 10 by financial relevance",
+            len(tables_data),
+        )
         tables_data = sorted(
             tables_data,
-            key=lambda t: (_table_financial_signal_score(t.get("rows", [])), len(t.get("rows", []))),
+            key=lambda t: (
+                _table_financial_signal_score(t.get("rows", [])),
+                len(t.get("rows", [])),
+            ),
             reverse=True,
         )[:10]
         financial_tables_found = True
-    
+
     if not financial_tables_found:
         logger.info("No financial tables found via camelot, trying OCR extraction...")
         try:
             ocr_text = extract_text_from_scanned(pdf_path)
             if ocr_text:
-                tables_data.append({
-                    "flavor": "ocr",
-                    "rows": [["OCR_TEXT", ocr_text]],
-                })
+                tables_data.append(
+                    {
+                        "flavor": "ocr",
+                        "rows": [["OCR_TEXT", ocr_text]],
+                    }
+                )
                 logger.info("OCR extracted %d characters", len(ocr_text))
         except Exception as ocr_exc:
             logger.warning("OCR extraction failed: %s", ocr_exc)
@@ -1373,7 +1444,9 @@ def _metric_candidate_quality(metric_key: str, candidate_text: str) -> int | Non
             "current liabilities",
             "other liabilities",
         )
-        if _contains_any(lower_text, component_tokens) and not _contains_any(lower_text, total_tokens):
+        if _contains_any(lower_text, component_tokens) and not _contains_any(
+            lower_text, total_tokens
+        ):
             return None
         if _contains_any(lower_text, total_tokens):
             return 90
@@ -1437,7 +1510,9 @@ def _derive_current_assets_from_available(
 ) -> float | None:
     cash = raw["cash_and_equivalents"][0] if "cash_and_equivalents" in raw else None
     inventory = raw["inventory"][0] if "inventory" in raw else None
-    receivables = raw["accounts_receivable"][0] if "accounts_receivable" in raw else None
+    receivables = (
+        raw["accounts_receivable"][0] if "accounts_receivable" in raw else None
+    )
     total_assets = raw["total_assets"][0] if "total_assets" in raw else None
     equity = raw["equity"][0] if "equity" in raw else None
     liabilities = raw["liabilities"][0] if "liabilities" in raw else None
@@ -1512,7 +1587,11 @@ def _apply_form_like_pnl_sanity(
         (revenue_code, net_profit_code),
     ]
     for candidate_revenue, candidate_net_profit in candidate_pairs:
-        if candidate_revenue is None or candidate_net_profit is None or candidate_revenue <= 0:
+        if (
+            candidate_revenue is None
+            or candidate_net_profit is None
+            or candidate_revenue <= 0
+        ):
             continue
         candidate_margin = abs(candidate_net_profit) / candidate_revenue
         if candidate_margin < best_margin:
@@ -1614,12 +1693,21 @@ def parse_financial_statements_with_metadata(
     # This fixes the root cause of ROA=2290329% (values in thousands treated as absolute)
     scale_factor = _detect_scale_factor(text)
     if scale_factor != 1.0:
-        logger.info("Scale factor %.0f detected in parse_financial_statements_with_metadata", scale_factor)
+        logger.info(
+            "Scale factor %.0f detected in parse_financial_statements_with_metadata",
+            scale_factor,
+        )
 
     # Metrics that are ratios/percentages — must NOT be scaled
-    _RATIO_KEYS = frozenset({
-        "roa", "roe", "current_ratio", "equity_ratio", "debt_to_revenue",
-    })
+    _RATIO_KEYS = frozenset(
+        {
+            "roa",
+            "roe",
+            "current_ratio",
+            "equity_ratio",
+            "debt_to_revenue",
+        }
+    )
 
     # Pass 0: positional parsing for tables with garbled encoding
     # Works for IFRS/RSBU reports where Cyrillic is broken but numbers are intact.
@@ -1628,12 +1716,19 @@ def parse_financial_statements_with_metadata(
     # Strategy C: IFRS line codes and English keywords
     _LINE_CODE_MAP: dict[str, str] = {
         # RSBU codes (форма 0710001)
-        "2110": "revenue", "2400": "net_profit", "2300": "net_profit",
-        "1600": "total_assets", "1700": "total_assets",
-        "1300": "equity", "1200": "current_assets",
-        "1500": "short_term_liabilities", "1400": "long_term_liabilities",
-        "1230": "accounts_receivable", "1210": "inventory",
-        "1250": "cash_and_equivalents", "2120": "cost_of_goods_sold",
+        "2110": "revenue",
+        "2400": "net_profit",
+        "2300": "net_profit",
+        "1600": "total_assets",
+        "1700": "total_assets",
+        "1300": "equity",
+        "1200": "current_assets",
+        "1500": "short_term_liabilities",
+        "1400": "long_term_liabilities",
+        "1230": "accounts_receivable",
+        "1210": "inventory",
+        "1250": "cash_and_equivalents",
+        "2120": "cost_of_goods_sold",
         "2200": "ebit",
     }
     # IFRS English keyword map for table extraction
@@ -1710,12 +1805,12 @@ def parse_financial_statements_with_metadata(
         "финансовые расходы": "interest_expense",
         "себестоимость": "cost_of_goods_sold",
         # Garbled substrings (middle-of-word, encoding-agnostic)
-        "т√Ёєўър": "revenue",           # Выручка
-        "шс√ы№ чр уюф": "net_profit",   # прибыль за год
+        "т√Ёєўър": "revenue",  # Выручка
+        "шс√ы№ чр уюф": "net_profit",  # прибыль за год
         "шёЄр  яЁшс√ы№": "net_profit",  # Чистая прибыль
         "Єюую ръЄшт√": "total_assets",  # Итого активы
-        "шЄюую ъряшЄры": "equity",      # Итого капитал (variant 1)
-        "Єюую ъряшЄры": "equity",       # Итого капитал (variant 2)
+        "шЄюую ъряшЄры": "equity",  # Итого капитал (variant 1)
+        "Єюую ъряшЄры": "equity",  # Итого капитал (variant 2)
         "хэхцэ√х ёЁхфёЄтр": "cash_and_equivalents",
         "рярё√": "inventory",
         "хсшЄюЁёър  чрфюыцхээюёЄ№": "accounts_receivable",
@@ -1741,7 +1836,7 @@ def parse_financial_statements_with_metadata(
                 cs = str(cell).strip().replace("\xa0", "").replace(" ", "")
                 if cs.isdigit() and len(cs) == 4 and cs in _LINE_CODE_MAP:
                     metric_key = _LINE_CODE_MAP[cs]
-                    value = _extract_first_numeric_cell(row[ci + 1:])
+                    value = _extract_first_numeric_cell(row[ci + 1 :])
                     if value is not None and _is_valid_financial_value(value):
                         _raw_set(
                             raw,
@@ -1751,14 +1846,21 @@ def parse_financial_statements_with_metadata(
                             True,
                             candidate_quality=120,
                         )
-                        logger.debug("[EXTRACT] %s = %s (source=line_code, code=%s)", metric_key, value, cs)
+                        logger.debug(
+                            "[EXTRACT] %s = %s (source=line_code, code=%s)",
+                            metric_key,
+                            value,
+                            cs,
+                        )
 
             # Strategy B: garbled keyword in col0, note number in col1, value in col2+
             if len(row) >= 3:
                 label_cell = str(row[0]).lower() if row[0] else ""
                 for garbled_kw, metric_key in _GARBLED_KEYWORDS.items():
                     if garbled_kw.lower() in label_cell:
-                        metric_quality = _metric_candidate_quality(metric_key, label_cell)
+                        metric_quality = _metric_candidate_quality(
+                            metric_key, label_cell
+                        )
                         if metric_quality is None:
                             break
                         value = _extract_first_numeric_cell(row[1:])
@@ -1766,14 +1868,28 @@ def parse_financial_statements_with_metadata(
                             # Reject suspiciously small values for monetary metrics
                             # (likely page numbers from TOC, not financial values)
                             _MONETARY_METRICS = {
-                                "revenue", "net_profit", "total_assets", "equity",
-                                "liabilities", "current_assets", "short_term_liabilities",
+                                "revenue",
+                                "net_profit",
+                                "total_assets",
+                                "equity",
+                                "liabilities",
+                                "current_assets",
+                                "short_term_liabilities",
                                 "long_term_liabilities",
-                                "accounts_receivable", "inventory", "cash_and_equivalents",
-                                "ebitda", "ebit", "interest_expense", "cost_of_goods_sold",
+                                "accounts_receivable",
+                                "inventory",
+                                "cash_and_equivalents",
+                                "ebitda",
+                                "ebit",
+                                "interest_expense",
+                                "cost_of_goods_sold",
                             }
                             if metric_key in _MONETARY_METRICS and abs(value) < 1000:
-                                logger.debug("Skipping small value %s for %s (likely TOC page number)", value, metric_key)
+                                logger.debug(
+                                    "Skipping small value %s for %s (likely TOC page number)",
+                                    value,
+                                    metric_key,
+                                )
                                 break
                             _raw_set(
                                 raw,
@@ -1783,7 +1899,12 @@ def parse_financial_statements_with_metadata(
                                 True,
                                 candidate_quality=metric_quality,
                             )
-                            logger.debug("[EXTRACT] %s = %s (source=garbled_kw, kw=%s)", metric_key, value, garbled_kw)
+                            logger.debug(
+                                "[EXTRACT] %s = %s (source=garbled_kw, kw=%s)",
+                                metric_key,
+                                value,
+                                garbled_kw,
+                            )
                         break
 
             # Strategy C: IFRS English keywords in table rows
@@ -1791,20 +1912,36 @@ def parse_financial_statements_with_metadata(
                 label_cell = str(row[0]).lower() if row[0] else ""
                 for english_kw, metric_key in _IFRS_ENGLISH_KEYWORDS.items():
                     if english_kw in label_cell:
-                        metric_quality = _metric_candidate_quality(metric_key, label_cell)
+                        metric_quality = _metric_candidate_quality(
+                            metric_key, label_cell
+                        )
                         if metric_quality is None:
                             break
                         value = _extract_first_numeric_cell(row[1:])
                         if value is not None and _is_valid_financial_value(value):
                             _MONETARY_METRICS = {
-                                "revenue", "net_profit", "total_assets", "equity",
-                                "liabilities", "current_assets", "short_term_liabilities",
+                                "revenue",
+                                "net_profit",
+                                "total_assets",
+                                "equity",
+                                "liabilities",
+                                "current_assets",
+                                "short_term_liabilities",
                                 "long_term_liabilities",
-                                "accounts_receivable", "inventory", "cash_and_equivalents",
-                                "ebitda", "ebit", "interest_expense", "cost_of_goods_sold",
+                                "accounts_receivable",
+                                "inventory",
+                                "cash_and_equivalents",
+                                "ebitda",
+                                "ebit",
+                                "interest_expense",
+                                "cost_of_goods_sold",
                             }
                             if metric_key in _MONETARY_METRICS and abs(value) < 1000:
-                                logger.debug("Skipping small value %s for %s (likely TOC page number)", value, metric_key)
+                                logger.debug(
+                                    "Skipping small value %s for %s (likely TOC page number)",
+                                    value,
+                                    metric_key,
+                                )
                                 break
                             _raw_set(
                                 raw,
@@ -1812,14 +1949,21 @@ def parse_financial_statements_with_metadata(
                                 value,
                                 "table",
                                 True,
-                                candidate_quality=metric_quality if metric_quality else 85,
+                                candidate_quality=(
+                                    metric_quality if metric_quality else 85
+                                ),
                             )
-                            logger.debug("[EXTRACT] %s = %s (source=ifrs_english, kw=%s)", metric_key, value, english_kw)
+                            logger.debug(
+                                "[EXTRACT] %s = %s (source=ifrs_english, kw=%s)",
+                                metric_key,
+                                value,
+                                english_kw,
+                            )
                         break
 
     for table in tables or []:
         rows = _table_to_rows(table)
-        
+
         # Check if this is an OCR pseudo-table
         if table.get("flavor") == "ocr":
             # Extract metrics directly from OCR text using regex
@@ -1832,7 +1976,9 @@ def parse_financial_statements_with_metadata(
                         # Search for keyword + number pattern in OCR text (context window 50 chars)
                         # Use [ \t\xa0] instead of \s to avoid merging numbers across newlines
                         for keyword in keywords:
-                            keyword_quality = _metric_candidate_quality(metric_key, keyword)
+                            keyword_quality = _metric_candidate_quality(
+                                metric_key, keyword
+                            )
                             if keyword_quality is None:
                                 continue
                             pattern = rf"{keyword}[^0-9]{{0,50}}(\d{{1,3}}(?:[ \t\xa0]\d{{3}})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
@@ -1848,10 +1994,15 @@ def parse_financial_statements_with_metadata(
                                         False,
                                         candidate_quality=keyword_quality,
                                     )
-                                    logger.debug("[EXTRACT] %s = %s (source=ocr, keyword=%s)", metric_key, value, keyword)
+                                    logger.debug(
+                                        "[EXTRACT] %s = %s (source=ocr, keyword=%s)",
+                                        metric_key,
+                                        value,
+                                        keyword,
+                                    )
                                     break
             continue
-        
+
         # Regular table processing
         for row in rows:
             row_text = " ".join(str(cell) for cell in row if cell is not None)
@@ -1862,11 +2013,13 @@ def parse_financial_statements_with_metadata(
 
                 label_idx = 0
                 for i, cell in enumerate(row):
-                    if cell is not None and any(kw in str(cell).lower() for kw in keywords):
+                    if cell is not None and any(
+                        kw in str(cell).lower() for kw in keywords
+                    ):
                         label_idx = i
                         break
 
-                value = _extract_first_numeric_cell(row[label_idx + 1:])
+                value = _extract_first_numeric_cell(row[label_idx + 1 :])
                 if value is None:
                     value = _extract_number_from_text(row_text)
                 if value is None:
@@ -1878,8 +2031,14 @@ def parse_financial_statements_with_metadata(
                     continue
 
                 # is_exact: the label cell itself matches a keyword fully
-                label_cell = str(row[label_idx]).lower().strip() if row[label_idx] is not None else ""
-                metric_quality = _metric_candidate_quality(metric_key, label_cell or row_text_lower)
+                label_cell = (
+                    str(row[label_idx]).lower().strip()
+                    if row[label_idx] is not None
+                    else ""
+                )
+                metric_quality = _metric_candidate_quality(
+                    metric_key, label_cell or row_text_lower
+                )
                 if metric_quality is None:
                     continue
                 is_exact = any(label_cell == kw for kw in keywords)
@@ -1891,11 +2050,19 @@ def parse_financial_statements_with_metadata(
                     is_exact,
                     candidate_quality=metric_quality,
                 )
-                logger.debug("[EXTRACT] %s = %s (source=table, exact=%s)", metric_key, value, is_exact)
+                logger.debug(
+                    "[EXTRACT] %s = %s (source=table, exact=%s)",
+                    metric_key,
+                    value,
+                    is_exact,
+                )
 
     # Pass 1.5: text line-code extraction for OCR/split Russian forms
     for metric_key, (codes, anchor_keywords) in _TEXT_LINE_CODE_MAP.items():
-        if metric_key in raw and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2:
+        if (
+            metric_key in raw
+            and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2
+        ):
             continue
 
         value = _extract_value_near_text_codes(text, codes, anchor_keywords)
@@ -1945,7 +2112,7 @@ def parse_financial_statements_with_metadata(
     # Strict number pattern: groups of 1-3 digits separated by non-newline spaces
     # Prevents merging numbers from adjacent lines (OCR artifact)
     num_pattern = rf"({_NUMBER_REGEX_FRAGMENT})"
-    
+
     ocr_pass2_allowlist = {
         "revenue",
         "net_profit",
@@ -1956,7 +2123,10 @@ def parse_financial_statements_with_metadata(
     }
 
     for metric_key, keywords in _METRIC_KEYWORDS.items():
-        if metric_key in raw and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2:
+        if (
+            metric_key in raw
+            and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2
+        ):
             continue
         if is_form_like and not tables and metric_key not in ocr_pass2_allowlist:
             continue
@@ -1987,7 +2157,9 @@ def parse_financial_statements_with_metadata(
                 False,
                 candidate_quality=quality_for_raw,
             )
-            logger.debug("[EXTRACT] %s = %s (source=text_regex, line_match)", metric_key, value)
+            logger.debug(
+                "[EXTRACT] %s = %s (source=text_regex, line_match)", metric_key, value
+            )
 
     # Pass 3: broad regex patterns
     broad_patterns: dict[str, list[str]] = {
@@ -2062,7 +2234,10 @@ def parse_financial_statements_with_metadata(
         ],
     }
     for metric_key, pattern_list in broad_patterns.items():
-        if metric_key in raw and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2:
+        if (
+            metric_key in raw
+            and _source_priority(raw[metric_key][1], raw[metric_key][2]) >= 2
+        ):
             continue
         if is_form_like and not tables and metric_key not in ocr_pass2_allowlist:
             continue
@@ -2211,7 +2386,9 @@ def parse_financial_statements_with_metadata(
                 True,
                 candidate_quality=105,
             )
-            logger.debug("[EXTRACT] equity = %s (source=form_section_total)", equity_value)
+            logger.debug(
+                "[EXTRACT] equity = %s (source=form_section_total)", equity_value
+            )
 
     if is_form_like and not tables:
         section_candidates = _extract_form_like_pnl_section_candidates(text)
@@ -2229,21 +2406,27 @@ def parse_financial_statements_with_metadata(
         _apply_form_like_pnl_sanity(
             raw,
             form_pnl_code_candidates,
-            is_standalone_form=("консолид" not in text_lower and "consolidated" not in text_lower),
+            is_standalone_form=(
+                "консолид" not in text_lower and "consolidated" not in text_lower
+            ),
         )
 
     # Pass 4: derive missing metrics
     if "liabilities" not in raw:
         long_term = (
-            raw["long_term_liabilities"][0]
-            if "long_term_liabilities" in raw
-            else None
+            raw["long_term_liabilities"][0] if "long_term_liabilities" in raw else None
         )
         if long_term is None and (tables or not is_balance_like):
-            long_term = _extract_section_total(tables, text_lower, [
-                "итого по разделу iv", "итого долгосрочных обязательств"
-            ])
-        short_term = raw["short_term_liabilities"][0] if "short_term_liabilities" in raw else None
+            long_term = _extract_section_total(
+                tables,
+                text_lower,
+                ["итого по разделу iv", "итого долгосрочных обязательств"],
+            )
+        short_term = (
+            raw["short_term_liabilities"][0]
+            if "short_term_liabilities" in raw
+            else None
+        )
         total_assets = raw["total_assets"][0] if "total_assets" in raw else None
         equity = raw["equity"][0] if "equity" in raw else None
 
@@ -2254,14 +2437,23 @@ def parse_financial_statements_with_metadata(
             equity,
         )
         if derived is not None:
-            logger.debug("Derived liabilities = IV(%s) + V(%s) = %s", long_term, short_term, derived)
+            logger.debug(
+                "Derived liabilities = IV(%s) + V(%s) = %s",
+                long_term,
+                short_term,
+                derived,
+            )
             raw["liabilities"] = (derived, "derived_strong", False, 60)
-        elif total_assets is not None and equity is not None and not (
-            is_balance_like
-            and not tables
-            and "equity" in raw
-            and raw["equity"][1] == "text_regex"
-            and not raw["equity"][2]
+        elif (
+            total_assets is not None
+            and equity is not None
+            and not (
+                is_balance_like
+                and not tables
+                and "equity" in raw
+                and raw["equity"][1] == "text_regex"
+                and not raw["equity"][2]
+            )
         ):
             derived = total_assets - equity
             if total_assets > 0:
@@ -2272,9 +2464,7 @@ def parse_financial_statements_with_metadata(
 
     if "short_term_liabilities" not in raw and "liabilities" in raw:
         long_term = (
-            raw["long_term_liabilities"][0]
-            if "long_term_liabilities" in raw
-            else None
+            raw["long_term_liabilities"][0] if "long_term_liabilities" in raw else None
         )
         liabilities = raw["liabilities"][0]
         if long_term is not None:
@@ -2314,7 +2504,9 @@ def parse_financial_statements_with_metadata(
         raw.pop("current_assets", None)
         derived = _derive_current_assets_from_available(raw)
         if _is_valid_financial_value(derived):
-            logger.debug("Derived current_assets after guardrail fallback = %s", derived)
+            logger.debug(
+                "Derived current_assets after guardrail fallback = %s", derived
+            )
             raw["current_assets"] = (derived, "derived", False, 30)
 
     # Build final result — all keys guaranteed present
@@ -2329,9 +2521,13 @@ def parse_financial_statements_with_metadata(
             source, confidence = determine_source(
                 match_type, is_exact=is_exact, is_derived=(match_type == "derived")
             )
-            result[key] = ExtractionMetadata(value=value, confidence=confidence, source=source)
+            result[key] = ExtractionMetadata(
+                value=value, confidence=confidence, source=source
+            )
         else:
-            result[key] = ExtractionMetadata(value=None, confidence=0.0, source="derived")
+            result[key] = ExtractionMetadata(
+                value=None, confidence=0.0, source="derived"
+            )
 
     if is_balance_like:
         _apply_form_like_guardrails(result)
@@ -2347,19 +2543,19 @@ def parse_financial_statements(tables: list, text: str) -> dict[str, float | Non
 def extract_metrics_regex(text: str) -> dict[str, float | None]:
     """
     Extract financial metrics from text using regex patterns.
-    
+
     Fallback method when table extraction fails.
-    
+
     Args:
         text: PDF text content
-        
+
     Returns:
         Dictionary with metric keys and extracted values
     """
     # Strict number pattern: groups of 1-3 digits separated by non-newline spaces
     # Prevents merging numbers from adjacent lines (OCR artifact)
     num_group = rf"({_NUMBER_REGEX_FRAGMENT})"
-    
+
     patterns = {
         "revenue": [
             r"Выручка от реализации\s*\|\s*" + num_group,
@@ -2456,10 +2652,10 @@ def extract_metrics_regex(text: str) -> dict[str, float | None]:
             r"средн.*?запас[аы].*?(\d+(?:[\s\xa0]?\d+)*(?:[.,]\d+)?)",
         ],
     }
-    
+
     metrics: dict[str, float | None] = {}
     text_lower = text.lower()
-    
+
     for field, pattern_list in patterns.items():
         for pattern in pattern_list:
             match = re.search(pattern, text_lower, re.IGNORECASE)
@@ -2468,7 +2664,7 @@ def extract_metrics_regex(text: str) -> dict[str, float | None]:
                 if _is_valid_financial_value(value):
                     metrics[field] = value
                     break
-    
+
     return metrics
 
 
@@ -2496,7 +2692,9 @@ def _extract_first_numeric_cell(cells: list) -> float | None:
     return None
 
 
-def _extract_section_total(tables: list, text_lower: str, keywords: list[str]) -> float | None:
+def _extract_section_total(
+    tables: list, text_lower: str, keywords: list[str]
+) -> float | None:
     """Extract a section total value by keywords from tables or text."""
     for table in tables or []:
         rows = _table_to_rows(table)
@@ -2552,24 +2750,25 @@ def _extract_section_total_from_heading_rows(
             table_bonus -= 35
 
         for heading_idx, row in enumerate(rows):
-            row_text_lower = " ".join(str(cell) for cell in row if cell is not None).lower()
+            row_text_lower = " ".join(
+                str(cell) for cell in row if cell is not None
+            ).lower()
             if not any(heading in row_text_lower for heading in section_headings):
                 continue
             if (
-                ("оборотные активы" in section_headings or "current assets" in section_headings)
-                and ("внеоборотн" in row_text_lower or "non-current" in row_text_lower)
-            ):
+                "оборотные активы" in section_headings
+                or "current assets" in section_headings
+            ) and ("внеоборотн" in row_text_lower or "non-current" in row_text_lower):
                 continue
             if (
-                (
-                    "краткосрочные обязательства" in section_headings
-                    or "current liabilities" in section_headings
-                )
-                and ("долгосрочн" in row_text_lower or "non-current" in row_text_lower)
-            ):
+                "краткосрочные обязательства" in section_headings
+                or "current liabilities" in section_headings
+            ) and ("долгосрочн" in row_text_lower or "non-current" in row_text_lower):
                 continue
 
-            for candidate_idx in range(heading_idx + 1, min(len(rows), heading_idx + 30)):
+            for candidate_idx in range(
+                heading_idx + 1, min(len(rows), heading_idx + 30)
+            ):
                 candidate_row = rows[candidate_idx]
                 candidate_text_lower = " ".join(
                     str(cell) for cell in candidate_row if cell is not None
@@ -2590,7 +2789,9 @@ def _extract_section_total_from_heading_rows(
                     else ""
                 )
                 is_unlabeled = first_cell in {"", "-", "—", "–"}
-                has_total_label = "итого" in candidate_text_lower or "total" in candidate_text_lower
+                has_total_label = (
+                    "итого" in candidate_text_lower or "total" in candidate_text_lower
+                )
                 if not (is_unlabeled or has_total_label):
                     continue
 
@@ -2601,7 +2802,10 @@ def _extract_section_total_from_heading_rows(
                 if (
                     best_score is None
                     or score > best_score
-                    or (score == best_score and abs(value or 0.0) > abs(best_value or 0.0))
+                    or (
+                        score == best_score
+                        and abs(value or 0.0) > abs(best_value or 0.0)
+                    )
                 ):
                     best_score = score
                     best_value = value
@@ -2662,7 +2866,11 @@ def _extract_preferred_numeric_match(text: str) -> float | None:
 
     for raw_match, value in parsed_candidates:
         digits_only = "".join(ch for ch in raw_match if ch.isdigit())
-        if digits_only.isdigit() and len(digits_only) <= 3 and len(parsed_candidates) > 1:
+        if (
+            digits_only.isdigit()
+            and len(digits_only) <= 3
+            and len(parsed_candidates) > 1
+        ):
             continue
         if digits_only.startswith("07") and len(digits_only) >= 6:
             continue
@@ -2760,7 +2968,11 @@ def _extract_preferred_ocr_numeric_match(text: str) -> float | None:
 
     for raw_match, value in parsed_candidates:
         digits_only = "".join(ch for ch in raw_match if ch.isdigit())
-        if digits_only.isdigit() and len(digits_only) <= 3 and len(parsed_candidates) > 1:
+        if (
+            digits_only.isdigit()
+            and len(digits_only) <= 3
+            and len(parsed_candidates) > 1
+        ):
             continue
         if (
             has_large_numeric_candidate
@@ -2817,7 +3029,13 @@ def _extract_numeric_value_from_following_lines(lines: list[str]) -> float | Non
         lower_line = normalized.lower()
         if any(
             noise in lower_line
-            for noise in ("справочно", "руководитель", "подпись", "пояснение", "форма 07")
+            for noise in (
+                "справочно",
+                "руководитель",
+                "подпись",
+                "пояснение",
+                "форма 07",
+            )
         ):
             continue
 
@@ -2844,7 +3062,7 @@ def _extract_number_near_keywords(text: str, keywords: list[str]) -> float | Non
                 break
 
             window_start = index + len(keyword)
-            window = text[window_start: window_start + 60]
+            window = text[window_start : window_start + 60]
             value = _extract_preferred_numeric_match(window)
             if value is not None:
                 return value
@@ -2929,9 +3147,7 @@ def _extract_form_long_term_liabilities(
         # Soft deduplication only for near-identical IV/V artifacts from OCR.
         tolerance = max(1.0, abs(short_term_value) * 0.000001)
         candidates = [
-            value
-            for value in candidates
-            if abs(value - short_term_value) > tolerance
+            value for value in candidates if abs(value - short_term_value) > tolerance
         ]
 
     if not candidates:
@@ -2974,14 +3190,16 @@ def _extract_form_like_pnl_section_candidates(
         return {}
     section_text = "\n".join(section_lines)
 
-    def _extract_same_line_after_anchor(line: str, anchors: tuple[str, ...]) -> float | None:
+    def _extract_same_line_after_anchor(
+        line: str, anchors: tuple[str, ...]
+    ) -> float | None:
         lower_line = line.lower()
         for anchor in anchors:
             anchor_index = lower_line.find(anchor)
             if anchor_index == -1:
                 continue
             value = _extract_preferred_ocr_numeric_match(
-                line[anchor_index + len(anchor):]
+                line[anchor_index + len(anchor) :]
             )
             if _is_valid_financial_value(value):
                 return value
@@ -3010,7 +3228,7 @@ def _extract_form_like_pnl_section_candidates(
                 candidates["revenue"] = (same_line_value, 108, True)
                 break
             followup_value = _extract_numeric_value_from_following_lines(
-                section_lines[idx + 1: idx + 6]
+                section_lines[idx + 1 : idx + 6]
             )
             if _is_valid_financial_value(followup_value):
                 candidates["revenue"] = (followup_value, 104, True)
@@ -3043,7 +3261,7 @@ def _extract_form_like_pnl_section_candidates(
                 break
 
             followup_lines: list[str] = []
-            for candidate_line in section_lines[idx + 1: idx + 7]:
+            for candidate_line in section_lines[idx + 1 : idx + 7]:
                 candidate_lower = candidate_line.lower()
                 if (
                     "совокупный финансовый результат периода" in candidate_lower
@@ -3068,7 +3286,7 @@ def _extract_form_like_pnl_section_candidates(
             fallback_value = _extract_preferred_ocr_numeric_match(line)
             if not _is_valid_financial_value(fallback_value):
                 fallback_value = _extract_numeric_value_from_following_lines(
-                    section_lines[idx + 1: idx + 4]
+                    section_lines[idx + 1 : idx + 4]
                 )
             if _is_valid_financial_value(fallback_value):
                 candidates["net_profit"] = (fallback_value, 112, True)
@@ -3138,7 +3356,11 @@ def _apply_form_like_guardrails(result: dict[str, ExtractionMetadata]) -> None:
 
     for component_key in ("cash_and_equivalents", "inventory", "accounts_receivable"):
         component = result[component_key].value
-        if current_assets is not None and component is not None and component > current_assets:
+        if (
+            current_assets is not None
+            and component is not None
+            and component > current_assets
+        ):
             _soft_null(component_key)
 
     if liabilities is not None and short_term is not None and short_term > liabilities:
@@ -3187,7 +3409,10 @@ _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] =
             "total current liabilities",
         ),
     ),
-    "cash_and_equivalents": (("1250",), ("денежные средства", "cash and cash equivalents")),
+    "cash_and_equivalents": (
+        ("1250",),
+        ("денежные средства", "cash and cash equivalents"),
+    ),
 }
 
 
@@ -3217,12 +3442,14 @@ def _extract_value_near_text_codes(
             ) or current_line_lower.strip().startswith(code)
             if (
                 anchor_keywords
-                and not any(keyword in current_line_lower for keyword in anchor_keywords)
+                and not any(
+                    keyword in current_line_lower for keyword in anchor_keywords
+                )
                 and not is_code_row
             ):
                 continue
 
-            same_line_window = current_line[match.end() - line_start:]
+            same_line_window = current_line[match.end() - line_start :]
             value = _extract_substantial_code_line_value(same_line_window)
             if _is_valid_financial_value(value):
                 return value
@@ -3241,21 +3468,27 @@ def _extract_best_multiline_value(
     best_value: float | None = None
     best_quality: int | None = None
     ordered_keywords = sorted(keywords, key=len, reverse=True)
-    normalized_lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    normalized_lines = [
+        " ".join(line.split()) for line in text.splitlines() if line.strip()
+    ]
     prefer_smaller_on_tie = metric_key in {"accounts_receivable"}
 
     for index, line in enumerate(normalized_lines):
         lower_line = line.lower()
         metric_quality = (
-            _metric_candidate_quality(metric_key, line) if metric_key is not None else 50
+            _metric_candidate_quality(metric_key, line)
+            if metric_key is not None
+            else 50
         )
         if metric_quality is None:
             continue
-        matched_keyword = next((kw for kw in ordered_keywords if kw in lower_line), None)
+        matched_keyword = next(
+            (kw for kw in ordered_keywords if kw in lower_line), None
+        )
         if matched_keyword is None:
             continue
 
-        block_lines = normalized_lines[index: index + lookahead_lines]
+        block_lines = normalized_lines[index : index + lookahead_lines]
         block_lines = [
             candidate
             for candidate in block_lines
@@ -3270,7 +3503,9 @@ def _extract_best_multiline_value(
                 + max(0, 6 - index)
                 + metric_quality // 20
             )
-            same_line_source = line[line.lower().find(matched_keyword) + len(matched_keyword):]
+            same_line_source = line[
+                line.lower().find(matched_keyword) + len(matched_keyword) :
+            ]
             same_line_value = _extract_preferred_ocr_numeric_match(same_line_source)
             if _is_valid_financial_value(same_line_value):
                 same_line_is_better = False
@@ -3278,18 +3513,20 @@ def _extract_best_multiline_value(
                     same_line_is_better = True
                 elif score == best_score:
                     if prefer_smaller_on_tie:
-                        same_line_is_better = (
-                            best_value is None or abs(same_line_value) < abs(best_value)
-                        )
+                        same_line_is_better = best_value is None or abs(
+                            same_line_value
+                        ) < abs(best_value)
                     else:
-                        same_line_is_better = abs(same_line_value) > abs(best_value or 0.0)
+                        same_line_is_better = abs(same_line_value) > abs(
+                            best_value or 0.0
+                        )
 
                 if same_line_is_better:
                     best_score = score
                     best_value = same_line_value
                     best_quality = metric_quality
 
-            followup_lines = normalized_lines[index + 1: index + lookahead_lines]
+            followup_lines = normalized_lines[index + 1 : index + lookahead_lines]
             if metric_key is not None:
                 followup_lines = [
                     candidate
@@ -3309,18 +3546,16 @@ def _extract_best_multiline_value(
                     trimmed_followup.append(candidate)
                 followup_lines = trimmed_followup
 
-            line_value = _extract_numeric_value_from_following_lines(
-                followup_lines
-            )
+            line_value = _extract_numeric_value_from_following_lines(followup_lines)
             if _is_valid_financial_value(line_value):
                 followup_is_better = False
                 if best_score is None or score > best_score:
                     followup_is_better = True
                 elif score == best_score:
                     if prefer_smaller_on_tie:
-                        followup_is_better = (
-                            best_value is None or abs(line_value) < abs(best_value)
-                        )
+                        followup_is_better = best_value is None or abs(
+                            line_value
+                        ) < abs(best_value)
                     else:
                         followup_is_better = abs(line_value) > abs(best_value or 0.0)
 
@@ -3335,7 +3570,7 @@ def _extract_best_multiline_value(
         if keyword_index == -1:
             continue
 
-        value_source = block[keyword_index + len(matched_keyword):]
+        value_source = block[keyword_index + len(matched_keyword) :]
         if ocr_mode:
             value = _extract_preferred_ocr_numeric_match(value_source)
         else:
@@ -3348,8 +3583,10 @@ def _extract_best_multiline_value(
             + max(0, 6 - index)
             + metric_quality // 20
         )
-        if best_score is None or score > best_score or (
-            score == best_score and abs(value) > abs(best_value or 0.0)
+        if (
+            best_score is None
+            or score > best_score
+            or (score == best_score and abs(value) > abs(best_value or 0.0))
         ):
             best_score = score
             best_value = value
@@ -3410,11 +3647,15 @@ def _extract_best_line_value(
 
         lower_line = line.lower()
         metric_quality = (
-            _metric_candidate_quality(metric_key, line) if metric_key is not None else 50
+            _metric_candidate_quality(metric_key, line)
+            if metric_key is not None
+            else 50
         )
         if metric_quality is None:
             continue
-        matched_keyword = next((kw for kw in ordered_keywords if kw in lower_line), None)
+        matched_keyword = next(
+            (kw for kw in ordered_keywords if kw in lower_line), None
+        )
         if matched_keyword is None:
             continue
 
@@ -3422,7 +3663,9 @@ def _extract_best_line_value(
         if value is None:
             continue
 
-        score = _score_metric_line(lower_line, matched_keyword, line) + metric_quality // 20
+        score = (
+            _score_metric_line(lower_line, matched_keyword, line) + metric_quality // 20
+        )
         if (
             best_score is None
             or score > best_score
@@ -3442,7 +3685,7 @@ def _extract_number_after_keyword(line: str, keyword: str) -> float | None:
     if keyword_index == -1:
         return None
 
-    window = normalized_line[keyword_index + len(normalized_keyword):]
+    window = normalized_line[keyword_index + len(normalized_keyword) :]
     return _extract_preferred_numeric_match(window)
 
 
@@ -3570,7 +3813,11 @@ def _normalize_numeric_separators(raw_value: str) -> str:
         left, right = cleaned.rsplit(",", 1)
         normalized_right = right.rstrip(")")
         normalized_left = left.replace("-", "").replace("(", "")
-        if normalized_right.isdigit() and len(normalized_right) == 3 and normalized_left.isdigit():
+        if (
+            normalized_right.isdigit()
+            and len(normalized_right) == 3
+            and normalized_left.isdigit()
+        ):
             return left + normalized_right
         return cleaned.replace(",", ".")
 
@@ -3578,7 +3825,11 @@ def _normalize_numeric_separators(raw_value: str) -> str:
         left, right = cleaned.rsplit(".", 1)
         normalized_right = right.rstrip(")")
         normalized_left = left.replace("-", "").replace("(", "")
-        if normalized_right.isdigit() and len(normalized_right) == 3 and normalized_left.isdigit():
+        if (
+            normalized_right.isdigit()
+            and len(normalized_right) == 3
+            and normalized_left.isdigit()
+        ):
             return left + normalized_right
 
     return cleaned

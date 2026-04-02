@@ -2,6 +2,7 @@
 
 Enable explicitly via `--run-pdf-real-heavy` or `RUN_PDF_REAL_HEAVY=1`.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -12,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from cryptography.utils import CryptographyDeprecationWarning
+
 from src.analysis import pdf_extractor
 
 warnings.filterwarnings(
@@ -106,8 +108,12 @@ def _extract_pipeline(case: dict, pdf_path: Path) -> tuple[str, list[dict]]:
     else:
         raise AssertionError(f"Unsupported heavy real-PDF pipeline: {pipeline}")
 
-    assert isinstance(text, str), f"Expected text pipeline to return str, got {type(text)!r}"
-    assert isinstance(tables, list), f"Expected table pipeline to return list, got {type(tables)!r}"
+    assert isinstance(
+        text, str
+    ), f"Expected text pipeline to return str, got {type(text)!r}"
+    assert isinstance(
+        tables, list
+    ), f"Expected table pipeline to return list, got {type(tables)!r}"
     return text, tables
 
 
@@ -130,16 +136,16 @@ def test_pdf_real_heavy_fixtures(case: dict | None) -> None:
 
     if "allowed_flavors" in case:
         actual_flavors = {table.get("flavor") for table in tables}
-        assert actual_flavors.issubset(set(case["allowed_flavors"])), (
-            f"{case['id']}: unexpected table flavors {sorted(actual_flavors)}"
-        )
+        assert actual_flavors.issubset(
+            set(case["allowed_flavors"])
+        ), f"{case['id']}: unexpected table flavors {sorted(actual_flavors)}"
 
     metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
 
     for key, expected_value in case.get("expected_values", {}).items():
-        assert metadata[key].value == expected_value, (
-            f"{case['id']}: expected {key}={expected_value}, got {metadata[key].value}"
-        )
+        assert (
+            metadata[key].value == expected_value
+        ), f"{case['id']}: expected {key}={expected_value}, got {metadata[key].value}"
 
     for key, expected_sources in case.get("expected_sources", {}).items():
         actual_source = metadata[key].source

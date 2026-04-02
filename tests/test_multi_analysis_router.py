@@ -15,12 +15,13 @@ import io
 import warnings
 from contextlib import contextmanager
 from types import SimpleNamespace
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from fastapi.testclient import TestClient
-from hypothesis import given, settings, HealthCheck
-from hypothesis import strategies as st
+
+import pytest
 from cryptography.utils import CryptographyDeprecationWarning
+from fastapi.testclient import TestClient
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 from sqlalchemy.exc import SQLAlchemyError
 
 warnings.filterwarnings(
@@ -30,7 +31,6 @@ warnings.filterwarnings(
 )
 
 from src.app import app
-
 
 # =============================================================================
 # Fixtures
@@ -573,7 +573,7 @@ class TestChronologicalSorting:
         """
         # Import the sorting function
         from src.tasks import parse_period_label, sort_periods_chronologically
-        
+
         # Create mock period results
         periods = [
             {"period_label": label, "ratios": {}, "score": 50.0, "risk_level": "medium"}

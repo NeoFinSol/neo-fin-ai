@@ -10,18 +10,17 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
-from src.models.settings import app_settings
-import src.routers.system as system_router
-import src.routers.pdf_tasks as pdf_tasks_router
 import src.routers.analyses as analyses_router
 import src.routers.multi_analysis as multi_analysis_router
+import src.routers.pdf_tasks as pdf_tasks_router
+import src.routers.system as system_router
 import src.routers.websocket as websocket_router
 from src.core.ai_service import ai_service
 from src.core.runtime_events import runtime_event_bridge
 from src.db.database import dispose_engine
-from src.utils.logging_config import setup_logging, get_logger
+from src.models.settings import app_settings
 from src.utils.error_handler import register_exception_handlers
-
+from src.utils.logging_config import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
@@ -195,7 +194,7 @@ app.add_middleware(
 async def log_requests(request: Request, call_next):
     """
     Middleware to log all HTTP requests.
-    
+
     Logs:
     - Request method and path
     - Response status code
@@ -203,14 +202,14 @@ async def log_requests(request: Request, call_next):
     - User agent (for debugging)
     """
     import time
-    
+
     start_time = time.monotonic()
-    
+
     # Extract task_id from query params or headers if present
     task_id = request.query_params.get("task_id")
     if not task_id:
         task_id = request.headers.get("X-Task-ID")
-    
+
     # Log request
     logger.info(
         "%s %s started",
@@ -223,10 +222,10 @@ async def log_requests(request: Request, call_next):
                 "path": request.url.path,
                 "query": str(request.query_params),
                 "user_agent": request.headers.get("user-agent", "unknown"),
-            }
+            },
         },
     )
-    
+
     response = await call_next(request)
 
     # Calculate duration
@@ -247,7 +246,7 @@ async def log_requests(request: Request, call_next):
                 "path": request.url.path,
                 "status_code": response.status_code,
                 "duration_ms": round(duration_ms, 2),
-            }
+            },
         },
     )
 

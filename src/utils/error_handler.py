@@ -45,13 +45,13 @@ from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.exceptions import (
-    BaseAppError,
-    ValidationError as AppValidationError,
-    ExtractionError,
     AIServiceError,
+    BaseAppError,
     DatabaseError,
+    ExtractionError,
     TaskRuntimeError,
 )
+from src.exceptions import ValidationError as AppValidationError
 from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -68,13 +68,13 @@ def create_error_response(
 ) -> JSONResponse:
     """
     Create unified error response.
-    
+
     Args:
         error_code: Machine-readable error code
         message: Human-readable message
         details: Optional details (only included in dev mode)
         status_code: HTTP status code
-    
+
     Returns:
         JSONResponse with error payload
     """
@@ -82,16 +82,16 @@ def create_error_response(
         "code": error_code,
         "message": message,
     }
-    
+
     # Include details only in development mode
     if DEV_MODE and details:
         error_payload["details"] = details
-    
+
     response_body = {
         "status": "failed",
         "error": error_payload,
     }
-    
+
     return JSONResponse(
         status_code=status_code,
         content=response_body,
@@ -101,7 +101,7 @@ def create_error_response(
 async def app_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Global exception handler for all unhandled exceptions.
-    
+
     Logs the error and returns a safe error response.
     """
     # Log the full traceback
@@ -116,7 +116,7 @@ async def app_exception_handler(request: Request, exc: Exception) -> JSONRespons
             }
         },
     )
-    
+
     # Return safe error response
     return create_error_response(
         error_code="INTERNAL_ERROR",
@@ -132,7 +132,7 @@ async def validation_exception_handler(
 ) -> JSONResponse:
     """
     Handle FastAPI validation errors.
-    
+
     Returns 422 with validation error details.
     """
     logger.warning(
@@ -144,7 +144,7 @@ async def validation_exception_handler(
             }
         },
     )
-    
+
     return create_error_response(
         error_code="VALIDATION_ERROR",
         message="Invalid request data",
@@ -159,7 +159,7 @@ async def app_validation_error_handler(
 ) -> JSONResponse:
     """
     Handle application-specific validation errors.
-    
+
     Returns 400 with error details.
     """
     logger.warning(
@@ -171,7 +171,7 @@ async def app_validation_error_handler(
             }
         },
     )
-    
+
     return create_error_response(
         error_code=exc.code,
         message=exc.message,
@@ -186,7 +186,7 @@ async def extraction_error_handler(
 ) -> JSONResponse:
     """
     Handle PDF extraction errors.
-    
+
     Returns 400 with extraction error details.
     """
     logger.error(
@@ -199,7 +199,7 @@ async def extraction_error_handler(
             }
         },
     )
-    
+
     return create_error_response(
         error_code=exc.code,
         message=exc.message,
@@ -214,7 +214,7 @@ async def ai_service_error_handler(
 ) -> JSONResponse:
     """
     Handle AI service errors.
-    
+
     Returns 503 (service unavailable) for AI errors.
     Note: AI errors are typically handled gracefully in the pipeline,
     but this handler catches any that bubble up.
@@ -229,7 +229,7 @@ async def ai_service_error_handler(
             }
         },
     )
-    
+
     return create_error_response(
         error_code=exc.code,
         message=exc.message,
@@ -244,7 +244,7 @@ async def database_error_handler(
 ) -> JSONResponse:
     """
     Handle database errors.
-    
+
     Returns 503 (service unavailable) for database errors.
     """
     logger.error(
@@ -257,7 +257,7 @@ async def database_error_handler(
             }
         },
     )
-    
+
     return create_error_response(
         error_code=exc.code,
         message=exc.message,
@@ -298,7 +298,7 @@ async def sqlalchemy_error_handler(
 ) -> JSONResponse:
     """
     Handle SQLAlchemy database errors.
-    
+
     Returns 503 (service unavailable).
     """
     logger.error(
@@ -311,7 +311,7 @@ async def sqlalchemy_error_handler(
             }
         },
     )
-    
+
     return create_error_response(
         error_code="DATABASE_ERROR",
         message="Database operation failed",
@@ -326,7 +326,7 @@ async def pydantic_validation_error_handler(
 ) -> JSONResponse:
     """
     Handle Pydantic validation errors.
-    
+
     Returns 422 with validation details.
     """
     logger.warning(
@@ -338,7 +338,7 @@ async def pydantic_validation_error_handler(
             }
         },
     )
-    
+
     return create_error_response(
         error_code="VALIDATION_ERROR",
         message="Invalid data format",
@@ -350,29 +350,29 @@ async def pydantic_validation_error_handler(
 def register_exception_handlers(app: FastAPI) -> None:
     """
     Register all exception handlers with FastAPI app.
-    
+
     Call this during application initialization.
-    
+
     Args:
         app: FastAPI application instance
     """
     # FastAPI validation errors
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    
+
     # Pydantic validation errors
     app.add_exception_handler(ValidationError, pydantic_validation_error_handler)
-    
+
     # Application-specific errors
     app.add_exception_handler(AppValidationError, app_validation_error_handler)
     app.add_exception_handler(ExtractionError, extraction_error_handler)
     app.add_exception_handler(AIServiceError, ai_service_error_handler)
     app.add_exception_handler(DatabaseError, database_error_handler)
     app.add_exception_handler(TaskRuntimeError, task_runtime_error_handler)
-    
+
     # SQLAlchemy errors
     app.add_exception_handler(SQLAlchemyError, sqlalchemy_error_handler)
 
     # Global catch-all handler must be registered last so specific handlers win.
     app.add_exception_handler(Exception, app_exception_handler)
-    
+
     logger.info("Exception handlers registered")

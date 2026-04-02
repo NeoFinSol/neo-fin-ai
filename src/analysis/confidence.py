@@ -7,6 +7,7 @@ Each metric gets a confidence score based on extraction source:
 - ocr: 0.5 (OCR errors possible)
 - derived: 0.3 (calculated/estimated)
 """
+
 from dataclasses import dataclass
 from typing import Literal
 
@@ -23,6 +24,7 @@ CONFIDENCE_MAP: dict[ExtractionSource, float] = {
 @dataclass
 class Metric:
     """Financial metric with confidence metadata."""
+
     value: float | None
     source: ExtractionSource
     method: str
@@ -47,16 +49,17 @@ def build_metric(value: float | None, source: ExtractionSource, method: str) -> 
 def filter_by_confidence(metrics: dict, threshold: float = 0.5) -> dict:
     """
     Filter metrics by confidence threshold.
-    
+
     Args:
         metrics: Dict of metric_name → Metric
         threshold: Minimum confidence to keep (0.0–1.0)
-    
+
     Returns:
         Dict with only metrics >= threshold
     """
     return {
-        k: v for k, v in metrics.items()
+        k: v
+        for k, v in metrics.items()
         if v.confidence >= threshold and v.value is not None
     }
 

@@ -116,6 +116,7 @@ class TestAppInitialization:
     def test_routers_included(self):
         """Test that routers are included."""
         from src.app import app
+
         # Check that routers are registered
         router_names = [route.path for route in app.routes]
         assert any("/health" in name for name in router_names)
@@ -154,8 +155,8 @@ class TestCorsConfiguration:
         """Test that CORS error handler is configured in module."""
         # The try/except block for CORS exists at module level
         # Verify the fallback variables are defined
-        from src.app import allow_origins, allow_methods, allow_headers
-        
+        from src.app import allow_headers, allow_methods, allow_origins
+
         # These should always be defined (either from env or defaults)
         assert isinstance(allow_origins, list)
         assert isinstance(allow_methods, list)

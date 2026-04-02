@@ -3,9 +3,9 @@ import logging
 import re
 from typing import Any
 
+from src.analysis.llm_extractor import clean_for_llm, is_clean_financial_text
 from src.core.ai_service import ai_service
 from src.core.prompts import LLM_ANALYSIS_PROMPT
-from src.analysis.llm_extractor import clean_for_llm, is_clean_financial_text
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,9 @@ async def analyze_narrative(
     full_text: str,
     ai_provider: str | None = None,
 ) -> dict[str, list[str]]:
-    result, _runtime = await analyze_narrative_with_runtime(full_text, ai_provider=ai_provider)
+    result, _runtime = await analyze_narrative_with_runtime(
+        full_text, ai_provider=ai_provider
+    )
     return result
 
 
@@ -27,20 +29,34 @@ async def analyze_narrative_with_runtime(
     ai_provider: str | None = None,
 ) -> tuple[dict[str, list[str]], dict[str, str | None]]:
     if not full_text:
-        return _empty_result(), {"status": "skipped", "reason_code": "insufficient_text"}
+        return _empty_result(), {
+            "status": "skipped",
+            "reason_code": "insufficient_text",
+        }
 
     if not ai_service.is_provider_available(ai_provider):
         logger.warning("NLP analysis skipped: AI provider unavailable")
-        return _empty_result(), {"status": "skipped", "reason_code": "provider_unavailable"}
+        return _empty_result(), {
+            "status": "skipped",
+            "reason_code": "provider_unavailable",
+        }
 
     # Gate: if text is OCR garbage, skip LLM entirely — saves 80-90% tokens
     if not is_clean_financial_text(full_text):
-        logger.warning("NLP analysis skipped: text quality too low (%d chars)", len(full_text))
-        return _empty_result(), {"status": "skipped", "reason_code": "insufficient_text"}
+        logger.warning(
+            "NLP analysis skipped: text quality too low (%d chars)", len(full_text)
+        )
+        return _empty_result(), {
+            "status": "skipped",
+            "reason_code": "insufficient_text",
+        }
 
     narrative_text = _prepare_narrative_for_llm(full_text)
     if not narrative_text:
-        return _empty_result(), {"status": "skipped", "reason_code": "insufficient_text"}
+        return _empty_result(), {
+            "status": "skipped",
+            "reason_code": "insufficient_text",
+        }
 
     try:
         invoke_kwargs: dict[str, Any] = {
@@ -55,15 +71,21 @@ async def analyze_narrative_with_runtime(
             invoke_kwargs["provider"] = ai_provider
 
         response = await ai_service.invoke(**invoke_kwargs)
-        
+
         if not response:
             logger.warning("AI service returned empty response")
-            return _empty_result(), {"status": "failed", "reason_code": "provider_error"}
-            
+            return _empty_result(), {
+                "status": "failed",
+                "reason_code": "provider_error",
+            }
+
         parsed = _parse_llm_json(response)
         if parsed is None:
             logger.warning("Failed to parse AI response, returning fallback")
-            return _empty_result(), {"status": "failed", "reason_code": "invalid_response"}
+            return _empty_result(), {
+                "status": "failed",
+                "reason_code": "invalid_response",
+            }
 
         result = {
             "risks": _ensure_list(parsed.get("risks")),
@@ -73,7 +95,7 @@ async def analyze_narrative_with_runtime(
         if result["risks"] or result["key_factors"]:
             return result, {"status": "succeeded", "reason_code": None}
         return result, {"status": "empty", "reason_code": "no_nlp_content"}
-        
+
     except Exception as exc:
         logger.warning("AI analysis failed: %s", exc)
         return _empty_result(), {"status": "failed", "reason_code": "provider_error"}
@@ -109,7 +131,7 @@ def _extract_narrative(text: str) -> str:
         # No narrative section found — use beginning of text, truncated
         return text[:_NARRATIVE_SCAN_BUDGET].strip()
 
-    extracted = text[start_index: start_index + _NARRATIVE_SCAN_BUDGET]
+    extracted = text[start_index : start_index + _NARRATIVE_SCAN_BUDGET]
     return extracted.strip()
 
 

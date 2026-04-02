@@ -3,6 +3,7 @@ Router for multi-period analysis endpoints.
 Feature: neofin-competition-release
 Requirements: 2.5, 2.9, 2.10, 2.11
 """
+
 from __future__ import annotations
 
 import logging
@@ -10,7 +11,15 @@ import os
 import tempfile
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+)
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -23,7 +32,6 @@ from src.db.crud import (
     update_multi_session,
 )
 from src.exceptions import DatabaseError, TaskRuntimeError
-from src.models.settings import app_settings
 from src.models.schemas import (
     MultiAnalysisAcceptedResponse,
     MultiAnalysisCancelledResponse,
@@ -32,6 +40,7 @@ from src.models.schemas import (
     MultiAnalysisProgress,
     PeriodInput,
 )
+from src.models.settings import app_settings
 from src.tasks import process_multi_analysis, request_multi_session_cancellation
 from src.utils.file_utils import ensure_directory
 
@@ -143,7 +152,11 @@ async def start_multi_analysis(
 async def get_multi_analysis_status(
     session_id: str,
     _api_key: str = Depends(get_api_key),
-) -> MultiAnalysisProcessingResponse | MultiAnalysisCompletedResponse | MultiAnalysisCancelledResponse:
+) -> (
+    MultiAnalysisProcessingResponse
+    | MultiAnalysisCompletedResponse
+    | MultiAnalysisCancelledResponse
+):
     """Return current status of a multi-period analysis session."""
     try:
         session = await get_multi_session(session_id)
@@ -195,7 +208,11 @@ async def cancel_multi_analysis(
     try:
         session = await get_multi_session(session_id)
     except SQLAlchemyError as exc:
-        logger.error("Failed to load multi-analysis session %s for cancellation: %s", session_id, exc)
+        logger.error(
+            "Failed to load multi-analysis session %s for cancellation: %s",
+            session_id,
+            exc,
+        )
         raise DatabaseError("Database operation failed") from exc
 
     if session is None:

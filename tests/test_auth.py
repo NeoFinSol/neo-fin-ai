@@ -1,12 +1,13 @@
 """Tests for authentication behavior."""
 import os
+
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from src.app import app
-from src.models.settings import app_settings
 from src.core.auth import get_api_key
+from src.models.settings import app_settings
 
 
 class TestAuthenticationEnforcement:
@@ -19,6 +20,7 @@ class TestAuthenticationEnforcement:
         
         # Reload app_settings to pick up new environment
         import importlib
+
         import src.models.settings as settings_module
         importlib.reload(settings_module)
         
@@ -32,6 +34,7 @@ class TestAuthenticationEnforcement:
         
         # Reload to pick up changes
         import importlib
+
         import src.models.settings as settings_module
         importlib.reload(settings_module)
         

@@ -9,8 +9,8 @@ Validates: Requirements 2.1–2.26
 import asyncio
 import inspect
 import os
-import pytest
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # БАГ 1 — AnalysisContext.tsx: polling flow
@@ -261,7 +261,7 @@ def test_cors_no_name_error():
 def test_mask_number_none_returns_dash():
     """_mask_number(None) → '—'. Req 2.19"""
     try:
-        from src.utils.masking import _mask_number, MASKED_NONE_VALUE
+        from src.utils.masking import MASKED_NONE_VALUE, _mask_number
     except ImportError as exc:
         pytest.skip("Could not import _mask_number: %s" % exc)
 
@@ -384,6 +384,7 @@ def test_client_ts_conditional_log():
 
     # All console.log/error must be inside DEV guard
     import re
+
     # Find console.log/error lines NOT preceded by DEV check
     lines = content.splitlines()
     for i, line in enumerate(lines):
