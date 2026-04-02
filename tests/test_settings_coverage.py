@@ -79,6 +79,11 @@ class TestAppSettingsProperties:
         s = AppSettings(QWEN_API_KEY=None, QWEN_API_URL=None, _env_file=None)
         assert s.use_qwen is False
 
+    def test_use_qwen_false_with_empty_url_from_env_style_input(self):
+        s = AppSettings(QWEN_API_KEY="real-key", QWEN_API_URL="", _env_file=None)
+        assert s.qwen_api_url is None
+        assert s.use_qwen is False
+
     def test_use_qwen_false_with_placeholder_key(self):
         s = AppSettings(
             QWEN_API_KEY="your-api-key",

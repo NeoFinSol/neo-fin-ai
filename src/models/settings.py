@@ -168,21 +168,24 @@ class AppSettings(BaseSettings):
             return None
         if not isinstance(v, str):
             raise ValueError("URL must be a string")
+        value = v.strip()
+        if not value:
+            return None
         redis_fields = {
             "task_queue_broker_url",
             "task_queue_result_backend",
             "task_events_redis_url",
         }
         if info.field_name in redis_fields:
-            if not v.startswith(("redis://", "rediss://")):
+            if not value.startswith(("redis://", "rediss://")):
                 raise ValueError(
                     "Runtime queue URL must start with redis:// or rediss://"
                 )
-            return v
+            return value
 
-        if not v.startswith(("http://", "https://")):
+        if not value.startswith(("http://", "https://")):
             raise ValueError("URL must start with http:// or https://")
-        return v
+        return value
 
     @field_validator("confidence_threshold", mode="before")
     @classmethod

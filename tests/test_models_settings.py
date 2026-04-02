@@ -83,10 +83,14 @@ class TestAppSettings:
         assert "string" in str(exc_info.value).lower()
 
     def test_validate_url_empty_string(self):
-        """Test validation of empty string URL."""
-        # Empty string doesn't start with http/https, should fail
-        with pytest.raises(ValidationError):
-            AppSettings(QWEN_API_URL="")
+        """Empty string URL should be normalized to None."""
+        settings = AppSettings(QWEN_API_URL="", _env_file=None)
+        assert settings.qwen_api_url is None
+
+    def test_validate_url_whitespace_string(self):
+        """Whitespace-only URL should be normalized to None."""
+        settings = AppSettings(QWEN_API_URL="   ", _env_file=None)
+        assert settings.qwen_api_url is None
 
     def test_model_config_extra_ignore(self):
         """Test that extra fields are ignored."""
