@@ -147,6 +147,18 @@ def test_ci_pipeline_generates_coverage_artifact_without_duplicating_fail_under_
     assert "--cov-fail-under" not in command
 
 
+def test_ci_build_job_uses_docker_compose_v2_commands() -> None:
+    workflow_path = WORKFLOWS_DIR / "ci.yml"
+    parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    build_job = parsed["jobs"]["build"]
+    commands = "\n".join(
+        step.get("run", "") for step in build_job["steps"] if isinstance(step, dict)
+    )
+
+    assert "docker-compose -f" not in commands
+    assert "docker compose" in commands
+
+
 def test_code_quality_runner_job_exposes_postgres_port_and_uses_localhost_url() -> None:
     workflow_path = WORKFLOWS_DIR / "code-quality.yml"
     parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
