@@ -298,7 +298,6 @@ jobs:
 
     - name: Build Docker image (CI configuration)
       env:
-        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -312,7 +311,6 @@ jobs:
 
     - name: Start containers with healthchecks
       env:
-        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}

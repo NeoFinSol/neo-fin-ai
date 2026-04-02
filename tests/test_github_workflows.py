@@ -6,6 +6,7 @@ from pathlib import Path
 import yaml
 
 WORKFLOWS_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+COMPOSE_CI = Path(__file__).resolve().parents[1] / "docker-compose.ci.yml"
 REQUIREMENTS_DEV = Path(__file__).resolve().parents[1] / "requirements-dev.txt"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -52,6 +53,16 @@ def test_code_quality_service_container_uses_secretless_ci_password() -> None:
     password = coverage_job["services"]["postgres-test"]["env"]["POSTGRES_PASSWORD"]
 
     assert "secrets.DB_PASSWORD" not in password
+
+
+def test_ci_compose_postgres_services_use_ci_password_env() -> None:
+    parsed = yaml.safe_load(COMPOSE_CI.read_text(encoding="utf-8"))
+    services = parsed["services"]
+
+    assert services["db"]["environment"]["POSTGRES_PASSWORD"] == "${CI_DB_PASSWORD}"
+    assert (
+        services["db_test"]["environment"]["POSTGRES_PASSWORD"] == "${CI_DB_PASSWORD}"
+    )
 
 
 def test_code_quality_type_check_uses_explicit_package_bases_for_src_layout() -> None:
@@ -161,6 +172,23 @@ def test_ci_build_job_uses_docker_compose_v2_commands() -> None:
     assert "docker compose" in commands
 
 
+def test_ci_build_job_does_not_depend_on_repository_secret_db_password() -> None:
+    workflow_path = WORKFLOWS_DIR / "ci.yml"
+    parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    build_job = parsed["jobs"]["build"]
+
+    for step in build_job["steps"]:
+        if step.get("name") in {
+            "Build Docker image (CI configuration)",
+            "Start containers with healthchecks",
+        }:
+            env = step["env"]
+            assert "DB_PASSWORD" not in env
+            assert "secrets.DB_PASSWORD" not in "\n".join(
+                str(value) for value in env.values()
+            )
+
+
 def test_code_quality_runner_job_exposes_postgres_port_and_uses_localhost_url() -> None:
     workflow_path = WORKFLOWS_DIR / "code-quality.yml"
     parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
@@ -196,6 +224,20 @@ def test_code_quality_runner_job_exposes_postgres_port_and_uses_localhost_url() 
 def test_requirements_dev_includes_hypothesis_for_property_based_tests() -> None:
     requirements = REQUIREMENTS_DEV.read_text(encoding="utf-8").lower()
     assert "hypothesis" in requirements
+
+
+def test_ci_compose_backend_has_runtime_database_urls() -> None:
+    parsed = yaml.safe_load(COMPOSE_CI.read_text(encoding="utf-8"))
+    backend_env = parsed["services"]["backend"]["environment"]
+
+    assert (
+        backend_env["DATABASE_URL"]
+        == "postgresql+asyncpg://postgres:${CI_DB_PASSWORD}@db:5432/neofin"
+    )
+    assert (
+        backend_env["TEST_DATABASE_URL"]
+        == "postgresql+asyncpg://postgres:${CI_DB_PASSWORD}@db_test:5432/neofin_test"
+    )
 
 
 def test_gitignore_does_not_hide_frontend_components_required_for_build() -> None:

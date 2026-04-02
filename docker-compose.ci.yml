@@ -16,16 +16,16 @@ services:
       dockerfile: Dockerfile
     # Нет ports: - не пробрасываем порты на хост в CI
     environment:
-      # SECURITY: ALL credentials MUST be injected via CI workflow environment
-      # Эти переменные устанавливаются в .github/workflows/ci.yml через secrets
-      # DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db:5432/neofin
-      # TEST_DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD}@db_test:5432/neofin_test
-      # QWEN_API_KEY: ${QWEN_API_KEY}
-      # QWEN_API_URL: ${QWEN_API_URL}
-      # CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
-      # CORS_ALLOW_METHODS: ${CORS_ALLOW_METHODS}
-      # CORS_ALLOW_HEADERS: ${CORS_ALLOW_HEADERS}
-      # CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS}
+      # SECURITY: Runtime credentials are injected via CI workflow environment.
+      # Ephemeral CI databases use CI_DB_PASSWORD, not repository secrets.
+      DATABASE_URL: postgresql+asyncpg://postgres:${CI_DB_PASSWORD}@db:5432/neofin
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:${CI_DB_PASSWORD}@db_test:5432/neofin_test
+      QWEN_API_KEY: ${QWEN_API_KEY}
+      QWEN_API_URL: ${QWEN_API_URL}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
+      CORS_ALLOW_METHODS: ${CORS_ALLOW_METHODS}
+      CORS_ALLOW_HEADERS: ${CORS_ALLOW_HEADERS}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS}
       DB_WAIT_RETRIES: 30
       DB_WAIT_SECONDS: 2
     depends_on:
@@ -50,9 +50,8 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      # SECURITY: Password MUST be provided via environment variable
-      # No default value - will fail if DB_PASSWORD not set (intentional security measure)
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # SECURITY: Ephemeral CI database uses workflow-level CI_DB_PASSWORD.
+      POSTGRES_PASSWORD: ${CI_DB_PASSWORD}
       POSTGRES_DB: neofin
     # Нет ports: - не пробрасываем порты на хост в CI
     healthcheck:
@@ -70,9 +69,8 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      # SECURITY: Password MUST be provided via environment variable
-      # No default value - will fail if DB_PASSWORD not set (intentional security measure)
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # SECURITY: Ephemeral CI database uses workflow-level CI_DB_PASSWORD.
+      POSTGRES_PASSWORD: ${CI_DB_PASSWORD}
       POSTGRES_DB: neofin_test
     # Нет ports: - не пробрасываем порты на хост в CI
     healthcheck:
