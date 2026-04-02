@@ -17,6 +17,7 @@
 pytest~=8.3.0
 pytest-asyncio~=0.25.0
 pytest-cov~=6.0.0
+hypothesis~=6.151.0
 httpx~=0.28.0  # Async test client for FastAPI
 
 # -----------------------------------------------------------------------------

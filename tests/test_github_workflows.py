@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 
 WORKFLOWS_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+REQUIREMENTS_DEV = Path(__file__).resolve().parents[1] / "requirements-dev.txt"
 
 
 def test_all_github_workflows_are_valid_yaml() -> None:
@@ -159,3 +160,8 @@ def test_code_quality_runner_job_exposes_postgres_port_and_uses_localhost_url() 
         "127.0.0.1:${{ job.services.postgres-test.ports[5432] }}"
         in run_step["env"]["TEST_DATABASE_URL"]
     )
+
+
+def test_requirements_dev_includes_hypothesis_for_property_based_tests() -> None:
+    requirements = REQUIREMENTS_DEV.read_text(encoding="utf-8").lower()
+    assert "hypothesis" in requirements
