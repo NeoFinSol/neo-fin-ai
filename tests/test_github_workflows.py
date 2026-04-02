@@ -86,9 +86,14 @@ def test_ci_runner_job_exposes_postgres_service_ports_and_uses_localhost_urls() 
     parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     test_job = parsed["jobs"]["test"]
 
-    assert test_job["services"]["postgres-main"]["ports"] == ["5432:5432"]
-    assert test_job["services"]["postgres-test"]["ports"] == ["5433:5432"]
+    assert test_job["services"]["postgres-main"]["ports"] == [5432]
+    assert test_job["services"]["postgres-test"]["ports"] == [5432]
 
+    wait_step = next(
+        step
+        for step in test_job["steps"]
+        if step.get("name") == "Wait for PostgreSQL services"
+    )
     migration_step = next(
         step
         for step in test_job["steps"]
@@ -98,10 +103,30 @@ def test_ci_runner_job_exposes_postgres_service_ports_and_uses_localhost_urls() 
         step for step in test_job["steps"] if step.get("name") == "Run unit tests"
     )
 
-    assert "localhost:5432" in migration_step["env"]["DATABASE_URL"]
-    assert "localhost:5433" in migration_step["env"]["TEST_DATABASE_URL"]
-    assert "localhost:5432" in unit_step["env"]["DATABASE_URL"]
-    assert "localhost:5433" in unit_step["env"]["TEST_DATABASE_URL"]
+    assert (
+        "job.services.postgres-main.ports[5432]"
+        in wait_step["env"]["POSTGRES_MAIN_PORT"]
+    )
+    assert (
+        "job.services.postgres-test.ports[5432]"
+        in wait_step["env"]["POSTGRES_TEST_PORT"]
+    )
+    assert (
+        "127.0.0.1:${{ job.services.postgres-main.ports[5432] }}"
+        in migration_step["env"]["DATABASE_URL"]
+    )
+    assert (
+        "127.0.0.1:${{ job.services.postgres-test.ports[5432] }}"
+        in migration_step["env"]["TEST_DATABASE_URL"]
+    )
+    assert (
+        "127.0.0.1:${{ job.services.postgres-main.ports[5432] }}"
+        in unit_step["env"]["DATABASE_URL"]
+    )
+    assert (
+        "127.0.0.1:${{ job.services.postgres-test.ports[5432] }}"
+        in unit_step["env"]["TEST_DATABASE_URL"]
+    )
 
 
 def test_code_quality_runner_job_exposes_postgres_port_and_uses_localhost_url() -> None:
@@ -109,13 +134,28 @@ def test_code_quality_runner_job_exposes_postgres_port_and_uses_localhost_url() 
     parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     coverage_job = parsed["jobs"]["coverage"]
 
-    assert coverage_job["services"]["postgres-test"]["ports"] == ["5432:5432"]
+    assert coverage_job["services"]["postgres-test"]["ports"] == [5432]
 
+    wait_step = next(
+        step
+        for step in coverage_job["steps"]
+        if step.get("name") == "Wait for PostgreSQL service"
+    )
     run_step = next(
         step
         for step in coverage_job["steps"]
         if step.get("name") == "Run tests with coverage"
     )
 
-    assert "localhost:5432" in run_step["env"]["DATABASE_URL"]
-    assert "localhost:5432" in run_step["env"]["TEST_DATABASE_URL"]
+    assert (
+        "job.services.postgres-test.ports[5432]"
+        in wait_step["env"]["POSTGRES_TEST_PORT"]
+    )
+    assert (
+        "127.0.0.1:${{ job.services.postgres-test.ports[5432] }}"
+        in run_step["env"]["DATABASE_URL"]
+    )
+    assert (
+        "127.0.0.1:${{ job.services.postgres-test.ports[5432] }}"
+        in run_step["env"]["TEST_DATABASE_URL"]
+    )
