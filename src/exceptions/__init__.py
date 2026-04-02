@@ -23,13 +23,13 @@ from typing import Any, Dict, Optional
 class BaseAppError(Exception):
     """
     Base class for all application-specific exceptions.
-    
+
     Attributes:
         code: Machine-readable error code (e.g., "EXTRACTION_FAILED")
         message: Human-readable description
         details: Optional additional context (for debugging)
     """
-    
+
     def __init__(
         self,
         message: str,
@@ -40,14 +40,14 @@ class BaseAppError(Exception):
         self.code = code
         self.details = details or {}
         super().__init__(self.message)
-    
+
     def to_dict(self, include_details: bool = False) -> dict:
         """
         Convert exception to dictionary for API response.
-        
+
         Args:
             include_details: Include detailed error context (only in dev mode)
-        
+
         Returns:
             dict: {code, message, details (optional)}
         """
@@ -55,23 +55,23 @@ class BaseAppError(Exception):
             "code": self.code,
             "message": self.message,
         }
-        
+
         if include_details and self.details:
             result["details"] = self.details
-        
+
         return result
 
 
 class ValidationError(BaseAppError):
     """
     Raised when input validation fails.
-    
+
     Examples:
     - Invalid PDF file (not a PDF or corrupted)
     - File size exceeds limit
     - Missing required fields in request
     """
-    
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
         super().__init__(
             message=message,
@@ -83,13 +83,13 @@ class ValidationError(BaseAppError):
 class ExtractionError(BaseAppError):
     """
     Raised when PDF extraction fails.
-    
+
     Examples:
     - Cannot extract text from PDF
     - OCR failed on scanned document
     - Table extraction returned no results
     """
-    
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
         super().__init__(
             message=message,
@@ -101,13 +101,13 @@ class ExtractionError(BaseAppError):
 class AIServiceError(BaseAppError):
     """
     Raised when AI service call fails.
-    
+
     Examples:
     - AI provider timeout
     - AI provider returns error
     - AI provider unavailable
     """
-    
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
         super().__init__(
             message=message,
@@ -119,13 +119,13 @@ class AIServiceError(BaseAppError):
 class DatabaseError(BaseAppError):
     """
     Raised when database operation fails.
-    
+
     Examples:
     - Connection lost
     - Query timeout
     - Integrity constraint violation
     """
-    
+
     def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
         super().__init__(
             message=message,
@@ -150,10 +150,10 @@ class TaskRuntimeError(BaseAppError):
 class CircuitBreakerOpenError(BaseAppError):
     """
     Raised when circuit breaker is open (service temporarily disabled).
-    
+
     This is not a real error - it's a signal to use fallback.
     """
-    
+
     def __init__(self, message: str = "Service temporarily unavailable"):
         super().__init__(
             message=message,

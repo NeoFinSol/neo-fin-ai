@@ -14,7 +14,6 @@ from hypothesis import strategies as st
 
 from src.db.crud import get_analyses_list
 
-
 # ---------------------------------------------------------------------------
 # Strategy helpers
 # ---------------------------------------------------------------------------

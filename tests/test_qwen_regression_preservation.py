@@ -11,11 +11,10 @@ Validates: Requirements 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.11, 3.12
 """
 import asyncio
 import os
+
 import pytest
-
-from hypothesis import given, settings, assume
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
-
 
 # ---------------------------------------------------------------------------
 # Test 1: prop_financial_value_filter (Property-based)
@@ -23,18 +22,18 @@ from hypothesis import strategies as st
 
 @given(
     st.one_of(
-        # Large values (> 1000, not years)
-        st.floats(min_value=1001.0, max_value=1e15 - 1, allow_nan=False, allow_infinity=False),
+        # Large values within the current parser sanity bound (> 1000, not years)
+        st.floats(min_value=1001.0, max_value=1e13 - 1, allow_nan=False, allow_infinity=False),
         # Small values (0 < v < 1000) — financial ratios, small business metrics
         st.floats(min_value=0.001, max_value=999.99, allow_nan=False, allow_infinity=False),
-        # Negative values (losses, liabilities)
-        st.floats(min_value=-(1e15 - 1), max_value=-0.001, allow_nan=False, allow_infinity=False),
+        # Negative values (losses, liabilities) within the same sanity bound
+        st.floats(min_value=-(1e13 - 1), max_value=-0.001, allow_nan=False, allow_infinity=False),
     )
 )
 @settings(max_examples=300, deadline=None)
 def test_prop_financial_value_filter(v: float) -> None:
     """
-    Property: _is_valid_financial_value(v) == True for all v in (-1e15, 1e15)
+    Property: _is_valid_financial_value(v) == True for all v in (-1e13, 1e13)
     that are not integers in the year range 1900-2100.
 
     After the fix, this covers small values (ratios, small business) too.
@@ -330,8 +329,8 @@ def test_recommendations_fallback() -> None:
     """
     try:
         from src.analysis.recommendations import (
-            generate_recommendations,
             FALLBACK_RECOMMENDATIONS,
+            generate_recommendations,
         )
     except ImportError as exc:
         pytest.skip("Could not import recommendations module: %s" % exc)
@@ -382,7 +381,9 @@ def test_tesseract_env_cmd_respected() -> None:
 
         try:
             import pytesseract
+
             import src.analysis.pdf_extractor  # noqa: F401
+
             # After import, tesseract_cmd should be set to our env value
             assert pytesseract.pytesseract.tesseract_cmd == "/usr/local/bin/tesseract", (
                 "REGRESSION: TESSERACT_CMD env var not respected. "

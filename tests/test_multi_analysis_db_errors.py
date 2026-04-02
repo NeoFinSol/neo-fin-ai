@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-from fastapi import HTTPException
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.exceptions import DatabaseError

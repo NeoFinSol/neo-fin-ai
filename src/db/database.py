@@ -4,7 +4,12 @@ import logging
 import os
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import declarative_base
 
 from src.core.security import get_safe_db_url_for_logging
@@ -81,7 +86,10 @@ def get_engine() -> AsyncEngine:
 
         logger.info(
             "Database pool configured: pool_size=%d, max_overflow=%d, timeout=%ds, recycle=%ds",
-            pool_size, max_overflow, pool_timeout, pool_recycle
+            pool_size,
+            max_overflow,
+            pool_timeout,
+            pool_recycle,
         )
 
         try:
@@ -101,16 +109,14 @@ def get_engine() -> AsyncEngine:
                 pool_pre_ping=pool_pre_ping,
             )
             AsyncSessionLocal = async_sessionmaker(
-                _engine,
-                class_=AsyncSession,
-                expire_on_commit=False
+                _engine, class_=AsyncSession, expire_on_commit=False
             )
             logger.info("Database engine created successfully")
         except TypeError as e:
             # Pool kwargs not supported by this asyncpg version - use defaults
             logger.warning(
                 "Pool kwargs not supported by asyncpg (%s), using default pooling",
-                type(e).__name__
+                type(e).__name__,
             )
             _engine = create_async_engine(
                 db_url,
@@ -118,9 +124,7 @@ def get_engine() -> AsyncEngine:
                 future=True,
             )
             AsyncSessionLocal = async_sessionmaker(
-                _engine,
-                class_=AsyncSession,
-                expire_on_commit=False
+                _engine, class_=AsyncSession, expire_on_commit=False
             )
             logger.info("Database engine created with default pool settings")
         except Exception as e:
@@ -130,7 +134,7 @@ def get_engine() -> AsyncEngine:
                 "DB engine creation failed: error_type=%s | db=%s",
                 type(e).__name__,
                 get_safe_db_url_for_logging(db_url),
-                exc_info=True
+                exc_info=True,
             )
             raise RuntimeError("Failed to create database engine") from e
 

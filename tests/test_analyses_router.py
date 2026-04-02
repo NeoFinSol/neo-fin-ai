@@ -173,9 +173,10 @@ class TestAnalysesValidation:
 # Validates: Requirements 1.2, 1.4
 # ---------------------------------------------------------------------------
 
+import uuid
+
 from hypothesis import given, settings
 from hypothesis import strategies as st
-import uuid
 
 
 def _analysis_strategy():

@@ -3,6 +3,5 @@
 
 from src.maintenance.admin_cleanup import main
 
-
 if __name__ == "__main__":
     raise SystemExit(main())

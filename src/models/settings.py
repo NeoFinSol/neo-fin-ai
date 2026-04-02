@@ -1,7 +1,7 @@
-from pathlib import Path
 import logging
 import os
 import re
+from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic import Field, field_validator, model_validator
@@ -29,11 +29,18 @@ class AppSettings(BaseSettings):
     analysis_cleanup_stale_hours: int = Field(48, alias="ANALYSIS_CLEANUP_STALE_HOURS")
     multi_session_stale_hours: int = Field(24, alias="MULTI_SESSION_STALE_HOURS")
     runtime_recovery_batch_limit: int = Field(100, alias="RUNTIME_RECOVERY_BATCH_LIMIT")
-    analysis_runtime_stale_minutes: int = Field(60, alias="ANALYSIS_RUNTIME_STALE_MINUTES")
-    multi_session_runtime_stale_minutes: int = Field(90, alias="MULTI_SESSION_RUNTIME_STALE_MINUTES")
+    analysis_runtime_stale_minutes: int = Field(
+        60, alias="ANALYSIS_RUNTIME_STALE_MINUTES"
+    )
+    multi_session_runtime_stale_minutes: int = Field(
+        90, alias="MULTI_SESSION_RUNTIME_STALE_MINUTES"
+    )
     task_runtime: str = Field("background", alias="TASK_RUNTIME")
+    task_storage_dir: str | None = Field(None, alias="TASK_STORAGE_DIR")
     task_queue_broker_url: str | None = Field(None, alias="TASK_QUEUE_BROKER_URL")
-    task_queue_result_backend: str | None = Field(None, alias="TASK_QUEUE_RESULT_BACKEND")
+    task_queue_result_backend: str | None = Field(
+        None, alias="TASK_QUEUE_RESULT_BACKEND"
+    )
     task_events_redis_url: str | None = Field(None, alias="TASK_EVENTS_REDIS_URL")
     task_queue_name: str = Field("neofin", alias="TASK_QUEUE_NAME")
     task_queue_eager: bool = Field(False, alias="TASK_QUEUE_EAGER")
@@ -105,9 +112,9 @@ class AppSettings(BaseSettings):
         description="Minimum confidence score to include an extracted metric [0.0–1.0]",
     )
     scoring_profile: str = Field(
-        "generic",
+        "auto",
         alias="SCORING_PROFILE",
-        description="Scoring benchmark profile: generic or retail_demo",
+        description="Scoring benchmark profile: auto, generic or retail_demo",
     )
 
     # LLM Extraction settings
@@ -161,19 +168,24 @@ class AppSettings(BaseSettings):
             return None
         if not isinstance(v, str):
             raise ValueError("URL must be a string")
+        value = v.strip()
+        if not value:
+            return None
         redis_fields = {
             "task_queue_broker_url",
             "task_queue_result_backend",
             "task_events_redis_url",
         }
         if info.field_name in redis_fields:
-            if not v.startswith(("redis://", "rediss://")):
-                raise ValueError("Runtime queue URL must start with redis:// or rediss://")
-            return v
+            if not value.startswith(("redis://", "rediss://")):
+                raise ValueError(
+                    "Runtime queue URL must start with redis:// or rediss://"
+                )
+            return value
 
-        if not v.startswith(("http://", "https://")):
+        if not value.startswith(("http://", "https://")):
             raise ValueError("URL must start with http:// or https://")
-        return v
+        return value
 
     @field_validator("confidence_threshold", mode="before")
     @classmethod
@@ -196,16 +208,16 @@ class AppSettings(BaseSettings):
     @field_validator("scoring_profile", mode="before")
     @classmethod
     def validate_scoring_profile(cls, v: str | None) -> str:
-        """Validate scoring profile and fall back to generic profile."""
+        """Validate scoring profile and fall back to auto profile."""
         if v is None:
-            return "generic"
+            return "auto"
         value = str(v).strip().lower()
-        if value not in {"generic", "retail_demo"}:
+        if value not in {"auto", "generic", "retail_demo"}:
             logging.warning(
-                "Invalid SCORING_PROFILE=%r. Using default 'generic'",
+                "Invalid SCORING_PROFILE=%r. Using default 'auto'",
                 v,
             )
-            return "generic"
+            return "auto"
         return value
 
     @field_validator("llm_chunk_size", mode="before")
@@ -222,7 +234,9 @@ class AppSettings(BaseSettings):
             return default
         if not (1_000 <= value <= 50_000):
             logging.warning(
-                "LLM_CHUNK_SIZE=%d out of [1000, 50000]. Using default %d", value, default
+                "LLM_CHUNK_SIZE=%d out of [1000, 50000]. Using default %d",
+                value,
+                default,
             )
             return default
         return value
@@ -260,7 +274,9 @@ class AppSettings(BaseSettings):
             return default
         if not (1_000 <= value <= 200_000):
             logging.warning(
-                "LLM_TOKEN_BUDGET=%d out of [1000, 200000]. Using default %d", value, default
+                "LLM_TOKEN_BUDGET=%d out of [1000, 200000]. Using default %d",
+                value,
+                default,
             )
             return default
         return value
@@ -317,10 +333,14 @@ class AppSettings(BaseSettings):
         try:
             value = int(v)
         except (TypeError, ValueError):
-            logging.warning("Invalid %s=%r. Using default %d", info.field_name, v, default)
+            logging.warning(
+                "Invalid %s=%r. Using default %d", info.field_name, v, default
+            )
             return default
         if value <= 0:
-            logging.warning("%s=%r must be positive. Using default %d", info.field_name, v, default)
+            logging.warning(
+                "%s=%r must be positive. Using default %d", info.field_name, v, default
+            )
             return default
         return value
 

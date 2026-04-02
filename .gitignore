@@ -10,8 +10,8 @@ nul
 con
 prn
 aux
-com*
-lpt*
+/[Cc][Oo][Mm][1-9]
+/[Ll][Pp][Tt][1-9]
 
 __pycache__/
 *.pyc
@@ -79,6 +79,7 @@ run_final.bat
 run_ocr.bat
 # Re-include only the small heavy-tier test driver; real PDF fixtures stay under
 # explicit fixture paths and are governed separately.
+!tests/test_github_workflows.py
 !tests/test_pdf_real_heavy_fixtures.py
 !tests/test_pdf_local_magnit_regression.py
 
@@ -101,6 +102,11 @@ coverage.json
 coverage.xml
 coverage_html/
 .coverage
+
+# Local temp artifacts
+.tmp/
+frontend/.tmp/
+*.pid
 
 # Visual Studio
 *.pyproj

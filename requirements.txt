@@ -39,10 +39,12 @@ redis~=5.2.0
 # -----------------------------------------------------------------------------
 # SQLAlchemy 2.0.x with async support
 # asyncpg 0.29.x - PostgreSQL async driver
+# psycopg2-binary 2.9.x - sync PostgreSQL driver for Alembic migrations
 # alembic 1.13.x - Database migrations
 # COMPATIBILITY: SQLAlchemy 2.0.30+ works with asyncpg 0.29.x
 SQLAlchemy[asyncio]~=2.0.48
 asyncpg~=0.31.0
+psycopg2-binary~=2.9.10
 alembic~=1.18.4
 
 # -----------------------------------------------------------------------------
@@ -60,9 +62,11 @@ pytesseract~=0.3.10
 # Table Extraction from PDFs
 # -----------------------------------------------------------------------------
 # camelot-py 0.11.x - Table extraction from PDFs
+# opencv-python-headless 4.13.x - required by Camelot lattice parser (cv2 import)
 # ghostscript - системный бинарник для camelot (lattice mode)
 # Pillow - транзитивная зависимость (pdf2image, pytesseract)
 camelot-py~=0.11.0
+opencv-python-headless~=4.13.0
 
 # -----------------------------------------------------------------------------
 # Rate Limiting

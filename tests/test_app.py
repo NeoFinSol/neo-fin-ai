@@ -116,6 +116,7 @@ class TestAppInitialization:
     def test_routers_included(self):
         """Test that routers are included."""
         from src.app import app
+
         # Check that routers are registered
         router_names = [route.path for route in app.routes]
         assert any("/health" in name for name in router_names)
@@ -154,8 +155,8 @@ class TestCorsConfiguration:
         """Test that CORS error handler is configured in module."""
         # The try/except block for CORS exists at module level
         # Verify the fallback variables are defined
-        from src.app import allow_origins, allow_methods, allow_headers
-        
+        from src.app import allow_headers, allow_methods, allow_origins
+
         # These should always be defined (either from env or defaults)
         assert isinstance(allow_origins, list)
         assert isinstance(allow_methods, list)
@@ -180,12 +181,10 @@ class TestCorsConfiguration:
 
 
 class TestUvicornRun:
-    """Tests for uvicorn run command."""
+    """Tests for ASGI app module boundary."""
 
-    def test_uvicorn_run_when_main(self):
-        """Test uvicorn.run is called when script is main."""
-        # This is difficult to test directly without running the server
-        # Instead, verify the code path exists
+    def test_app_module_does_not_embed_uvicorn_runner(self):
+        """Application module should stay import-safe and not shell out to uvicorn directly."""
         import src.app
-        # The __main__ block should exist
-        assert hasattr(src.app, 'uvicorn')
+        assert hasattr(src.app, "app")
+        assert not hasattr(src.app, "uvicorn")

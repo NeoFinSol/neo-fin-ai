@@ -1,6 +1,7 @@
 """Tests for routers/system.py — health check endpoints."""
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 from src.app import app

@@ -3,10 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from src.core.runtime_events import broadcast_task_event
-from src.db.crud import (
-    mark_stale_analyses_failed,
-    mark_stale_multi_sessions_failed,
-)
+from src.db.crud import mark_stale_analyses_failed, mark_stale_multi_sessions_failed
 from src.models.settings import app_settings
 
 
@@ -20,24 +17,30 @@ def _build_stale_cutoff(*, now: datetime, stale_minutes: int) -> datetime:
 
 async def _broadcast_recovered_analysis_failures(task_ids: list[str]) -> None:
     for task_id in task_ids:
-        await broadcast_task_event(task_id, {
-            "type": "status_update",
-            "task_id": task_id,
-            "status": "failed",
-            "error": "Task runtime heartbeat expired",
-            "reason_code": "runtime_stale_timeout",
-        })
+        await broadcast_task_event(
+            task_id,
+            {
+                "type": "status_update",
+                "task_id": task_id,
+                "status": "failed",
+                "error": "Task runtime heartbeat expired",
+                "reason_code": "runtime_stale_timeout",
+            },
+        )
 
 
 async def _broadcast_recovered_multi_session_failures(session_ids: list[str]) -> None:
     for session_id in session_ids:
-        await broadcast_task_event(session_id, {
-            "type": "status_update",
-            "session_id": session_id,
-            "status": "failed",
-            "error": "Multi-analysis runtime heartbeat expired",
-            "reason_code": "runtime_stale_timeout",
-        })
+        await broadcast_task_event(
+            session_id,
+            {
+                "type": "status_update",
+                "session_id": session_id,
+                "status": "failed",
+                "error": "Multi-analysis runtime heartbeat expired",
+                "reason_code": "runtime_stale_timeout",
+            },
+        )
 
 
 async def run_runtime_recovery_job(
@@ -61,8 +64,12 @@ async def run_runtime_recovery_job(
 
     base_now = now or _utc_now()
     batch_limit = limit or app_settings.runtime_recovery_batch_limit
-    analyses_minutes = analysis_stale_minutes or app_settings.analysis_runtime_stale_minutes
-    multi_minutes = multi_session_stale_minutes or app_settings.multi_session_runtime_stale_minutes
+    analyses_minutes = (
+        analysis_stale_minutes or app_settings.analysis_runtime_stale_minutes
+    )
+    multi_minutes = (
+        multi_session_stale_minutes or app_settings.multi_session_runtime_stale_minutes
+    )
 
     report: dict[str, object] = {
         "generated_at": base_now.isoformat(),
@@ -99,6 +106,8 @@ async def run_runtime_recovery_job(
             **result,
         }
         if execute and result.get("updated"):
-            await _broadcast_recovered_multi_session_failures(result.get("session_ids", []))
+            await _broadcast_recovered_multi_session_failures(
+                result.get("session_ids", [])
+            )
 
     return report

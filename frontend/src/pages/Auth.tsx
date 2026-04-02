@@ -7,6 +7,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Shield, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react';
 import axios from 'axios';
+import { AppFooter } from '../components/AppFooter';
+import { ECOSYSTEM_NAME, PRODUCT_NAME } from '../constants/branding';
 
 export const Auth = () => {
   const [apiKey, setApiKey] = useState('');
@@ -54,7 +56,14 @@ export const Auth = () => {
   };
 
   return (
-    <Box bg="#f8f9fa" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <Box
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'radial-gradient(circle at top, rgba(0, 40, 142, 0.14), transparent 38%), #f7f8fc',
+      }}
+    >
       <Center pt={80} pb={40}>
         <Stack align="center" gap="xs">
           <Box
@@ -64,8 +73,8 @@ export const Auth = () => {
           >
             <Shield size={32} color="white" />
           </Box>
-          <Title order={1} style={{ letterSpacing: '-0.02em', fontWeight: 800 }}>NeoFin AI</Title>
-          <Text c="dimmed" size="sm">Платформа финансового анализа</Text>
+          <Title order={1} style={{ letterSpacing: '-0.02em', fontWeight: 800 }}>{PRODUCT_NAME}</Title>
+          <Text c="dimmed" size="sm">Модуль экосистемы {ECOSYSTEM_NAME}</Text>
         </Stack>
       </Center>
 
@@ -78,7 +87,7 @@ export const Auth = () => {
         >
           <Title order={2} size="h3" mb={4}>Вход в систему</Title>
           <Text c="dimmed" size="sm" mb="xl">
-            Введите API ключ для доступа к платформе
+            Введите API-ключ для доступа к сервису анализа документов
           </Text>
 
           <form onSubmit={handleSubmit}>
@@ -146,8 +155,8 @@ export const Auth = () => {
         </Paper>
       </Container>
 
-      <Box mt="auto" p="xl" style={{ borderTop: '1px solid #f3f4f5' }}>
-        <Text ta="center" size="xs" c="dimmed">© 2024 NEOFIN AI. ALL RIGHTS RESERVED.</Text>
+      <Box mt="auto" p="xl" style={{ borderTop: '1px solid #f0f1f5' }}>
+        <AppFooter />
       </Box>
     </Box>
   );

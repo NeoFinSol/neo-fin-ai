@@ -5,6 +5,7 @@ import warnings
 from pathlib import Path
 
 from cryptography.utils import CryptographyDeprecationWarning
+
 from src.analysis import pdf_extractor
 
 warnings.filterwarnings(
@@ -785,6 +786,38 @@ def test_extract_value_near_text_codes_supports_scanned_russian_forms():
     ) == 1348503.0
 
 
+def test_extract_value_near_text_codes_prefers_same_line_cash_over_later_note_section():
+    text = "\n".join(
+        [
+            "п.12.1.6 Денежные средства и денежные эквиваленты 1250 1448 897 216 2601771",
+            "Итого по разделу П 1200 174 989 150 141 877 788 138 420 826",
+            "Денежные средства 199290299 7",
+        ]
+    )
+
+    assert pdf_extractor._extract_value_near_text_codes(
+        text,
+        ("1250",),
+        ("денежные средства", "cash and cash equivalents"),
+    ) == 1448897.0
+
+
+def test_extract_value_near_text_codes_ignores_note_heading_without_same_line_value():
+    text = "\n".join(
+        [
+            "12.1.5. Дебиторская задолженность (стр. 1230)",
+            "Дебиторская задолженность представлена в таблице 7.1 Пояснений",
+            "В обороты по процентам к получению включена дебиторская задолженность",
+        ]
+    )
+
+    assert pdf_extractor._extract_value_near_text_codes(
+        text,
+        ("1230",),
+        ("дебиторская задолженность", "accounts receivable", "trade receivables"),
+    ) is None
+
+
 def test_extract_preferred_ocr_numeric_match_supports_four_digit_group_prefix():
     assert pdf_extractor._extract_preferred_ocr_numeric_match("1348 503 1339 235") == 1348503.0
 
@@ -862,6 +895,100 @@ def test_extract_form_long_term_liabilities_keeps_near_short_term_values():
     assert value == 50005.0
 
 
+def test_scanned_note_column_codes_do_not_override_section_totals():
+    text = "\n".join(
+        [
+            "Бухгалтерский баланс",
+            "КАПИТАЛ И РЕЗЕРВЫ",
+            "Уставный капитал",
+            "2025",
+            "7",
+            "Итого по разделу Ш 209 475 516 208 127 013",
+            "КРАТКОСРОЧНЫЕ ОБЯЗАТЕЛЬСТВА",
+            "5",
+            "Итого по разделу V 192 460 146 153 956 227",
+            "код 1600 435 659 511 307 785 500",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["equity"].value == 209475516.0
+    assert metadata["short_term_liabilities"].value == 192460146.0
+    assert metadata["liabilities"].value == 226183995.0
+
+
+def test_ifrs_table_note_numbers_do_not_become_total_metrics():
+    tables = [
+        {
+            "rows": [
+                ["Гудвил", "11", "67 029 310", "92 541 134"],
+                ["Долгосрочная дебиторская задолженность", "14", "353 774", "–"],
+                ["Авансы выданные", "15", "12 728 588", "9 198 907"],
+                ["Итого активы", "", "1 395 998 440", "1 209 760 255"],
+                ["Итого обязательства", "", "1 188 616 136", "1 030 762 784"],
+            ]
+        }
+    ]
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+
+    assert metadata["total_assets"].value == 1395998440.0
+    assert metadata["liabilities"].value == 1188616136.0
+    assert metadata["equity"].value is None
+
+
+def test_extract_best_line_value_prefers_statement_row_over_title_page_number():
+    text = "\n".join(
+        [
+            "Consolidated Statements of Stockholders' Equity 98",
+            "Stockholders' Equity",
+            "Total stockholders' equity 763,047 623,964",
+        ]
+    )
+
+    value, quality = pdf_extractor._extract_best_line_value(
+        text,
+        pdf_extractor._METRIC_KEYWORDS["equity"],
+        metric_key="equity",
+    )
+
+    assert value == 763047.0
+    assert quality is not None
+
+
+def test_parse_text_prefers_curly_apostrophe_equity_row_over_ascii_title_number():
+    text = "\n".join(
+        [
+            "Consolidated Statements of Stockholders' Equity 98",
+            "Stockholders’ Equity",
+            "Total stockholders’ equity 763,047 623,964",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["equity"].value == 763047.0
+
+
+def test_extract_best_line_value_prefers_more_specific_cash_keyword_match():
+    text = "\n".join(
+        [
+            "Cash, cash equivalents, and restricted cash, end of period $ 91,224 $ 215,204 $ 320,958",
+            "Cash and cash equivalents $ 86,864 $ 204,178",
+        ]
+    )
+
+    value, quality = pdf_extractor._extract_best_line_value(
+        text,
+        pdf_extractor._METRIC_KEYWORDS["cash_and_equivalents"],
+        metric_key="cash_and_equivalents",
+    )
+
+    assert value == 86864.0
+    assert quality is not None
+
+
 def test_scanned_form_extracts_short_term_liabilities_from_section_v_total():
     text = "\n".join(
         [
@@ -926,6 +1053,34 @@ def test_form_liabilities_derived_from_components_has_strong_confidence():
     assert metadata["liabilities"].value == 226183995.0
     assert metadata["liabilities"].source == "derived"
     assert metadata["liabilities"].confidence == 0.6
+
+
+def test_tables_and_text_can_derive_short_term_liabilities_from_section_iv_total():
+    tables = [{"flavor": "lattice", "rows": [["Итого обязательств", "1 000 000"]]}]
+    text = "\n".join(
+        [
+            "Бухгалтерский баланс",
+            "Итого по разделу IV 361 751",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
+
+    assert metadata["liabilities"].value == 1000000.0
+    assert metadata["short_term_liabilities"].value == 638249.0
+
+
+def test_parse_text_prefers_total_liabilities_row_over_lease_component():
+    text = "\n".join(
+        [
+            "Долгосрочные и краткосрочные обязательства по аренде (Прим. 9) 15 422",
+            "Итого обязательства 1 188 616 136 1 030 762 784",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["liabilities"].value == 1188616136.0
 
 
 def test_section_based_liabilities_derive_falls_back_when_components_conflict():
@@ -1084,7 +1239,7 @@ def test_scanned_russian_multiline_statement_uses_comprehensive_when_direct_sign
 
     metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
 
-    assert metadata["revenue"].value is None
+    assert metadata["revenue"].value == 103015.0
     assert metadata["net_profit"].value == 1348503.0
 
 
@@ -1120,6 +1275,92 @@ def test_scanned_russian_same_line_receivables_is_extracted():
     assert metadata["accounts_receivable"].value == 26998240.0
     assert metadata["accounts_receivable"].source == "text_regex"
     assert metadata["inventory"].value is None
+
+
+def test_scanned_magnit_q1_ocr_fragment_prefers_statement_rows_over_note_noise():
+    text = "\n".join(
+        [
+            "Бухгалтерский баланс",
+            "Единица измерения: тыс. руб.",
+            "П. ОБОРОТНЫЕ АКТИВЫ",
+            "Запасы",
+            "Дебиторская задолженность 26 998 240 18 602 153 105 529 995",
+            "п.12.1.6 Денежные средства и денежные эквиваленты 1250 1448 897 216 2601771",
+            "Итого по разделу П 1200 174 989 150 141 877 788 138 420 826",
+            "БАЛАНС 1600 435 659 511 307 785 500 299 128 606",
+            "Запасы 21 42 153",
+            "Денежные средства 199290299 7",
+            "Итого по разделу Ш 209 475 516 208 127 013 186 349 571",
+            "Итого по разделу V 192 460 146 73 567 578 50 070 703",
+            "12.1.5. Дебиторская задолженность (стр. 1230)",
+            "Дебиторская задолженность представлена в таблице 7.1 Пояснений",
+            "12.1.6. Денежные средства и денежные эквиваленты (стр. 1250)",
+            "По состоянию на 31 марта 2025 г. денежные средства и денежные эквиваленты включают:",
+            "Денежные средства в рублях на счетах в банках 1448 1416 1771",
+            "Денежные эквиваленты (депозиты) - 895 800 2600 000",
+            "12.2. Отчет о финансовых результатах",
+            "12.2.1. Доходы и расходы по обычным видам деятельности (стр. 2110, 2120, 2100)",
+            "Выручка от реализации, в том числе НДС 123 618 123 618",
+            "Выручка от реализации, без НДС (стр. 2110) 103 015 103 015",
+            "12.2.4. Прибыль (убыток) (стр. 2300, 2400)",
+            "Чистая прибыль Общества за отчетный период составила 1 348 503 тыс. руб.",
+            "Чистая прибыль, тыс. руб. 2400 1348 503 1 339 235",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["revenue"].value == 103015000.0
+    assert metadata["net_profit"].value == 1348503000.0
+    assert metadata["total_assets"].value == 435659511000.0
+    assert metadata["current_assets"].value == 174989150000.0
+    assert metadata["equity"].value == 209475516000.0
+    assert metadata["liabilities"].value == 226183995000.0
+    assert metadata["short_term_liabilities"].value == 192460146000.0
+    assert metadata["accounts_receivable"].value == 26998240000.0
+    assert metadata["inventory"].value == 2142153000.0
+    assert metadata["cash_and_equivalents"].value == 1448897000.0
+
+
+def test_magnit_h1_extracts_borrowings_and_lease_liabilities_as_separate_components():
+    text = "\n".join(
+        [
+            "Консолидированная финансовая отчетность ПАО Магнит",
+            "в миллионах рублей",
+            "Долгосрочные кредиты и займы 220 922 260 868",
+            "Краткосрочные кредиты и займы 281 924 221 554",
+            "Долгосрочные обязательства по аренде 431 637 445 907",
+            "Краткосрочные обязательства по аренде 211 182 190 091",
+            "Итого обязательства 1 486 024 1 388 187",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["long_term_borrowings"].value == 220922000000.0
+    assert metadata["short_term_borrowings"].value == 281924000000.0
+    assert metadata["long_term_lease_liabilities"].value == 431637000000.0
+    assert metadata["short_term_lease_liabilities"].value == 211182000000.0
+    assert metadata["liabilities"].value == 1486024000000.0
+
+
+def test_magnit_h1_prefers_true_ebitda_over_pre_tax_profit_row():
+    text = "\n".join(
+        [
+            "Консолидированная финансовая отчетность ПАО Магнит",
+            "в миллионах рублей",
+            "EBITDA 85 628 75 981",
+            "Финансовые расходы 29 095 21 736",
+            "Прибыль до налогообложения 1 846 23 470",
+            "Чистая прибыль за период 6 544 17 008",
+        ]
+    )
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
+
+    assert metadata["ebitda"].value == 85628000000.0
+    assert metadata["interest_expense"].value == 29095000000.0
+    assert metadata["net_profit"].value == 6544000000.0
 
 
 def test_current_assets_rejects_component_rows_and_uses_total_line():

@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 import aiohttp
+
 from src.core.base_agent import BaseAIAgent
 
 logger = logging.getLogger(__name__)
@@ -74,17 +75,15 @@ class HuggingFaceAgent(BaseAIAgent):
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=timeout or self.timeout),
             ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error("HF API error %d: %s", response.status, error_text)
-                        return None
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error("HF API error %d: %s", response.status, error_text)
+                    return None
 
-                    result = await response.json()
-                    return (
-                        result.get("choices", [{}])[0]
-                        .get("message", {})
-                        .get("content", "")
-                    )
+                result = await response.json()
+                return (
+                    result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                )
 
         except Exception as e:
             logger.exception("HF API request failed: %s", e)

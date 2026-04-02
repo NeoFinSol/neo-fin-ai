@@ -1,6 +1,7 @@
 """Tests for core/auth.py — API key authentication."""
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi import HTTPException
 
 from src.core.auth import get_api_key, optional_auth

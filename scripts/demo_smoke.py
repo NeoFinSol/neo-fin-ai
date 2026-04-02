@@ -62,7 +62,9 @@ def _poll_single_result(
         if status in {"failed", "cancelled"}:
             raise DemoSmokeError(f"Single analysis ended with status={status}")
         if time.monotonic() - started_at > max_wait_seconds:
-            raise DemoSmokeError(f"Timeout waiting for single analysis ({max_wait_seconds}s)")
+            raise DemoSmokeError(
+                f"Timeout waiting for single analysis ({max_wait_seconds}s)"
+            )
         time.sleep(poll_seconds)
 
 
@@ -88,7 +90,9 @@ def _poll_multi_result(
         if status in {"failed", "cancelled"}:
             raise DemoSmokeError(f"Multi analysis ended with status={status}")
         if time.monotonic() - started_at > max_wait_seconds:
-            raise DemoSmokeError(f"Timeout waiting for multi analysis ({max_wait_seconds}s)")
+            raise DemoSmokeError(
+                f"Timeout waiting for multi analysis ({max_wait_seconds}s)"
+            )
         time.sleep(poll_seconds)
 
 
@@ -100,7 +104,9 @@ def _assert_metric_with_tolerance(
     abs_tolerance: float,
 ) -> None:
     if actual is None:
-        raise DemoSmokeError(f"{scenario_id}: metric '{metric_key}' is None, expected {expected}")
+        raise DemoSmokeError(
+            f"{scenario_id}: metric '{metric_key}' is None, expected {expected}"
+        )
     if not isinstance(actual, (int, float)):
         raise DemoSmokeError(
             f"{scenario_id}: metric '{metric_key}' has invalid type {type(actual).__name__}"
@@ -127,7 +133,9 @@ def _assert_task_visible_in_history(
     items = payload.get("items")
     if not isinstance(items, list):
         raise DemoSmokeError("History payload has invalid 'items' field")
-    found = any(isinstance(item, dict) and item.get("task_id") == task_id for item in items)
+    found = any(
+        isinstance(item, dict) and item.get("task_id") == task_id for item in items
+    )
     if not found:
         raise DemoSmokeError(f"Task {task_id} not found in /analyses history")
 
@@ -192,7 +200,9 @@ def _run_single_scenario(
         )
         expected_value = expected_info.get("expected")
         if not isinstance(expected_value, (int, float)):
-            raise DemoSmokeError(f"{scenario_id}: expected value missing for {metric_key}")
+            raise DemoSmokeError(
+                f"{scenario_id}: expected value missing for {metric_key}"
+            )
         abs_tolerance = float(expected_info.get("abs_tolerance", 0.0))
         _assert_metric_with_tolerance(
             scenario_id=scenario_id,
@@ -203,8 +213,12 @@ def _run_single_scenario(
         )
 
     if not skip_history:
-        analyses_url = _build_url(base_url, api_prefix, "/analyses?page=1&page_size=100")
-        _assert_task_visible_in_history(session=session, list_url=analyses_url, task_id=task_id)
+        analyses_url = _build_url(
+            base_url, api_prefix, "/analyses?page=1&page_size=100"
+        )
+        _assert_task_visible_in_history(
+            session=session, list_url=analyses_url, task_id=task_id
+        )
 
     print(f"[OK] {scenario_id}: completed task_id={task_id}")
 
@@ -229,11 +243,15 @@ def _run_multi_scenario(
 
     with contextlib.ExitStack() as exit_stack:
         for item in items:
-            item_payload = _require_payload_dict(item, f"{scenario_id}: invalid item config")
+            item_payload = _require_payload_dict(
+                item, f"{scenario_id}: invalid item config"
+            )
             case_id = item_payload.get("case_id")
             period_label = item_payload.get("period_label")
             if not isinstance(case_id, str) or not isinstance(period_label, str):
-                raise DemoSmokeError(f"{scenario_id}: item must contain string case_id and period_label")
+                raise DemoSmokeError(
+                    f"{scenario_id}: item must contain string case_id and period_label"
+                )
             case = case_map.get(case_id)
             if case is None:
                 raise DemoSmokeError(f"{scenario_id}: unknown case_id '{case_id}'")
@@ -242,7 +260,9 @@ def _run_multi_scenario(
                 raise DemoSmokeError(f"{scenario_id}: fixture not found: {file_path}")
 
             file_handle = exit_stack.enter_context(file_path.open("rb"))
-            payload_files.append(("files", (file_path.name, file_handle, "application/pdf")))
+            payload_files.append(
+                ("files", (file_path.name, file_handle, "application/pdf"))
+            )
             payload_periods.append(("periods", period_label))
 
         start_url = _build_url(base_url, api_prefix, "/multi-analysis")
@@ -285,7 +305,9 @@ def _run_multi_scenario(
 
     expected_labels = expect.get("period_labels")
     if isinstance(expected_labels, list):
-        actual_labels = [period.get("period_label") for period in periods if isinstance(period, dict)]
+        actual_labels = [
+            period.get("period_label") for period in periods if isinstance(period, dict)
+        ]
         if actual_labels != expected_labels:
             raise DemoSmokeError(
                 f"{scenario_id}: period labels mismatch (expected={expected_labels}, got={actual_labels})"
@@ -308,18 +330,24 @@ def _run_scenarios(
     cases = manifest.get("local_regression_cases", [])
     scenarios = manifest.get("demo_scenarios", [])
     if not isinstance(cases, list) or not isinstance(scenarios, list):
-        raise DemoSmokeError("Manifest must contain list fields: local_regression_cases, demo_scenarios")
+        raise DemoSmokeError(
+            "Manifest must contain list fields: local_regression_cases, demo_scenarios"
+        )
 
     case_map: dict[str, dict[str, Any]] = {}
     for case in cases:
         case_payload = _require_payload_dict(case, "Manifest case entry must be object")
         case_id = case_payload.get("id")
         if not isinstance(case_id, str):
-            raise DemoSmokeError("Each case in local_regression_cases must have string id")
+            raise DemoSmokeError(
+                "Each case in local_regression_cases must have string id"
+            )
         case_map[case_id] = case_payload
 
     for scenario in scenarios:
-        scenario_payload = _require_payload_dict(scenario, "Manifest scenario entry must be object")
+        scenario_payload = _require_payload_dict(
+            scenario, "Manifest scenario entry must be object"
+        )
         scenario_id = scenario_payload.get("id")
         kind = scenario_payload.get("kind")
         if not isinstance(scenario_id, str) or not isinstance(kind, str):
@@ -412,7 +440,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if not args.api_key:
-        print("API key is required. Pass --api-key or set API_KEY environment variable.")
+        print(
+            "API key is required. Pass --api-key or set API_KEY environment variable."
+        )
         return 2
 
     manifest_path = Path(args.manifest).resolve()

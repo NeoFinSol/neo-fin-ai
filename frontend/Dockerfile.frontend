@@ -19,6 +19,9 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+ARG VITE_API_BASE=/api
+ENV VITE_API_BASE=$VITE_API_BASE
+
 # Build the application
 # Vite outputs to dist/ with minified JS/CSS, code splitting
 RUN npm run build
@@ -46,7 +49,7 @@ EXPOSE 80
 # Health check: verify nginx serves index.html
 # Runs every 30s, times out after 10s, allows 40s startup, 3 retries
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1/ || exit 1
 
 # Start nginx in foreground mode (required for Docker)
 CMD ["nginx", "-g", "daemon off;"]

@@ -1,4 +1,5 @@
 """Generate data-driven financial recommendations with references to extracted metrics."""
+
 import asyncio
 import json
 import logging
@@ -51,12 +52,12 @@ def _build_recommendations_prompt(
 ) -> str:
     """
     Build a detailed prompt for LLM with specific metrics and context.
-    
+
     Args:
         metrics: Extracted financial metrics (revenue, profit, etc.)
         ratios: Calculated financial ratios
         nlp_result: NLP analysis results (risks, factors)
-        
+
     Returns:
         str: Formatted prompt for LLM
     """
@@ -83,7 +84,7 @@ def _build_recommendations_prompt(
         "из metrics или ratios.\n"
         "Не выдумывай отсутствующие значения.\n"
         "Верни только JSON: "
-        "{\"recommendations\": [\"...\", \"...\"]}"
+        '{"recommendations": ["...", "..."]}'
     )
 
 
@@ -91,22 +92,23 @@ async def generate_recommendations(
     metrics: dict[str, Optional[float | int]],
     ratios: dict[str, Optional[float]],
     nlp_result: dict[str, Any],
+    ai_provider: str | None = None,
 ) -> list[str]:
     """
     Generate recommendations with references to extracted data.
-    
+
     This function creates a detailed prompt with specific financial metrics
     and asks an LLM to generate actionable recommendations that directly
     reference the provided data.
-    
+
     Args:
         metrics: Extracted financial metrics (revenue, profit, etc.)
         ratios: Calculated financial ratios (current_ratio, roe, etc.)
         nlp_result: NLP analysis results containing risks and factors
-        
+
     Returns:
         list[str]: List of recommendation strings with data references
-        
+
     Raises:
         None (graceful degradation with fallback recommendations)
     """
@@ -120,17 +122,22 @@ async def generate_recommendations(
     # Try to invoke AI service
     try:
         # Timeout is controlled by tasks.py (single wait_for on the call stack)
-        response = await ai_service.invoke(
-            input={
+        invoke_kwargs: dict[str, Any] = {
+            "input": {
                 "tool_input": prompt,
                 "system": (
                     "Ты опытный финансовый аналитик и консультант. "
                     "Давай конкретные, действенные рекомендации с ссылками на цифры. "
                     "Отвечай только JSON без дополнительного текста."
                 ),
+                "format": "json",
             },
-            timeout=90,
-        )
+            "timeout": 90,
+        }
+        if ai_provider is not None:
+            invoke_kwargs["provider"] = ai_provider
+
+        response = await ai_service.invoke(**invoke_kwargs)
 
         if not response:
             logger.warning("AI service returned empty response for recommendations")
@@ -138,12 +145,14 @@ async def generate_recommendations(
 
         # Parse the response
         recommendations = _parse_recommendations_response(response)
-        
+
         if not recommendations:
             logger.warning("Failed to parse recommendations from AI response")
             return FALLBACK_RECOMMENDATIONS
 
-        logger.info("Generated %d recommendations with data references", len(recommendations))
+        logger.info(
+            "Generated %d recommendations with data references", len(recommendations)
+        )
         return recommendations
 
     except asyncio.TimeoutError:
@@ -160,12 +169,12 @@ async def generate_recommendations(
 def _parse_recommendations_response(response_text: str) -> list[str]:
     """
     Parse LLM response to extract recommendation strings.
-    
+
     Handles both JSON and markdown-wrapped JSON responses.
-    
+
     Args:
         response_text: Raw response from LLM
-        
+
     Returns:
         list[str]: List of recommendations or empty list if parsing fails
     """
@@ -215,27 +224,33 @@ async def generate_recommendations_with_fallback(
     ratios: dict[str, Optional[float]],
     nlp_result: dict[str, Any],
     use_fallback: bool = True,
+    ai_provider: str | None = None,
 ) -> list[str]:
     """
     Generate recommendations with optional fallback.
-    
+
     This is a wrapper around generate_recommendations() that optionally
     uses fallback recommendations if generation fails.
-    
+
     Args:
         metrics: Extracted financial metrics
         ratios: Calculated financial ratios
         nlp_result: NLP analysis results
         use_fallback: Whether to use fallback on failure (default: True)
-        
+
     Returns:
         list[str]: List of recommendations
     """
-    recommendations = await generate_recommendations(metrics, ratios, nlp_result)
-    
+    recommendations = await generate_recommendations(
+        metrics,
+        ratios,
+        nlp_result,
+        ai_provider=ai_provider,
+    )
+
     # If we got empty results but should use fallback
     if not recommendations and use_fallback:
         logger.info("Using fallback recommendations")
         return FALLBACK_RECOMMENDATIONS
-    
+
     return recommendations

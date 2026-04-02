@@ -47,7 +47,7 @@ T = TypeVar("T")
 
 class RetryExhaustedError(Exception):
     """Raised when all retry attempts have been exhausted."""
-    
+
     def __init__(self, message: str, last_exception: Optional[Exception] = None):
         self.message = message
         self.last_exception = last_exception
@@ -67,7 +67,7 @@ async def retry_with_backoff(
 ) -> Optional[Any]:
     """
     Execute async operation with retry and exponential backoff.
-    
+
     Args:
         operation: Async function to execute
         *args: Positional arguments for operation
@@ -78,13 +78,13 @@ async def retry_with_backoff(
         retryable_exceptions: Tuple of exceptions that trigger retry
         operation_name: Name for logging purposes
         **kwargs: Keyword arguments for operation
-    
+
     Returns:
         Result of operation or fallback
-    
+
     Raises:
         RetryExhaustedError: If all retries failed and no fallback provided
-    
+
     Example:
         result = await retry_with_backoff(
             ai_service.invoke,
@@ -96,59 +96,67 @@ async def retry_with_backoff(
     """
     last_exception: Optional[Exception] = None
     delay = initial_delay
-    
+
     for attempt in range(max_retries + 1):  # +1 for initial attempt
         try:
             if attempt > 0:
                 logger.warning(
                     "Retrying %s (attempt %d/%d)",
-                    operation_name, attempt, max_retries,
-                    extra={"extra_data": {"attempt": attempt, "max_retries": max_retries}},
+                    operation_name,
+                    attempt,
+                    max_retries,
+                    extra={
+                        "extra_data": {"attempt": attempt, "max_retries": max_retries}
+                    },
                 )
-            
+
             # Execute operation
             if asyncio.iscoroutinefunction(operation):
                 result = await operation(*args, **kwargs)
             else:
                 result = operation(*args, **kwargs)
-            
+
             if attempt > 0:
                 logger.info("%s succeeded after %d retries", operation_name, attempt)
-            
+
             return result
-            
+
         except retryable_exceptions as exc:
             last_exception = exc
-            
+
             # Log the failure
             logger.warning(
                 "%s failed (attempt %d/%d): %s",
-                operation_name, attempt + 1, max_retries + 1, exc,
+                operation_name,
+                attempt + 1,
+                max_retries + 1,
+                exc,
                 exc_info=True if attempt == max_retries else False,
             )
-            
+
             # If this was the last attempt, break
             if attempt >= max_retries:
                 break
-            
+
             # Wait before next retry (exponential backoff)
             logger.info("Waiting %.1fs before next retry", delay)
             await asyncio.sleep(delay)
             delay *= backoff_multiplier
-    
+
     # All retries exhausted
     if fallback is not None:
         logger.warning(
             "%s failed after %d retries, using fallback",
-            operation_name, max_retries,
+            operation_name,
+            max_retries,
             extra={"extra_data": {"max_retries": max_retries}},
         )
-        
+
         if asyncio.iscoroutinefunction(fallback):
             return await fallback()
         else:
             return fallback()
-    
+
     # No fallback - raise error
     raise RetryExhaustedError(
         f"{operation_name} failed after {max_retries} retries",
@@ -166,7 +174,7 @@ def with_retry(
 ) -> Callable:
     """
     Decorator for adding retry with backoff to async functions.
-    
+
     Args:
         max_retries: Maximum number of retry attempts
         backoff_multiplier: Multiplier for delay between retries
@@ -174,18 +182,19 @@ def with_retry(
         fallback: Optional fallback function
         retryable_exceptions: Tuple of exceptions that trigger retry
         operation_name: Name for logging (defaults to function name)
-    
+
     Returns:
         Decorated function with retry logic
-    
+
     Example:
         @with_retry(max_retries=3, operation_name="AI call")
         async def call_ai(input_data):
             ...
     """
+
     def decorator(func: Callable) -> Callable:
         op_name = operation_name or func.__name__
-        
+
         @wraps(func)
         async def wrapper(*args, **kwargs):
             return await retry_with_backoff(
@@ -199,8 +208,9 @@ def with_retry(
                 operation_name=op_name,
                 **kwargs,
             )
-        
+
         return wrapper
+
     return decorator
 
 
@@ -217,9 +227,9 @@ async def retry_with_timeout(
 ) -> Optional[Any]:
     """
     Execute async operation with timeout and retry.
-    
+
     Combines timeout control with retry mechanism.
-    
+
     Args:
         operation: Async function to execute
         *args: Positional arguments for operation
@@ -230,10 +240,10 @@ async def retry_with_timeout(
         fallback: Optional fallback function
         operation_name: Name for logging
         **kwargs: Keyword arguments for operation
-    
+
     Returns:
         Result of operation or fallback
-    
+
     Example:
         result = await retry_with_timeout(
             ai_service.invoke,
@@ -243,9 +253,10 @@ async def retry_with_timeout(
             operation_name="AI call"
         )
     """
+
     async def operation_with_timeout():
         return await asyncio.wait_for(operation(*args, **kwargs), timeout=timeout)
-    
+
     return await retry_with_backoff(
         operation=operation_with_timeout,
         max_retries=max_retries,

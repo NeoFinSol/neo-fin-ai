@@ -1,131 +1,223 @@
-# Установка зависимостей для NeoFin AI (Windows)
+# Установка НеоФин.Документы на Windows
 
-**Версии актуальны на**: 2026-03-25
+Документ описывает два рабочих сценария:
 
-## 1. Ghostscript (для camelot lattice)
+1. быстрый запуск через Docker Compose;
+2. локальный запуск без Docker с OCR-цепочкой и опциональным Ollama.
 
-**Версия**: 10.03.0  
-**Скачать**: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10030/gs10030w64.exe
+## 1. Что понадобится
 
-**Установка:**
-1. Запусти установщик
-2. Установи в `C:\Program Files\gs\gs10.03.0`
+### Обязательные инструменты
 
-**Добавить в PATH:**
-1. Открой «Изменение системных переменных среды»
-2. В разделе «Системные переменные» найди `Path`
-3. Добавь: `C:\Program Files\gs\gs10.03.0\bin`
-4. Перезапусти терминал
+- Windows 10/11 x64
+- Python 3.11
+- Node.js 20+
+- Git
 
-**Проверка:**
-```bash
-gswin64c --version
-# Должно вывести: 10.03.0
-```
+### Для Docker-сценария
 
----
+- Docker Desktop
 
-## 2. Tesseract OCR (для распознавания сканов)
+### Для локального OCR-сценария
 
-**Версия**: 5.5.0.20241111  
-**Скачать**: https://github.com/UB-Mannheim/tesseract/wiki/download/tesseract-ocr-w64-setup-5.5.0.exe
+- Ghostscript
+- Tesseract OCR с русским языковым пакетом
+- Poppler for Windows
 
-**Установка:**
-1. Запусти установщик
-2. Установи в `C:\Program Files\Tesseract-OCR`
-3. **Важно:** при установке выбери **Russian language data**
+### Для локального AI-контура
 
-**Добавить в PATH:**
-1. Открой «Изменение системных переменных среды»
-2. В разделе «Системные переменные» найди `Path`
-3. Добавь: `C:\Program Files\Tesseract-OCR`
-4. Перезапусти терминал
+- Ollama для Windows
 
-**Проверка:**
-```bash
-tesseract --version
-# tesseract 5.5.0
-tesseract --list-langs
-# Должен быть в списке rus
-```
+## 2. Официальные страницы загрузки
 
----
+При обновлении этой инструкции ориентируйтесь на официальные страницы проектов:
 
-## 3. Poppler (для pdf2image + OCR)
+- Ghostscript: [официальная страница загрузок](https://ghostscript.com/releases/gsdnld.html)
+- Tesseract for Windows: [UB Mannheim installer wiki](https://github.com/UB-Mannheim/tesseract/wiki)
+- Poppler for Windows: [oschwartz10612/poppler-windows releases](https://github.com/oschwartz10612/poppler-windows/releases)
+- Ollama: [официальная загрузка для Windows](https://ollama.com/download/windows)
 
-**Версия**: 25.12.0  
-**Скачать**: https://github.com/oschwartz10612/poppler-windows/releases/download/v25.12.0-Release/Release-25.12.0-0.zip
+## 3. Вариант A — быстрый старт через Docker
 
-**Установка:**
-1. Распакуй архив в `C:\Program Files\poppler`
-2. Переименуй папку из `Release-25.12.0-0` в `poppler` (для простоты)
+### Шаг 1. Клонировать проект
 
-**Добавить в PATH:**
-1. Открой «Изменение системных переменных среды»
-2. В разделе «Системные переменные» найди `Path`
-3. Добавь: `C:\Program Files\poppler\Library\bin`
-4. Перезапусти терминал
-
-**Проверка:**
-```bash
-pdfinfo -v
-# poppler 25.12.0
-```
-
----
-
-## 4. Python зависимости
-
-Установи через pip:
-
-```bash
-pip install camelot-py[all]
-pip install pytesseract
-pip install pdf2image
-pip install pdfplumber
-pip install PyPDF2
-```
-
----
-
-## 5. Проверка всех зависимостей
-
-Запусти скрипт проверки:
-
-```bash
+```powershell
+git clone <repo-url>
 cd E:\neo-fin-ai
-python check_deps.py
 ```
 
-**Ожидаемый результат:**
-```
-✓ Ghostscript установлен: 10.03.0
-✓ Tesseract: tesseract 5.5.0
-✓ Русский язык: доступен
-✓ camelot-py: 0.11.0
-✓ pytesseract: установлен
-✓ pdf2image: установлен
+### Шаг 2. Создать `.env`
+
+```powershell
+Copy-Item .env.example .env
 ```
 
----
+Минимально заполните:
 
-## 6. Примечания
+- `API_KEY`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
 
-### Если camelot не работает:
-Проверь, что Ghostscript добавлен в PATH:
-```bash
+Рекомендуемый базовый режим:
+
+```env
+SCORING_PROFILE=auto
+TASK_RUNTIME=background
+```
+
+### Шаг 3. Запустить стек
+
+```powershell
+docker compose up -d --build
+```
+
+### Шаг 4. Проверить сервис
+
+- интерфейс: `http://127.0.0.1/`
+- API: `http://127.0.0.1/api/system/health`
+
+## 4. Вариант B — локальный запуск без Docker
+
+### Шаг 1. Подготовить Python-окружение
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt -r requirements-dev.txt
+```
+
+### Шаг 2. Подготовить интерфейс
+
+```powershell
+npm --prefix frontend install
+```
+
+### Шаг 3. Установить OCR-зависимости
+
+#### Ghostscript
+
+- Установите актуальный stable release с официальной страницы.
+- После установки добавьте каталог `bin` в `PATH`.
+
+Проверка:
+
+```powershell
 gswin64c --version
 ```
 
-### Если OCR не распознаёт русский:
-Переустанови Tesseract с Russian language data или скачай отдельно:
-https://github.com/tesseract-ocr/tessdata/raw/main/rus.traineddata
+#### Tesseract OCR
 
-Положи в: `C:\Program Files\Tesseract-OCR\tessdata`
+- Используйте Windows-инсталлятор из репозитория UB Mannheim.
+- Во время установки обязательно включите русский язык (`rus`).
+- Добавьте каталог Tesseract в `PATH`.
 
-### Для production:
-Добавь все пути в системный PATH, чтобы не требовался `.bat` файл.
+Проверка:
 
-### OCR производительность:
-- 80 страниц = 2-5 минут (pdf2image + tesseract)
-- Для ускорения: снизить DPI до 200, использовать multiprocessing
+```powershell
+tesseract --version
+tesseract --list-langs
+```
+
+В выводе должен присутствовать `rus`.
+
+#### Poppler
+
+- Скачайте актуальный Windows release.
+- Распакуйте его в удобный каталог, например `C:\Tools\poppler`.
+- Добавьте `Library\bin` в `PATH`.
+
+Проверка:
+
+```powershell
+pdfinfo -v
+```
+
+## 5. Локальный AI-контур через Ollama
+
+Если вы хотите использовать локальную языковую модель без внешних API:
+
+1. Установите Ollama.
+2. Загрузите модель:
+
+```powershell
+ollama pull qwen3.5:9b
+```
+
+3. В `.env` задайте:
+
+```env
+LLM_URL=http://localhost:11434/api/generate
+LLM_MODEL=qwen3.5:9b
+```
+
+Примечание:
+
+- кодовый дефолт `LLM_MODEL` в проекте остаётся другим;
+- для JSON-heavy сценариев `qwen3.5:9b` является рекомендуемым локальным профилем.
+
+## 6. Настройка `.env` для локального запуска
+
+Минимальный пример:
+
+```env
+API_KEY=dev-key-123
+DEV_MODE=1
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/neofin
+SCORING_PROFILE=auto
+TASK_RUNTIME=background
+LLM_URL=http://localhost:11434/api/generate
+LLM_MODEL=qwen3.5:9b
+```
+
+Если Ollama не нужен, `LLM_*` можно не задавать.
+
+## 7. Запуск сервисов без Docker
+
+### Backend
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+uvicorn src.app:app --host 0.0.0.0 --port 8000
+```
+
+### Интерфейс
+
+```powershell
+npm --prefix frontend run dev
+```
+
+## 8. Быстрая проверка
+
+### Проверка backend
+
+```powershell
+curl http://127.0.0.1:8000/system/health
+```
+
+### Проверка интерфейса
+
+Откройте:
+
+- `http://127.0.0.1:3000` для dev-сервера интерфейса;
+- `http://127.0.0.1/` при Docker Compose.
+
+### Проверка локального AI
+
+```powershell
+ollama list
+```
+
+## 9. Практические замечания
+
+- для правдивого demo/scoring-контура держите `SCORING_PROFILE=auto`;
+- для локального demo без внешних токенов выбирайте в интерфейсе `Ollama`, если провайдер доступен;
+- при проблемах с OCR первым делом проверьте `PATH` для Ghostscript, Tesseract и Poppler;
+- если нужен стабильный длительный runtime, переходите с `background` на `celery`.
+
+## 10. Связанные документы
+
+- [README](/E:/neo-fin-ai/README.md)
+- [CONFIGURATION](/E:/neo-fin-ai/docs/CONFIGURATION.md)
+- [API](/E:/neo-fin-ai/docs/API.md)

@@ -40,7 +40,7 @@ export const NotFound = () => {
               paddingRight: 32
             }}
           >
-            Вернуться в Dashboard
+            Вернуться на главную
           </Button>
         </Stack>
       </Container>

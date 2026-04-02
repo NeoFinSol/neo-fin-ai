@@ -1,8 +1,9 @@
 """Tests for models/settings module."""
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import pytest
 from pydantic import ValidationError
-from unittest.mock import patch, MagicMock
 
 from src.models.settings import AppSettings, app_settings
 
@@ -13,6 +14,7 @@ class TestAppSettings:
     def test_default_settings_no_env(self):
         """Test default settings when no env vars provided (env vars cleared)."""
         import os
+
         # Clear relevant env vars and bypass .env file reading
         env_keys = ["QWEN_API_KEY", "QWEN_API_URL"]
         saved = {k: os.environ.pop(k, None) for k in env_keys}
@@ -81,10 +83,14 @@ class TestAppSettings:
         assert "string" in str(exc_info.value).lower()
 
     def test_validate_url_empty_string(self):
-        """Test validation of empty string URL."""
-        # Empty string doesn't start with http/https, should fail
-        with pytest.raises(ValidationError):
-            AppSettings(QWEN_API_URL="")
+        """Empty string URL should be normalized to None."""
+        settings = AppSettings(QWEN_API_URL="", _env_file=None)
+        assert settings.qwen_api_url is None
+
+    def test_validate_url_whitespace_string(self):
+        """Whitespace-only URL should be normalized to None."""
+        settings = AppSettings(QWEN_API_URL="   ", _env_file=None)
+        assert settings.qwen_api_url is None
 
     def test_model_config_extra_ignore(self):
         """Test that extra fields are ignored."""
@@ -139,11 +145,16 @@ class TestAppSettings:
         settings = AppSettings(_env_file=None)
 
         assert settings.task_runtime == "background"
+        assert settings.task_storage_dir is None
         assert settings.task_queue_broker_url is None
         assert settings.task_queue_result_backend is None
         assert settings.task_events_redis_url is None
         assert settings.task_queue_name == "neofin"
         assert settings.task_queue_eager is False
+
+    def test_task_runtime_accepts_shared_storage_dir(self):
+        settings = AppSettings(_env_file=None, TASK_STORAGE_DIR="/shared/task-files")
+        assert settings.task_storage_dir == "/shared/task-files"
 
     def test_task_runtime_invalid_value_falls_back_to_background(self):
         """Invalid runtime values should not break local development."""
@@ -163,17 +174,17 @@ class TestAppSettings:
         assert settings.task_queue_result_backend == "redis://localhost:6379/1"
         assert settings.task_events_redis_url == "redis://localhost:6379/2"
 
-    def test_scoring_profile_defaults_to_generic(self):
+    def test_scoring_profile_defaults_to_auto(self):
         settings = AppSettings(_env_file=None)
-        assert settings.scoring_profile == "generic"
+        assert settings.scoring_profile == "auto"
 
     def test_scoring_profile_accepts_retail_demo(self):
         settings = AppSettings(_env_file=None, SCORING_PROFILE="retail_demo")
         assert settings.scoring_profile == "retail_demo"
 
-    def test_scoring_profile_invalid_value_falls_back_to_generic(self):
+    def test_scoring_profile_invalid_value_falls_back_to_auto(self):
         settings = AppSettings(_env_file=None, SCORING_PROFILE="invalid-profile")
-        assert settings.scoring_profile == "generic"
+        assert settings.scoring_profile == "auto"
 
 
 class TestGlobalAppSettings:
@@ -205,7 +216,7 @@ class TestSettingsExceptionHandling:
         # This is difficult to test directly without reloading the module
         # Verify the fallback app_settings is created properly
         from src.models import settings
-        
+
         # Should have app_settings defined
         assert hasattr(settings, 'app_settings')
         assert settings.app_settings is not None

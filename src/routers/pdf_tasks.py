@@ -4,16 +4,33 @@ import os
 import tempfile
 import uuid
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.core.ai_service import ai_service
 from src.core.auth import get_api_key
+from src.core.constants import MAGIC_HEADER_SIZE, MAX_FILE_SIZE, PDF_MAGIC_HEADER
 from src.core.task_queue import dispatch_pdf_task
-from src.core.constants import PDF_MAGIC_HEADER, MAX_FILE_SIZE, MAGIC_HEADER_SIZE
-from src.db.crud import create_analysis, get_analysis, is_analysis_cancellation_pending, update_analysis
+from src.db.crud import (
+    create_analysis,
+    get_analysis,
+    is_analysis_cancellation_pending,
+    update_analysis,
+)
 from src.exceptions import DatabaseError, TaskRuntimeError
+from src.models.settings import app_settings
 from src.tasks import process_pdf, request_analysis_cancellation
+from src.utils.file_utils import ensure_directory
 from src.utils.masking import mask_analysis_data
 
 logger = logging.getLogger(__name__)
@@ -31,7 +48,7 @@ def _validate_pdf_file(content: bytes) -> bool:
 async def _cleanup_temp_file(file_path: str) -> None:
     """
     Safely cleanup temporary file.
-    
+
     Uses asyncio.to_thread for sync file operations to avoid blocking.
     Handles race conditions where file may already be deleted.
     """
@@ -52,12 +69,19 @@ def _analysis_runtime_status(analysis) -> str:
     return analysis.status
 
 
+def _task_storage_dir() -> str | None:
+    if app_settings.task_runtime != "celery":
+        return None
+    return ensure_directory(app_settings.task_storage_dir)
+
+
 @router.post("/upload")
 async def upload_pdf(
     file: UploadFile,
     background_tasks: BackgroundTasks,
+    ai_provider: Annotated[str | None, Form()] = None,
     api_key: str = Depends(get_api_key),
-    request: Request = None  # keyword-only, not used directly (rate limiting via middleware)
+    request: Request = None,  # keyword-only, not used directly (rate limiting via middleware)
 ):
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(status_code=400, detail="PDF file expected")
@@ -80,7 +104,11 @@ async def upload_pdf(
         # Create temporary file and write in chunks
         suffix = ".pdf"
         # Use delete=False so we can pass the path to background task
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=suffix,
+            dir=_task_storage_dir(),
+        )
         temp_file.write(first_chunk)
 
         # Read remaining content in chunks
@@ -101,7 +129,7 @@ async def upload_pdf(
                 await _cleanup_temp_file(temp_file.name)
                 raise HTTPException(
                     status_code=400,
-                    detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)} MB"
+                    detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)} MB",
                 )
 
             temp_file.write(chunk)
@@ -134,6 +162,17 @@ async def upload_pdf(
             await _cleanup_temp_file(tmp_path)
         raise HTTPException(status_code=500, detail="Failed to save uploaded file")
 
+    try:
+        requested_provider = ai_service.normalize_requested_provider(ai_provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if requested_provider and requested_provider not in ai_service.available_providers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"AI provider '{requested_provider}' is not available",
+        )
+
     task_id = str(uuid.uuid4())
     try:
         await create_analysis(task_id, "processing", {"filename": file.filename})
@@ -153,6 +192,7 @@ async def upload_pdf(
             task_id=task_id,
             file_path=tmp_path,
             background_callable=process_pdf,
+            ai_provider=requested_provider,
         )
     except TaskRuntimeError:
         await _cleanup_temp_file(tmp_path)
@@ -165,7 +205,7 @@ async def upload_pdf(
 async def get_result(
     task_id: str,
     api_key: str = Depends(get_api_key),
-    request: Request = None  # keyword-only, not used directly (rate limiting via middleware)
+    request: Request = None,  # keyword-only, not used directly (rate limiting via middleware)
 ):
     try:
         analysis = await get_analysis(task_id)
@@ -174,7 +214,9 @@ async def get_result(
         raise DatabaseError("Database operation failed") from exc
     if analysis is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    result = analysis.result if analysis.result and isinstance(analysis.result, dict) else {}
+    result = (
+        analysis.result if analysis.result and isinstance(analysis.result, dict) else {}
+    )
     demo_mode = os.getenv("DEMO_MODE", "0") == "1"
     result = mask_analysis_data(result, demo_mode)
     payload = {"status": _analysis_runtime_status(analysis)}

@@ -76,6 +76,8 @@ class TestFullUploadPollingFlow:
         mock_analysis = MagicMock()
         mock_analysis.status = "processing"
         mock_analysis.result = None
+        mock_analysis.cancel_requested_at = None
+        mock_analysis.cancelled_at = None
 
         client = _make_client()
         try:

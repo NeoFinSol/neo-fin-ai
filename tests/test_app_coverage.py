@@ -1,7 +1,8 @@
 """Additional tests for app.py — covers lifespan and CORS fallback."""
 import os
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
 
 
 class TestLifespanCoverage:
@@ -73,6 +74,7 @@ class TestLifespanCoverage:
     async def test_lifespan_enters_runtime_event_bridge(self):
         """Persistent runtime bridge should be entered during app lifespan."""
         from contextlib import asynccontextmanager
+
         from src.app import lifespan
 
         entered = False
@@ -128,7 +130,7 @@ class TestCorsConfigFallback:
     def test_cors_fallback_on_wildcard(self):
         """ValueError from wildcard origin triggers fallback."""
         # The fallback is at module level — verify the variables exist
-        from src.app import allow_origins, allow_methods, allow_headers
+        from src.app import allow_headers, allow_methods, allow_origins
         assert isinstance(allow_origins, list)
         assert isinstance(allow_methods, list)
         assert isinstance(allow_headers, list)

@@ -13,12 +13,14 @@ Run: pytest tests/test_confidence_score.py -v
 import pytest
 
 from src.analysis.pdf_extractor import (
+    CONFIDENCE_THRESHOLD,
     ExtractionMetadata,
     ExtractionSource,
-    determine_source,
 )
-from src.analysis.pdf_extractor import apply_confidence_filter, CONFIDENCE_THRESHOLD
-
+from src.analysis.pdf_extractor import (
+    apply_confidence_filter as _apply_confidence_filter,
+)
+from src.analysis.pdf_extractor import determine_source
 
 # =============================================================================
 # Test 1: Confidence Mapping

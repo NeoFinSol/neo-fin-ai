@@ -3,6 +3,7 @@ Router for analysis history endpoints.
 Feature: analysis-history-visualization
 Requirements: 1.1–1.7, 2.1–2.5
 """
+
 from __future__ import annotations
 
 import logging

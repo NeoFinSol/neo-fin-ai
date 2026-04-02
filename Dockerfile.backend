@@ -52,6 +52,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # curl: health checks
 # ca-certificates: HTTPS requests (GigaChat/Qwen APIs)
 # tesseract-ocr: OCR engine (required by pytesseract for scanned PDFs)
+# tesseract-ocr-rus: Russian language data for Magnit and other RU IFRS scans
 # poppler-utils: PDF rendering (required by pdf2image for OCR preprocessing)
 # libgl1: OpenGL library (required by opencv-python for camelot table extraction)
 RUN apt-get update \
@@ -60,6 +61,7 @@ RUN apt-get update \
         curl \
         ca-certificates \
         tesseract-ocr \
+        tesseract-ocr-rus \
         poppler-utils \
         libgl1 \
     && apt-get clean \
@@ -76,8 +78,9 @@ COPY entrypoint.sh ./entrypoint.sh
 
 # Create non-root user for security (run as unprivileged user)
 RUN useradd --create-home --shell /bin/bash appuser \
+    && mkdir -p /shared/task-files \
     && chmod +x /app/entrypoint.sh \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app /shared/task-files
 
 # Switch to non-root user
 USER appuser

@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  CI_DB_PASSWORD: neofin_ci_password
+
 jobs:
   lint:
     name: Code Linting
@@ -50,7 +53,7 @@ jobs:
         # Only check paths that exist
         ISORT_PATHS="src/ tests/"
         [ -d "scripts" ] && ISORT_PATHS="$ISORT_PATHS scripts/"
-        isort --check-only $ISORT_PATHS
+        isort --profile black --check-only $ISORT_PATHS
 
   test:
     name: Run Tests
@@ -62,11 +65,12 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ env.CI_DB_PASSWORD }}
           POSTGRES_DB: neofin
-        # ports убраны для безопасности - используем internal network
+        ports:
+          - 5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d neofin"
           --health-interval 3s
           --health-timeout 3s
           --health-retries 10
@@ -76,11 +80,12 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ env.CI_DB_PASSWORD }}
           POSTGRES_DB: neofin_test
-        # ports убраны для безопасности - используем internal network
+        ports:
+          - 5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d neofin_test"
           --health-interval 3s
           --health-timeout 3s
           --health-retries 10
@@ -108,10 +113,51 @@ jobs:
         echo "Environment configured via GitHub Actions env context"
         echo "DATABASE_URL and other secrets are passed directly to test steps"
 
+    - name: Wait for PostgreSQL services
+      env:
+        POSTGRES_MAIN_PORT: ${{ job.services.postgres-main.ports[5432] }}
+        POSTGRES_TEST_PORT: ${{ job.services.postgres-test.ports[5432] }}
+      run: |
+        python - <<'PY'
+        import os
+        import time
+
+        import psycopg2
+
+        targets = [
+            ("main", "neofin", int(os.environ["POSTGRES_MAIN_PORT"])),
+            ("test", "neofin_test", int(os.environ["POSTGRES_TEST_PORT"])),
+        ]
+
+        for label, database, port in targets:
+            last_error = None
+            for attempt in range(30):
+                try:
+                    with psycopg2.connect(
+                        host="127.0.0.1",
+                        port=port,
+                        user="postgres",
+                        password=os.environ["CI_DB_PASSWORD"],
+                        dbname=database,
+                    ) as connection:
+                        with connection.cursor() as cursor:
+                            cursor.execute("SELECT 1")
+                            cursor.fetchone()
+                    print(f"{label} postgres ready on port {port}")
+                    break
+                except Exception as error:  # noqa: BLE001
+                    last_error = error
+                    time.sleep(1)
+            else:
+                raise SystemExit(
+                    f"{label} postgres did not become ready on port {port}: {last_error}"
+                )
+        PY
+
     - name: Run database migrations
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-main.ports[5432] }}/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-test.ports[5432] }}/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -123,8 +169,8 @@ jobs:
 
     - name: Run unit tests
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-main.ports[5432] }}/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-test.ports[5432] }}/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -136,8 +182,8 @@ jobs:
 
     - name: Run API tests
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-main.ports[5432] }}/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-test.ports[5432] }}/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -149,8 +195,8 @@ jobs:
 
     - name: Run DB integration tests
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-main.ports[5432] }}/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-test.ports[5432] }}/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -160,10 +206,10 @@ jobs:
       run: |
         python -m pytest tests/test_db_integration.py -v --tb=short
 
-    - name: Run coverage check
+    - name: Generate coverage artifact
       env:
-        DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-main:5432/neofin
-        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.DB_PASSWORD }}@postgres-test:5432/neofin_test
+        DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-main.ports[5432] }}/neofin
+        TEST_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.CI_DB_PASSWORD }}@127.0.0.1:${{ job.services.postgres-test.ports[5432] }}/neofin_test
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -171,7 +217,9 @@ jobs:
         CORS_ALLOW_HEADERS: ${{ secrets.CORS_ALLOW_HEADERS }}
         CORS_ALLOW_CREDENTIALS: ${{ secrets.CORS_ALLOW_CREDENTIALS }}
       run: |
-        python -m pytest --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=80 \
+        # Coverage threshold is enforced in Code Quality workflow to avoid
+        # duplicate, inconsistent fail gates across two different pipelines.
+        python -m pytest --cov=src --cov-report=term-missing --cov-report=xml \
           --ignore=tests/test_auth.py \
           --ignore=tests/test_e2e.py \
           --ignore=tests/test_frontend_e2e.py \
@@ -183,6 +231,7 @@ jobs:
       with:
         name: test-results
         path: |
+          coverage.xml
           test-results.xml
           .pytest_cache/
 
@@ -236,7 +285,7 @@ jobs:
     needs: [lint, test]
     
     # Изолированная сеть для безопасности - нет доступа к хосту
-    environment:
+    env:
       COMPOSE_DOCKER_CLI_BUILD: "1"
       DOCKER_BUILDKIT: "1"
     
@@ -249,7 +298,6 @@ jobs:
 
     - name: Build Docker image (CI configuration)
       env:
-        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -259,11 +307,10 @@ jobs:
       run: |
         # SECURITY: Secrets passed via environment variables, not hardcoded
         # Используем CI конфигурацию БЕЗ проброса портов на хост
-        docker-compose -f docker-compose.ci.yml build backend frontend
+        docker compose -f docker-compose.ci.yml build backend frontend backend-migrate
 
     - name: Start containers with healthchecks
       env:
-        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
         QWEN_API_URL: ${{ secrets.QWEN_API_URL }}
         CORS_ALLOW_ORIGINS: ${{ secrets.CORS_ALLOW_ORIGINS }}
@@ -272,42 +319,15 @@ jobs:
         CORS_ALLOW_CREDENTIALS: ${{ secrets.CORS_ALLOW_CREDENTIALS }}
       run: |
         # SECURITY: Secrets injected via env vars, not in compose file
-        # Запускаем контейнеры и ждём готовности через depends_on healthchecks
-        docker-compose -f docker-compose.ci.yml up -d
-        
-        # SECURITY: Don't echo secrets or environment variables in logs
-        echo "Waiting for all services to become healthy..."
-        
-        # Максимум 20 попыток с интервалом 3 секунды (60 секунд всего)
-        max_attempts=20
-        attempt=1
-        
-        while [ $attempt -le $max_attempts ]; do
-          # Проверяем статус всех сервисов
-          if docker-compose -f docker-compose.ci.yml ps | grep -q "healthy"; then
-            # Проверяем, что ВСЕ сервисы healthy
-            unhealthy_count=$(docker-compose -f docker-compose.ci.yml ps | grep -c "(unhealthy)" || echo "0")
-            starting_count=$(docker-compose -f docker-compose.ci.yml ps | grep -c "(starting)" || echo "0")
-            
-            if [ "$unhealthy_count" = "0" ] && [ "$starting_count" = "0" ]; then
-              echo "✅ All containers are healthy"
-              docker-compose -f docker-compose.ci.yml ps
-              exit 0
-            fi
-          fi
-          
-          echo "Waiting... (attempt $attempt/$max_attempts)"
-          sleep 3
-          attempt=$((attempt + 1))
-        done
-        
-        # Timeout - выводим логи для отладки
-        echo "❌ Timeout waiting for containers to become healthy"
-        echo "Container status:"
-        docker-compose -f docker-compose.ci.yml ps
-        echo "Container logs:"
-        docker-compose -f docker-compose.ci.yml logs
-        exit 1
+        # Phase 1: wait only for long-lived database services.
+        docker compose -f docker-compose.ci.yml up -d --wait --wait-timeout 60 db db_test
+
+        # Phase 2: run one-shot migration job and fail fast on migration errors.
+        docker compose -f docker-compose.ci.yml up --no-deps --exit-code-from backend-migrate backend-migrate
+
+        # Phase 3: start runtime services and wait for healthy app containers.
+        docker compose -f docker-compose.ci.yml up -d --wait --wait-timeout 120 backend frontend
+        docker compose -f docker-compose.ci.yml ps
 
     - name: Verify container isolation
       run: |
@@ -323,7 +343,7 @@ jobs:
       if: always()
       run: |
         # Полная очистка контейнеров и сетей
-        docker-compose -f docker-compose.ci.yml down --volumes --remove-orphans
+        docker compose -f docker-compose.ci.yml down --volumes --remove-orphans
         
         # Дополнительная очистка зависших контейнеров (safe с xargs -r)
         docker ps -aq --filter ancestor=neofin-backend | xargs -r docker rm -f

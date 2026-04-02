@@ -4,12 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from src.db.database import (
-    dispose_engine,
-    get_engine,
-    get_session,
-    get_session_maker,
-)
+from src.db.database import dispose_engine, get_engine, get_session, get_session_maker
 
 
 class TestGetEngine:

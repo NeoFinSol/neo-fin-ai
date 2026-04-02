@@ -2,8 +2,8 @@
 Property-based tests for src/utils/masking.py
 Feature: analysis-history-visualization
 """
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -11,7 +11,6 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from src.utils.masking import mask_analysis_data
-
 
 # ---------------------------------------------------------------------------
 # Strategies

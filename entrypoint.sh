@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env sh
+#!/usr/bin/env sh
 # Entrypoint for running Alembic migrations
 # Usage: docker-compose run --rm backend-migrate
 # Or: kubectl run migration-job --image=neofin-backend -- entrypoint.sh
