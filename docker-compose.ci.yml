@@ -13,13 +13,14 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.backend
     # Нет ports: - не пробрасываем порты на хост в CI
     environment:
       # SECURITY: Runtime credentials are injected via CI workflow environment.
       # Ephemeral CI databases use CI_DB_PASSWORD, not repository secrets.
       DATABASE_URL: postgresql+asyncpg://postgres:${CI_DB_PASSWORD}@db:5432/neofin
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:${CI_DB_PASSWORD}@db_test:5432/neofin_test
+      TESTING: 0
       QWEN_API_KEY: ${QWEN_API_KEY}
       QWEN_API_URL: ${QWEN_API_URL}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS}
@@ -33,6 +34,25 @@ services:
         condition: service_healthy
       db_test:
         condition: service_healthy
+      backend-migrate:
+        condition: service_completed_successfully
+    networks:
+      - ci-net
+
+  backend-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${CI_DB_PASSWORD}@db:5432/neofin
+      TESTING: 0
+      DB_WAIT_RETRIES: 30
+      DB_WAIT_SECONDS: 2
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["./entrypoint.sh"]
+    command: []
     networks:
       - ci-net
 
@@ -41,8 +61,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE: http://backend:8000
+        VITE_API_BASE: /api
     # Нет ports: - не пробрасываем порты на хост в CI
+    depends_on:
+      backend:
+        condition: service_healthy
     networks:
       - ci-net
 

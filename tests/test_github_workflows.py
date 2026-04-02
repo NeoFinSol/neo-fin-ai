@@ -240,6 +240,63 @@ def test_ci_compose_backend_has_runtime_database_urls() -> None:
     )
 
 
+def test_ci_compose_backend_uses_runtime_backend_dockerfile() -> None:
+    parsed = yaml.safe_load(COMPOSE_CI.read_text(encoding="utf-8"))
+    backend_build = parsed["services"]["backend"]["build"]
+
+    assert backend_build["dockerfile"] == "Dockerfile.backend"
+
+
+def test_ci_compose_backend_waits_for_migrations_to_complete() -> None:
+    parsed = yaml.safe_load(COMPOSE_CI.read_text(encoding="utf-8"))
+    services = parsed["services"]
+
+    assert "backend-migrate" in services
+    assert services["backend-migrate"]["build"]["dockerfile"] == "Dockerfile.backend"
+    assert services["backend-migrate"]["entrypoint"] == ["./entrypoint.sh"]
+    assert services["backend-migrate"]["command"] == []
+    assert (
+        services["backend"]["depends_on"]["backend-migrate"]["condition"]
+        == "service_completed_successfully"
+    )
+
+
+def test_ci_compose_frontend_waits_for_backend_health_and_uses_relative_api_base() -> (
+    None
+):
+    parsed = yaml.safe_load(COMPOSE_CI.read_text(encoding="utf-8"))
+    frontend = parsed["services"]["frontend"]
+
+    assert frontend["build"]["args"]["VITE_API_BASE"] == "/api"
+    assert frontend["depends_on"]["backend"]["condition"] == "service_healthy"
+
+
+def test_ci_build_job_uses_explicit_migration_phase_and_compose_wait() -> None:
+    workflow_path = WORKFLOWS_DIR / "ci.yml"
+    parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    build_job = parsed["jobs"]["build"]
+
+    build_step = next(
+        step
+        for step in build_job["steps"]
+        if step.get("name") == "Build Docker image (CI configuration)"
+    )
+    start_step = next(
+        step
+        for step in build_job["steps"]
+        if step.get("name") == "Start containers with healthchecks"
+    )
+
+    assert "build backend frontend backend-migrate" in build_step["run"]
+    assert "up -d --wait --wait-timeout 60 db db_test" in start_step["run"]
+    assert (
+        "up --no-deps --exit-code-from backend-migrate backend-migrate"
+        in start_step["run"]
+    )
+    assert "up -d --wait --wait-timeout 120 backend frontend" in start_step["run"]
+    assert "while [ $attempt -le $max_attempts ]" not in start_step["run"]
+
+
 def test_gitignore_does_not_hide_frontend_components_required_for_build() -> None:
     critical_paths = [
         "frontend/src/components/AppFooter.tsx",

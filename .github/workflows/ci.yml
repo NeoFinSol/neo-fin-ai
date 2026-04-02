@@ -307,7 +307,7 @@ jobs:
       run: |
         # SECURITY: Secrets passed via environment variables, not hardcoded
         # Используем CI конфигурацию БЕЗ проброса портов на хост
-        docker compose -f docker-compose.ci.yml build backend frontend
+        docker compose -f docker-compose.ci.yml build backend frontend backend-migrate
 
     - name: Start containers with healthchecks
       env:
@@ -319,42 +319,15 @@ jobs:
         CORS_ALLOW_CREDENTIALS: ${{ secrets.CORS_ALLOW_CREDENTIALS }}
       run: |
         # SECURITY: Secrets injected via env vars, not in compose file
-        # Запускаем контейнеры и ждём готовности через depends_on healthchecks
-        docker compose -f docker-compose.ci.yml up -d
-        
-        # SECURITY: Don't echo secrets or environment variables in logs
-        echo "Waiting for all services to become healthy..."
-        
-        # Максимум 20 попыток с интервалом 3 секунды (60 секунд всего)
-        max_attempts=20
-        attempt=1
-        
-        while [ $attempt -le $max_attempts ]; do
-          # Проверяем статус всех сервисов
-          if docker compose -f docker-compose.ci.yml ps | grep -q "healthy"; then
-            # Проверяем, что ВСЕ сервисы healthy
-            unhealthy_count=$(docker compose -f docker-compose.ci.yml ps | grep -c "(unhealthy)" || echo "0")
-            starting_count=$(docker compose -f docker-compose.ci.yml ps | grep -c "(starting)" || echo "0")
-            
-            if [ "$unhealthy_count" = "0" ] && [ "$starting_count" = "0" ]; then
-              echo "✅ All containers are healthy"
-              docker compose -f docker-compose.ci.yml ps
-              exit 0
-            fi
-          fi
-          
-          echo "Waiting... (attempt $attempt/$max_attempts)"
-          sleep 3
-          attempt=$((attempt + 1))
-        done
-        
-        # Timeout - выводим логи для отладки
-        echo "❌ Timeout waiting for containers to become healthy"
-        echo "Container status:"
+        # Phase 1: wait only for long-lived database services.
+        docker compose -f docker-compose.ci.yml up -d --wait --wait-timeout 60 db db_test
+
+        # Phase 2: run one-shot migration job and fail fast on migration errors.
+        docker compose -f docker-compose.ci.yml up --no-deps --exit-code-from backend-migrate backend-migrate
+
+        # Phase 3: start runtime services and wait for healthy app containers.
+        docker compose -f docker-compose.ci.yml up -d --wait --wait-timeout 120 backend frontend
         docker compose -f docker-compose.ci.yml ps
-        echo "Container logs:"
-        docker compose -f docker-compose.ci.yml logs
-        exit 1
 
     - name: Verify container isolation
       run: |
