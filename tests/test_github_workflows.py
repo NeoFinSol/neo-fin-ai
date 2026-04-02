@@ -130,7 +130,9 @@ def test_ci_runner_job_exposes_postgres_service_ports_and_uses_localhost_urls() 
     )
 
 
-def test_ci_pipeline_generates_coverage_artifact_without_duplicating_fail_under_gate() -> None:
+def test_ci_pipeline_generates_coverage_artifact_without_duplicating_fail_under_gate() -> (
+    None
+):
     workflow_path = WORKFLOWS_DIR / "ci.yml"
     parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     test_job = parsed["jobs"]["test"]
