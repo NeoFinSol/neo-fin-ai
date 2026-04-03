@@ -1,40 +1,109 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from . import legacy_helpers
+from .guardrails import apply_result_guardrails, derive_missing_metrics
+from .ranking import determine_source
 from .rules import _METRIC_KEYWORDS
-from .types import ExtractionMetadata
+from .tables import collect_table_candidates
+from .text_extraction import (
+    _detect_scale_factor,
+    _normalize_metric_text,
+    collect_text_candidates,
+)
+from .types import DocumentSignals, ExtractionMetadata, ExtractorContext, RawCandidates
+
+_RATIO_KEYS = frozenset(
+    {
+        "roa",
+        "roe",
+        "current_ratio",
+        "equity_ratio",
+        "debt_to_revenue",
+    }
+)
 
 
-@dataclass(slots=True)
-class PipelineContext:
-    tables: list
-    text: str
-
-
-def _build_context(tables: list, text: str) -> PipelineContext:
-    return PipelineContext(tables=tables or [], text=text or "")
-
-
-def _collect_candidates(context: PipelineContext) -> dict[str, object]:
-    return legacy_helpers.parse_financial_statements_with_metadata(
-        context.tables,
-        context.text,
+def _build_context(tables: list, text: str) -> ExtractorContext:
+    normalized_text = _normalize_metric_text(text or "")
+    text_lower = normalized_text.lower()
+    has_russian_balance_header = "бухгалтерский баланс" in text_lower
+    has_russian_results_header = "отчет о финансовых результатах" in text_lower
+    signals = DocumentSignals(
+        text=normalized_text,
+        text_lower=text_lower,
+        has_russian_balance_header=has_russian_balance_header,
+        has_russian_results_header=has_russian_results_header,
+        is_form_like=(
+            "форма 071000" in text_lower
+            or has_russian_balance_header
+            or has_russian_results_header
+        ),
+        is_balance_like=(
+            has_russian_balance_header
+            or "форма 0710001" in text_lower
+            or "итого по разделу iii" in text_lower
+            or "итого по разделу ш" in text_lower
+            or "итого по разделу iv" in text_lower
+            or "итого по разделу v" in text_lower
+            or "итого по разделу у" in text_lower
+        ),
+        scale_factor=_detect_scale_factor(normalized_text),
     )
+    return ExtractorContext(tables=tables or [], text=normalized_text, signals=signals)
+
+
+def _collect_table_candidates(
+    context: ExtractorContext,
+    raw: RawCandidates,
+) -> None:
+    collect_table_candidates(context, raw)
+
+
+def _collect_text_candidates(
+    context: ExtractorContext,
+    raw: RawCandidates,
+) -> None:
+    collect_text_candidates(context, raw)
+
+
+def _derive_missing_metrics(
+    context: ExtractorContext,
+    raw: RawCandidates,
+) -> None:
+    derive_missing_metrics(context, raw)
 
 
 def _build_metadata_result(
-    collected: dict[str, object],
+    context: ExtractorContext,
+    raw: RawCandidates,
 ) -> dict[str, ExtractionMetadata]:
     result: dict[str, ExtractionMetadata] = {}
     for key in _METRIC_KEYWORDS:
-        item = collected[key]
-        result[key] = ExtractionMetadata(
-            value=getattr(item, "value"),
-            confidence=getattr(item, "confidence"),
-            source=getattr(item, "source"),
+        candidate = raw.get(key)
+        if candidate is None:
+            result[key] = ExtractionMetadata(
+                value=None,
+                confidence=0.0,
+                source="derived",
+            )
+            continue
+
+        value = candidate.value
+        if context.signals.scale_factor != 1.0 and key not in _RATIO_KEYS:
+            value = value * context.signals.scale_factor
+
+        source, confidence = determine_source(
+            candidate.match_type,
+            is_exact=candidate.is_exact,
+            is_derived=(candidate.match_type == "derived"),
         )
+        result[key] = ExtractionMetadata(
+            value=value,
+            confidence=confidence,
+            source=source,
+        )
+
+    apply_result_guardrails(context, result)
     return result
 
 
@@ -43,10 +112,15 @@ def parse_financial_statements_with_metadata(
     text: str,
 ) -> dict[str, ExtractionMetadata]:
     context = _build_context(tables, text)
-    collected = _collect_candidates(context)
-    return _build_metadata_result(collected)
+    raw = RawCandidates()
+
+    _collect_table_candidates(context, raw)
+    _collect_text_candidates(context, raw)
+    _derive_missing_metrics(context, raw)
+
+    return _build_metadata_result(context, raw)
 
 
 def parse_financial_statements(tables: list, text: str) -> dict[str, float | None]:
     metadata = parse_financial_statements_with_metadata(tables, text)
-    return {k: v.value for k, v in metadata.items()}
+    return {key: meta.value for key, meta in metadata.items()}

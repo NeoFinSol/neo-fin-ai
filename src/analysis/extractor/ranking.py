@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from .types import ExtractionMetadata, ExtractionSource
+from .types import (
+    ExtractionMetadata,
+    ExtractionSource,
+    RawCandidates,
+    RawMetricCandidate,
+)
 
 
 def determine_source(
@@ -62,8 +67,33 @@ def _source_priority(match_type: str, is_exact: bool) -> int:
     return 0
 
 
+def _get_existing_candidate(
+    raw: RawCandidates | dict,
+    key: str,
+) -> RawMetricCandidate | tuple | None:
+    if isinstance(raw, RawCandidates):
+        return raw.get(key)
+    return raw.get(key)
+
+
+def _set_candidate(
+    raw: RawCandidates | dict,
+    key: str,
+    candidate: RawMetricCandidate,
+) -> None:
+    if isinstance(raw, RawCandidates):
+        raw[key] = candidate
+        return
+    raw[key] = (
+        candidate.value,
+        candidate.match_type,
+        candidate.is_exact,
+        candidate.candidate_quality,
+    )
+
+
 def _raw_set(
-    raw: dict,
+    raw: RawCandidates | dict,
     key: str,
     value: float,
     match_type: str,
@@ -72,9 +102,18 @@ def _raw_set(
 ) -> None:
     """Set raw[key] with source+quality precedence."""
     new_priority = _source_priority(match_type, is_exact)
-    if key in raw:
-        existing_priority = _source_priority(raw[key][1], raw[key][2])
-        existing_quality = raw[key][3] if len(raw[key]) > 3 else 50
+    existing = _get_existing_candidate(raw, key)
+    if existing is not None:
+        if isinstance(existing, RawMetricCandidate):
+            existing_priority = _source_priority(
+                existing.match_type,
+                existing.is_exact,
+            )
+            existing_quality = existing.candidate_quality
+        else:
+            existing_priority = _source_priority(existing[1], existing[2])
+            existing_quality = existing[3] if len(existing) > 3 else 50
+
         if new_priority < existing_priority:
             return
         if new_priority == existing_priority:
@@ -82,4 +121,14 @@ def _raw_set(
                 return
             if candidate_quality == existing_quality:
                 return
-    raw[key] = (value, match_type, is_exact, candidate_quality)
+
+    _set_candidate(
+        raw,
+        key,
+        RawMetricCandidate(
+            value=value,
+            match_type=match_type,
+            is_exact=is_exact,
+            candidate_quality=candidate_quality,
+        ),
+    )

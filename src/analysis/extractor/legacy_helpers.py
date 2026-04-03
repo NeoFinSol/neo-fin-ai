@@ -2540,6 +2540,25 @@ def parse_financial_statements(tables: list, text: str) -> dict[str, float | Non
     return {k: v.value for k, v in metadata.items()}
 
 
+# Compatibility runtime entrypoints now delegate to the staged extractor.
+# The historical monolithic implementation above is retained temporarily so
+# helper imports stay stable while Wave 4 contraction continues.
+def parse_financial_statements_with_metadata(
+    tables: list, text: str
+) -> dict[str, ExtractionMetadata]:
+    from .pipeline import (
+        parse_financial_statements_with_metadata as _parse_with_metadata,
+    )
+
+    return _parse_with_metadata(tables, text)
+
+
+def parse_financial_statements(tables: list, text: str) -> dict[str, float | None]:
+    from .pipeline import parse_financial_statements as _parse
+
+    return _parse(tables, text)
+
+
 def extract_metrics_regex(text: str) -> dict[str, float | None]:
     """
     Extract financial metrics from text using regex patterns.
