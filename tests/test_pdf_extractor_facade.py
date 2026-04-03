@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
 from src.analysis import pdf_extractor
 from src.analysis.extractor import (
@@ -243,3 +244,10 @@ def test_legacy_helpers_parse_entrypoint_delegates_to_pipeline(monkeypatch) -> N
     result = legacy_helpers.parse_financial_statements_with_metadata([], "Revenue 123")
 
     assert result is sentinel
+
+
+def test_legacy_helpers_keeps_only_single_parse_entrypoint_definition() -> None:
+    source = Path(legacy_helpers.__file__).read_text(encoding="utf-8")
+
+    assert source.count("def parse_financial_statements_with_metadata(") == 1
+    assert source.count("def parse_financial_statements(") == 1
