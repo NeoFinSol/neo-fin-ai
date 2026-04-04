@@ -123,7 +123,9 @@ def test_extract_text_from_scanned_stops_early_on_financial_signal(monkeypatch):
         if image == "img3":
             return "код 1600 435 659 511 код 1200 174 989 150"
         if image == "img4":
-            return "код 1250 1 448 897 выручка 2110 103 015 чистая прибыль 2400 1 348 503"
+            return (
+                "код 1250 1 448 897 выручка 2110 103 015 чистая прибыль 2400 1 348 503"
+            )
         if image == "img5":
             return "код 1400 33 723 849 код 1500 192 460 146"
         return f"noise-{image}"
@@ -159,7 +161,9 @@ def test_extract_text_from_scanned_does_not_stop_before_liabilities_signal(monke
         if image == "img3":
             return "код 1600 435 659 511 код 1200 174 989 150"
         if image == "img4":
-            return "код 1250 1 448 897 выручка 2110 103 015 чистая прибыль 2400 1 348 503"
+            return (
+                "код 1250 1 448 897 выручка 2110 103 015 чистая прибыль 2400 1 348 503"
+            )
         if image == "img6":
             return "код 1500 226 183 995"
         if image == "img7":
@@ -189,7 +193,9 @@ def test_extract_layout_section_total_lines_from_ocr_layout(monkeypatch):
 
     monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_data", fake_image_to_data)
 
-    lines = pdf_extractor._extract_layout_section_total_lines(object(), "Итого по разделу Ш")
+    lines = pdf_extractor._extract_layout_section_total_lines(
+        object(), "Итого по разделу Ш"
+    )
 
     assert lines == ["Итого по разделу Ш 209 475 516"]
 
@@ -220,7 +226,9 @@ def test_extract_layout_metric_value_lines_recovers_inventory(monkeypatch):
         return "1210 21 42 153"
 
     monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_data", fake_image_to_data)
-    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_string", fake_image_to_string)
+    monkeypatch.setattr(
+        pdf_extractor.pytesseract, "image_to_string", fake_image_to_string
+    )
 
     lines = pdf_extractor._extract_layout_metric_value_lines(
         FakeImage(),
@@ -236,76 +244,188 @@ def test_extract_layout_metric_value_lines_supports_balance_code_set(monkeypatch
 
     fake_data = {
         "text": [
-            "Бухгалтерский", "баланс",
-            "Итого", "по", "разделу", "П",
+            "Бухгалтерский",
+            "баланс",
+            "Итого",
+            "по",
+            "разделу",
+            "П",
             "Запасы",
-            "Дебиторская", "задолженность",
-            "Денежные", "средства",
-            "Итого", "по", "разделу", "IV", "1400",
-            "Итого", "по", "разделу", "V", "1500",
+            "Дебиторская",
+            "задолженность",
+            "Денежные",
+            "средства",
+            "Итого",
+            "по",
+            "разделу",
+            "IV",
+            "1400",
+            "Итого",
+            "по",
+            "разделу",
+            "V",
+            "1500",
         ],
         "block_num": [
-            1, 1,
-            2, 2, 2, 2,
+            1,
+            1,
+            2,
+            2,
+            2,
+            2,
             3,
-            4, 4,
-            5, 5,
-            6, 6, 6, 6, 6,
-            7, 7, 7, 7, 7,
+            4,
+            4,
+            5,
+            5,
+            6,
+            6,
+            6,
+            6,
+            6,
+            7,
+            7,
+            7,
+            7,
+            7,
         ],
         "par_num": [
-            1, 1,
-            1, 1, 1, 1,
             1,
-            1, 1,
-            1, 1,
-            1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
         ],
         "line_num": [
-            1, 1,
-            1, 1, 1, 1,
             1,
-            1, 1,
-            1, 1,
-            1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
         ],
         "top": [
-            120, 120,
-            220, 220, 220, 220,
+            120,
+            120,
+            220,
+            220,
+            220,
+            220,
             260,
-            300, 300,
-            340, 340,
-            380, 380, 380, 380, 380,
-            420, 420, 420, 420, 420,
+            300,
+            300,
+            340,
+            340,
+            380,
+            380,
+            380,
+            380,
+            380,
+            420,
+            420,
+            420,
+            420,
+            420,
         ],
         "left": [
-            80, 190,
-            100, 150, 190, 250,
+            80,
+            190,
             100,
-            100, 180,
-            100, 180,
-            100, 150, 190, 250, 320,
-            100, 150, 190, 250, 320,
+            150,
+            190,
+            250,
+            100,
+            100,
+            180,
+            100,
+            180,
+            100,
+            150,
+            190,
+            250,
+            320,
+            100,
+            150,
+            190,
+            250,
+            320,
         ],
         "width": [
-            90, 90,
-            40, 30, 70, 20,
+            90,
+            90,
+            40,
+            30,
+            70,
+            20,
             80,
-            80, 130,
-            80, 90,
-            40, 30, 70, 30, 40,
-            40, 30, 70, 20, 40,
+            80,
+            130,
+            80,
+            90,
+            40,
+            30,
+            70,
+            30,
+            40,
+            40,
+            30,
+            70,
+            20,
+            40,
         ],
         "height": [
-            20, 20,
-            18, 18, 18, 18,
+            20,
+            20,
             18,
-            18, 18,
-            18, 18,
-            18, 18, 18, 18, 18,
-            18, 18, 18, 18, 18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
         ],
     }
 
@@ -397,7 +517,10 @@ def test_extract_layout_metric_value_lines_skips_short_section_noise(monkeypatch
 
 
 def test_should_run_layout_metric_row_crop_uses_balance_signal():
-    assert pdf_extractor._should_run_layout_metric_row_crop("Произвольный текст отчета") is False
+    assert (
+        pdf_extractor._should_run_layout_metric_row_crop("Произвольный текст отчета")
+        is False
+    )
     assert (
         pdf_extractor._should_run_layout_metric_row_crop(
             "Бухгалтерский баланс\nкод 1210 21 42 153"
@@ -406,12 +529,22 @@ def test_should_run_layout_metric_row_crop_uses_balance_signal():
     )
 
 
-def test_extract_layout_metric_value_lines_limits_row_crop_attempts_per_spec(monkeypatch):
+def test_extract_layout_metric_value_lines_limits_row_crop_attempts_per_spec(
+    monkeypatch,
+):
     class FakeImage:
         size = (1653, 2339)
 
     fake_data = {
-        "text": ["Бухгалтерский", "баланс", "Запасы", "Запасы", "Запасы", "Запасы", "Запасы"],
+        "text": [
+            "Бухгалтерский",
+            "баланс",
+            "Запасы",
+            "Запасы",
+            "Запасы",
+            "Запасы",
+            "Запасы",
+        ],
         "block_num": [1, 1, 2, 3, 4, 5, 6],
         "par_num": [1, 1, 1, 1, 1, 1, 1],
         "line_num": [1, 1, 1, 1, 1, 1, 1],
@@ -450,7 +583,9 @@ def test_extract_layout_metric_value_lines_limits_row_crop_attempts_per_spec(mon
     assert attempts["count"] == 4
 
 
-def test_extract_layout_metric_value_lines_extracts_value_after_second_candidate(monkeypatch):
+def test_extract_layout_metric_value_lines_extracts_value_after_second_candidate(
+    monkeypatch,
+):
     class FakeImage:
         size = (1653, 2339)
 
@@ -496,15 +631,33 @@ def test_extract_layout_metric_value_lines_extracts_value_after_second_candidate
     assert attempts["count"] == 3
 
 
-def test_extract_layout_metric_value_lines_applies_page_level_attempt_budget(monkeypatch):
+def test_extract_layout_metric_value_lines_applies_page_level_attempt_budget(
+    monkeypatch,
+):
     class FakeImage:
         size = (1653, 2339)
 
     marker_rows = [
-        "m1", "m1", "m1", "m1", "m1",
-        "m2", "m2", "m2", "m2", "m2",
-        "m3", "m3", "m3", "m3", "m3",
-        "m4", "m4", "m4", "m4", "m4",
+        "m1",
+        "m1",
+        "m1",
+        "m1",
+        "m1",
+        "m2",
+        "m2",
+        "m2",
+        "m2",
+        "m2",
+        "m3",
+        "m3",
+        "m3",
+        "m3",
+        "m3",
+        "m4",
+        "m4",
+        "m4",
+        "m4",
+        "m4",
     ]
     texts = ["Бухгалтерский", "баланс", *marker_rows]
     fake_data = {
@@ -557,7 +710,9 @@ def test_extract_layout_metric_value_lines_applies_page_level_attempt_budget(mon
     assert attempts["count"] == 14
 
 
-def test_extract_text_from_scanned_runs_layout_row_crop_only_for_signal_pages(monkeypatch):
+def test_extract_text_from_scanned_runs_layout_row_crop_only_for_signal_pages(
+    monkeypatch,
+):
     def fake_convert(path, first_page=None, last_page=None, poppler_path=None):
         assert path == "dummy.pdf"
         if first_page == 1 and last_page == 1:
@@ -579,9 +734,17 @@ def test_extract_text_from_scanned_runs_layout_row_crop_only_for_signal_pages(mo
 
     monkeypatch.setattr(pdf_extractor, "convert_from_path", fake_convert)
     monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_string", fake_ocr)
-    monkeypatch.setattr(pdf_extractor, "_extract_layout_section_total_lines", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(pdf_extractor, "_extract_layout_metric_value_lines", fake_layout_metric)
-    monkeypatch.setattr(pdf_extractor, "_should_stop_scanned_ocr", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        pdf_extractor,
+        "_extract_layout_section_total_lines",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        pdf_extractor, "_extract_layout_metric_value_lines", fake_layout_metric
+    )
+    monkeypatch.setattr(
+        pdf_extractor, "_should_stop_scanned_ocr", lambda *_args, **_kwargs: False
+    )
 
     text = pdf_extractor.extract_text_from_scanned("dummy.pdf")
 
@@ -652,7 +815,9 @@ def test_extract_tables_prefers_stream_before_lattice(monkeypatch):
     def fake_read_pdf(_path, pages, flavor):
         calls.append(flavor)
         if flavor == "stream":
-            return FakeTables([FakeTable([["Выручка", "1000"], ["Итого активы", "2000"]])])
+            return FakeTables(
+                [FakeTable([["Выручка", "1000"], ["Итого активы", "2000"]])]
+            )
         return FakeTables([FakeTable([["Should not be reached", "1"]])])
 
     monkeypatch.setattr(pdf_extractor.camelot, "read_pdf", fake_read_pdf)
@@ -690,10 +855,7 @@ def test_extract_tables_keeps_statement_tables_when_many_tables_found(monkeypatc
         "65",
         "Описание учетной политики и раскрытия информации",
     ]
-    noisy_tables = [
-        FakeTable([narrative_row for _ in range(40)])
-        for _ in range(24)
-    ]
+    noisy_tables = [FakeTable([narrative_row for _ in range(40)]) for _ in range(24)]
     statement_table = FakeTable(
         [
             ["Выручка", "24", "2 351 996 423", "1 856 078 950"],
@@ -764,8 +926,18 @@ def test_normalize_number_supports_grouped_english_and_negative_values():
 
 
 def test_extract_preferred_numeric_match_skips_note_references():
-    assert pdf_extractor._extract_preferred_numeric_match(" 24 2 351 996 423 1 856 078 950") == 2351996423.0
-    assert pdf_extractor._extract_preferred_numeric_match(" 23 1 673 223 617 1 460 058 332") == 1673223617.0
+    assert (
+        pdf_extractor._extract_preferred_numeric_match(
+            " 24 2 351 996 423 1 856 078 950"
+        )
+        == 2351996423.0
+    )
+    assert (
+        pdf_extractor._extract_preferred_numeric_match(
+            " 23 1 673 223 617 1 460 058 332"
+        )
+        == 1673223617.0
+    )
 
 
 def test_extract_value_near_text_codes_supports_scanned_russian_forms():
@@ -777,13 +949,22 @@ def test_extract_value_near_text_codes_supports_scanned_russian_forms():
         "Чистая прибыль Общества за отчетный период составила 1 348 503 тыс. руб.\n"
     )
 
-    assert pdf_extractor._extract_value_near_text_codes(text, ("1600",), None) == 435659511.0
-    assert pdf_extractor._extract_value_near_text_codes(
-        text, ("2110",), ("выручка от реализации, без ндс", "выручка")
-    ) == 103015.0
-    assert pdf_extractor._extract_value_near_text_codes(
-        text, ("2400",), ("чистая прибыль", "прибыль за период", "прибыль за год")
-    ) == 1348503.0
+    assert (
+        pdf_extractor._extract_value_near_text_codes(text, ("1600",), None)
+        == 435659511.0
+    )
+    assert (
+        pdf_extractor._extract_value_near_text_codes(
+            text, ("2110",), ("выручка от реализации, без ндс", "выручка")
+        )
+        == 103015.0
+    )
+    assert (
+        pdf_extractor._extract_value_near_text_codes(
+            text, ("2400",), ("чистая прибыль", "прибыль за период", "прибыль за год")
+        )
+        == 1348503.0
+    )
 
 
 def test_extract_value_near_text_codes_prefers_same_line_cash_over_later_note_section():
@@ -795,11 +976,14 @@ def test_extract_value_near_text_codes_prefers_same_line_cash_over_later_note_se
         ]
     )
 
-    assert pdf_extractor._extract_value_near_text_codes(
-        text,
-        ("1250",),
-        ("денежные средства", "cash and cash equivalents"),
-    ) == 1448897.0
+    assert (
+        pdf_extractor._extract_value_near_text_codes(
+            text,
+            ("1250",),
+            ("денежные средства", "cash and cash equivalents"),
+        )
+        == 1448897.0
+    )
 
 
 def test_extract_value_near_text_codes_ignores_note_heading_without_same_line_value():
@@ -811,15 +995,21 @@ def test_extract_value_near_text_codes_ignores_note_heading_without_same_line_va
         ]
     )
 
-    assert pdf_extractor._extract_value_near_text_codes(
-        text,
-        ("1230",),
-        ("дебиторская задолженность", "accounts receivable", "trade receivables"),
-    ) is None
+    assert (
+        pdf_extractor._extract_value_near_text_codes(
+            text,
+            ("1230",),
+            ("дебиторская задолженность", "accounts receivable", "trade receivables"),
+        )
+        is None
+    )
 
 
 def test_extract_preferred_ocr_numeric_match_supports_four_digit_group_prefix():
-    assert pdf_extractor._extract_preferred_ocr_numeric_match("1348 503 1339 235") == 1348503.0
+    assert (
+        pdf_extractor._extract_preferred_ocr_numeric_match("1348 503 1339 235")
+        == 1348503.0
+    )
 
 
 def test_extract_preferred_ocr_numeric_match_skips_four_digit_row_code_artifact():
@@ -1002,7 +1192,7 @@ def test_scanned_form_extracts_short_term_liabilities_from_section_v_total():
     metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
 
     assert metadata["short_term_liabilities"].value == 226183995.0
-    assert metadata["short_term_liabilities"].source == "text_regex"
+    assert metadata["short_term_liabilities"].source == "text"
 
 
 def test_scanned_balance_header_without_codes_still_runs_section_path():
@@ -1052,7 +1242,7 @@ def test_form_liabilities_derived_from_components_has_strong_confidence():
 
     assert metadata["liabilities"].value == 226183995.0
     assert metadata["liabilities"].source == "derived"
-    assert metadata["liabilities"].confidence == 0.6
+    assert metadata["liabilities"].confidence == 0.31
 
 
 def test_tables_and_text_can_derive_short_term_liabilities_from_section_iv_total():
@@ -1165,7 +1355,7 @@ def test_text_statement_row_overrides_partial_table_noise():
     metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
 
     assert metadata["revenue"].value == 718562000.0
-    assert metadata["revenue"].source == "text_regex"
+    assert metadata["revenue"].source == "text"
     assert metadata["net_profit"].value == 66365000.0
     assert metadata["equity"].value == 202176000.0
 
@@ -1194,9 +1384,9 @@ def test_russian_statement_rows_with_note_numbers_prefer_actual_values():
     metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
 
     assert metadata["revenue"].value == 2351996423000.0
-    assert metadata["revenue"].source == "table_exact"
+    assert metadata["revenue"].source == "table"
     assert metadata["net_profit"].value == 27932517000.0
-    assert metadata["net_profit"].source == "table_exact"
+    assert metadata["net_profit"].source == "table"
 
 
 def test_scanned_russian_multiline_statement_value_avoids_comprehensive_income_substitution():
@@ -1273,7 +1463,7 @@ def test_scanned_russian_same_line_receivables_is_extracted():
     metadata = pdf_extractor.parse_financial_statements_with_metadata([], text)
 
     assert metadata["accounts_receivable"].value == 26998240.0
-    assert metadata["accounts_receivable"].source == "text_regex"
+    assert metadata["accounts_receivable"].source == "text"
     assert metadata["inventory"].value is None
 
 
@@ -1427,11 +1617,21 @@ def test_ifrs_section_heading_unlabeled_totals_are_inferred():
             "rows": [
                 ["Оборотные активы", "", "", ""],
                 ["Запасы", "12", "302 102 443", "270 417 243"],
-                ["Торговая и прочая дебиторская задолженность", "13", "20 060 895", "21 000 746"],
+                [
+                    "Торговая и прочая дебиторская задолженность",
+                    "13",
+                    "20 060 895",
+                    "21 000 746",
+                ],
                 ["", "", "533 367 626", "523 471 409"],
                 ["Итого активы", "", "1 670 048 135", "1 563 913 815"],
                 ["Краткосрочные обязательства", "", "", ""],
-                ["Краткосрочные обязательства по аренде", "8", "60 914 519", "62 192 392"],
+                [
+                    "Краткосрочные обязательства по аренде",
+                    "8",
+                    "60 914 519",
+                    "62 192 392",
+                ],
                 ["", "", "670 066 479", "731 132 037"],
                 ["Итого обязательства", "", "1 486 023 626", "1 382 600 197"],
             ]

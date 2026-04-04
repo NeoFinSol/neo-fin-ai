@@ -4,11 +4,12 @@ import logging
 from contextlib import contextmanager
 from typing import Any, Iterator
 
-from . import legacy_helpers
+from . import legacy_helpers, semantics
 from .guardrails import _metric_candidate_quality
 from .ranking import _raw_set
 from .rules import (
     _GARBLED_KEYWORDS,
+    _IFRS_APPROXIMATION_KEYWORDS,
     _IFRS_ENGLISH_KEYWORDS,
     _LINE_CODE_MAP,
     _METRIC_KEYWORDS,
@@ -49,6 +50,11 @@ def _skip_small_monetary_value(metric_key: str, value: float) -> bool:
     return metric_key in _MONETARY_METRICS and abs(value) < 1000
 
 
+def _is_section_total_label(label_cell: str) -> bool:
+    normalized = label_cell.strip().lower()
+    return normalized.startswith("итого") or normalized.startswith("total ")
+
+
 def _collect_table_line_code_candidates(
     rows: list[list[Any]], raw: RawCandidates
 ) -> None:
@@ -74,6 +80,10 @@ def _collect_table_line_code_candidates(
                         "table",
                         True,
                         candidate_quality=120,
+                        source=semantics.SOURCE_TABLE,
+                        match_semantics=semantics.MATCH_CODE,
+                        inference_mode=semantics.MODE_DIRECT,
+                        signal_flags=["ev:line_code"],
                     )
 
 
@@ -108,6 +118,9 @@ def _collect_garbled_keyword_candidates(
                 "table",
                 True,
                 candidate_quality=metric_quality,
+                source=semantics.SOURCE_TABLE,
+                match_semantics=semantics.MATCH_KEYWORD,
+                inference_mode=semantics.MODE_DIRECT,
             )
             break
 
@@ -145,6 +158,39 @@ def _collect_ifrs_keyword_candidates(
                 "table",
                 True,
                 candidate_quality=metric_quality or 85,
+                source=semantics.SOURCE_TABLE,
+                match_semantics=semantics.MATCH_EXACT,
+                inference_mode=semantics.MODE_DIRECT,
+            )
+            break
+
+        for approximation_keyword, (
+            metric_key,
+            reason_code,
+        ) in _IFRS_APPROXIMATION_KEYWORDS.items():
+            if approximation_keyword not in label_cell:
+                continue
+            value = legacy_helpers._extract_first_numeric_cell(row[1:])
+            if value is None or not legacy_helpers._is_valid_financial_value(value):
+                break
+            if _skip_small_monetary_value(metric_key, value):
+                logger.debug(
+                    "Skipping small approximation value %s for %s",
+                    value,
+                    metric_key,
+                )
+                break
+            _raw_set(
+                raw,
+                metric_key,
+                value,
+                "table",
+                False,
+                candidate_quality=75,
+                source=semantics.SOURCE_TABLE,
+                match_semantics=semantics.MATCH_KEYWORD,
+                inference_mode=semantics.MODE_APPROXIMATION,
+                reason_code=reason_code,
             )
             break
 
@@ -177,6 +223,9 @@ def _collect_ocr_table_candidates(rows: list[list[Any]], raw: RawCandidates) -> 
                             "text_regex",
                             False,
                             candidate_quality=keyword_quality,
+                            source=semantics.SOURCE_TEXT,
+                            match_semantics=semantics.MATCH_KEYWORD,
+                            inference_mode=semantics.MODE_DIRECT,
                         )
                         break
 
@@ -217,6 +266,7 @@ def _collect_regular_table_candidates(
             if metric_quality is None:
                 continue
             is_exact = any(label_cell == keyword for keyword in keywords)
+            is_section_total = _is_section_total_label(label_cell)
             _raw_set(
                 raw,
                 metric_key,
@@ -224,6 +274,16 @@ def _collect_regular_table_candidates(
                 "table",
                 is_exact,
                 candidate_quality=metric_quality,
+                source=semantics.SOURCE_TABLE,
+                match_semantics=(
+                    semantics.MATCH_SECTION
+                    if is_section_total
+                    else (
+                        semantics.MATCH_EXACT if is_exact else semantics.MATCH_KEYWORD
+                    )
+                ),
+                inference_mode=semantics.MODE_DIRECT,
+                signal_flags=["ev:section_total"] if is_section_total else None,
             )
 
 
@@ -252,6 +312,10 @@ def _collect_heading_total_candidates(
             "table",
             True,
             candidate_quality=112,
+            source=semantics.SOURCE_TABLE,
+            match_semantics=semantics.MATCH_SECTION,
+            inference_mode=semantics.MODE_DIRECT,
+            signal_flags=["ev:section_total"],
         )
 
     inferred_short_term = legacy_helpers._extract_section_total_from_heading_rows(
@@ -272,6 +336,10 @@ def _collect_heading_total_candidates(
             "table",
             True,
             candidate_quality=112,
+            source=semantics.SOURCE_TABLE,
+            match_semantics=semantics.MATCH_SECTION,
+            inference_mode=semantics.MODE_DIRECT,
+            signal_flags=["ev:section_total"],
         )
 
 

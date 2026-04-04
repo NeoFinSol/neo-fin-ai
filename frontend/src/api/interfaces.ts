@@ -108,15 +108,41 @@ export interface AIRuntimeInfo {
 // ---------------------------------------------------------------------------
 
 export type ExtractionSource =
+  | 'table'
+  | 'text'
+  | 'ocr'
+  | 'derived'
+  | 'issuer_fallback'
   | 'table_exact'
   | 'table_partial'
   | 'text_regex'
+  ;
+
+export type EvidenceVersion = 'v1' | 'v2';
+export type ExtractionMatchSemantics =
+  | 'exact'
+  | 'code_match'
+  | 'section_match'
+  | 'keyword_match'
+  | 'not_applicable';
+export type ExtractionInferenceMode =
+  | 'direct'
   | 'derived'
-  | 'issuer_fallback';
+  | 'approximation'
+  | 'policy_override';
+export type ExtractionPostprocessState = 'none' | 'guardrail_adjusted';
 
 export interface ExtractionMetadataItem {
+  evidence_version?: EvidenceVersion;
   confidence: number; // expected range [0.0, 1.0]
   source: ExtractionSource;
+  match_semantics?: ExtractionMatchSemantics;
+  inference_mode?: ExtractionInferenceMode;
+  postprocess_state?: ExtractionPostprocessState;
+  reason_code?: string | null;
+  signal_flags?: string[];
+  candidate_quality?: number | null;
+  authoritative_override?: boolean;
 }
 
 export interface AnalysisData {

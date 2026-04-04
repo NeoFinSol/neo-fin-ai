@@ -5,8 +5,26 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 ExtractionSource = Literal[
-    "table_exact", "table_partial", "text_regex", "derived", "issuer_fallback"
+    "table_exact",
+    "table_partial",
+    "text_regex",
+    "derived",
+    "issuer_fallback",
+    "llm",
+    "table",
+    "text",
+    "ocr",
 ]
+EvidenceVersion = Literal["v1", "v2"]
+MatchSemantics = Literal[
+    "exact",
+    "code_match",
+    "section_match",
+    "keyword_match",
+    "not_applicable",
+]
+InferenceMode = Literal["direct", "derived", "approximation", "policy_override"]
+PostprocessState = Literal["none", "guardrail_adjusted"]
 
 
 @dataclass(slots=True)
@@ -14,6 +32,14 @@ class ExtractionMetadata:
     value: float | None
     confidence: float
     source: ExtractionSource
+    evidence_version: EvidenceVersion = "v1"
+    match_semantics: MatchSemantics = "not_applicable"
+    inference_mode: InferenceMode = "direct"
+    postprocess_state: PostprocessState = "none"
+    reason_code: str | None = None
+    signal_flags: list[str] = field(default_factory=list)
+    candidate_quality: int | None = None
+    authoritative_override: bool = False
 
 
 @dataclass(slots=True)
@@ -41,6 +67,14 @@ class RawMetricCandidate:
     match_type: str
     is_exact: bool
     candidate_quality: int = 50
+    source: str | None = None
+    match_semantics: MatchSemantics | None = None
+    inference_mode: InferenceMode | None = None
+    reason_code: str | None = None
+    signal_flags: list[str] = field(default_factory=list)
+    conflict_count: int = 0
+    postprocess_state: PostprocessState = "none"
+    authoritative_override: bool = False
 
 
 @dataclass

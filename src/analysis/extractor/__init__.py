@@ -7,6 +7,7 @@ __all__ = [
     "pipeline",
     "ranking",
     "rules",
+    "semantics",
     "tables",
     "text_extraction",
     "types",

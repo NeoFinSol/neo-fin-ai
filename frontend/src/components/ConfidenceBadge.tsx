@@ -1,11 +1,19 @@
 import React from 'react';
 import { Tooltip, Text, Stack } from '@mantine/core';
-import { ExtractionSource } from '../api/interfaces';
+import {
+    ExtractionInferenceMode,
+    ExtractionMatchSemantics,
+    ExtractionSource,
+} from '../api/interfaces';
 
 interface ConfidenceBadgeProps {
     metricKey: string;
     confidence: number;
     source: ExtractionSource;
+    matchSemantics?: ExtractionMatchSemantics;
+    inferenceMode?: ExtractionInferenceMode;
+    reasonCode?: string | null;
+    authoritativeOverride?: boolean;
 }
 
 interface SourceInfo {
@@ -14,11 +22,29 @@ interface SourceInfo {
 }
 
 const SOURCE_INFO: Record<ExtractionSource, SourceInfo> = {
+    table: { label: 'Table evidence', method: 'Structured table extraction' },
+    text: { label: 'Text evidence', method: 'Narrative or line-based text extraction' },
+    ocr: { label: 'OCR evidence', method: 'OCR-assisted structural extraction' },
+    derived: { label: 'Derived value', method: 'Calculated from accepted metrics' },
+    issuer_fallback: { label: 'Issuer fallback', method: 'Repo-versioned issuer truth source override' },
     table_exact: { label: 'Table match (exact)', method: 'Exact keyword match in table' },
     table_partial: { label: 'Table match (partial)', method: 'Partial keyword match in table' },
     text_regex: { label: 'Text extraction (regex)', method: 'Regular expression in text' },
-    derived: { label: 'Derived or fallback value', method: 'Calculated from other metrics' },
-    issuer_fallback: { label: 'Issuer fallback', method: 'Repo-versioned issuer truth source override' },
+};
+
+const MATCH_LABELS: Partial<Record<ExtractionMatchSemantics, string>> = {
+    exact: 'Exact',
+    code_match: 'Code match',
+    section_match: 'Section match',
+    keyword_match: 'Keyword match',
+    not_applicable: 'Not applicable',
+};
+
+const INFERENCE_LABELS: Partial<Record<ExtractionInferenceMode, string>> = {
+    direct: 'Direct evidence',
+    derived: 'Derived formula',
+    approximation: 'Approximation',
+    policy_override: 'Policy override',
 };
 
 interface LevelConfig {
@@ -45,15 +71,31 @@ function safeConfidence(value: number): number {
     return Number.isFinite(value) ? value : 0;
 }
 
-const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({ metricKey: _metricKey, confidence, source }) => {
+const ConfidenceBadge: React.FC<ConfidenceBadgeProps> = ({
+    metricKey: _metricKey,
+    confidence,
+    source,
+    matchSemantics,
+    inferenceMode,
+    reasonCode,
+    authoritativeOverride = false,
+}) => {
     const c = safeConfidence(confidence);
     const { color, emoji, label } = LEVEL_CONFIG[getLevel(c)];
     const { label: sourceLabel, method } = SOURCE_INFO[source];
+    const matchLabel = matchSemantics ? MATCH_LABELS[matchSemantics] : null;
+    const inferenceLabel = inferenceMode ? INFERENCE_LABELS[inferenceMode] : null;
 
     const tooltipLabel = (
         <Stack gap={2}>
             <Text size="xs">Источник: {sourceLabel}</Text>
             <Text size="xs">Метод: {method}</Text>
+            {matchLabel ? <Text size="xs">Совпадение: {matchLabel}</Text> : null}
+            {inferenceLabel ? <Text size="xs">Режим: {inferenceLabel}</Text> : null}
+            {reasonCode ? <Text size="xs">Причина: {reasonCode}</Text> : null}
+            {authoritativeOverride ? (
+                <Text size="xs">Политика: авторитетный override</Text>
+            ) : null}
             <Text size="xs">Уверенность: {label} ({c.toFixed(2)})</Text>
         </Stack>
     );

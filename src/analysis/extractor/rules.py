@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from . import semantics
 from .legacy_helpers import (
     _LAYOUT_BALANCE_ROW_SPECS,
     _LAYOUT_ROW_SIGNAL_TOKENS,
@@ -37,7 +38,6 @@ _IFRS_ENGLISH_KEYWORDS: dict[str, str] = {
     "profit for the period": "net_profit",
     "profit attributable to owners": "net_profit",
     "profit attributable to shareholders": "net_profit",
-    "gross profit": "ebitda",
     "operating profit": "ebit",
     "ebitda": "ebitda",
     "total assets": "total_assets",
@@ -69,6 +69,13 @@ _IFRS_ENGLISH_KEYWORDS: dict[str, str] = {
     "stocks": "inventory",
     "finance costs": "interest_expense",
     "interest expense": "interest_expense",
+}
+
+_IFRS_APPROXIMATION_KEYWORDS: dict[str, tuple[str, str]] = {
+    "gross profit": (
+        "ebitda",
+        semantics.REASON_GROSS_PROFIT_TO_EBITDA_APPROXIMATION,
+    ),
 }
 
 _GARBLED_KEYWORDS: dict[str, str] = {
@@ -175,6 +182,7 @@ _MONETARY_METRICS = frozenset(
 __all__ = [
     "_GARBLED_KEYWORDS",
     "_IFRS_ENGLISH_KEYWORDS",
+    "_IFRS_APPROXIMATION_KEYWORDS",
     "_LAYOUT_BALANCE_ROW_SPECS",
     "_LAYOUT_ROW_SIGNAL_TOKENS",
     "_LINE_CODE_MAP",

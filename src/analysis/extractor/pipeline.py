@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from . import legacy_helpers
+from . import legacy_helpers, semantics
 from .guardrails import apply_result_guardrails, derive_missing_metrics
-from .ranking import determine_source
+from .ranking import build_metadata_from_candidate
 from .rules import _METRIC_KEYWORDS
 from .tables import collect_table_candidates
 from .text_extraction import (
@@ -85,22 +85,34 @@ def _build_metadata_result(
                 value=None,
                 confidence=0.0,
                 source="derived",
+                evidence_version=semantics.V2,
+                match_semantics=semantics.MATCH_NA,
+                inference_mode=semantics.MODE_DERIVED,
+                postprocess_state=semantics.POSTPROCESS_NONE,
+                reason_code=None,
+                signal_flags=[],
+                candidate_quality=None,
+                authoritative_override=False,
             )
             continue
 
-        value = candidate.value
+        metadata = build_metadata_from_candidate(candidate)
+        value = metadata.value
         if context.signals.scale_factor != 1.0 and key not in _RATIO_KEYS:
             value = value * context.signals.scale_factor
 
-        source, confidence = determine_source(
-            candidate.match_type,
-            is_exact=candidate.is_exact,
-            is_derived=(candidate.match_type == "derived"),
-        )
         result[key] = ExtractionMetadata(
             value=value,
-            confidence=confidence,
-            source=source,
+            confidence=metadata.confidence,
+            source=metadata.source,
+            evidence_version=metadata.evidence_version,
+            match_semantics=metadata.match_semantics,
+            inference_mode=metadata.inference_mode,
+            postprocess_state=metadata.postprocess_state,
+            reason_code=metadata.reason_code,
+            signal_flags=list(metadata.signal_flags),
+            candidate_quality=metadata.candidate_quality,
+            authoritative_override=metadata.authoritative_override,
         )
 
     apply_result_guardrails(context, result)

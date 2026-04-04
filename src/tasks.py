@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 
 from src.analysis import pdf_extractor
+from src.analysis.extractor import semantics as extractor_semantics
 from src.analysis.issuer_fallback import apply_issuer_metric_overrides
 from src.analysis.nlp_analysis import analyze_narrative_with_runtime
 from src.analysis.pdf_extractor import (
@@ -364,15 +365,22 @@ async def _try_llm_extraction(
     def _prefer_llm_metric(llm_meta, fallback_meta) -> bool:
         if llm_meta is None or llm_meta.value is None:
             return False
+        if not extractor_semantics.survives_confidence_filter(
+            llm_meta,
+            CONFIDENCE_THRESHOLD,
+        ):
+            return False
+        if not extractor_semantics.is_strong_direct_evidence(llm_meta):
+            return False
         if fallback_meta is None or fallback_meta.value is None:
             return True
-        if getattr(fallback_meta, "source", "derived") == "derived":
-            return True
-
-        fallback_confidence = float(getattr(fallback_meta, "confidence", 0.0) or 0.0)
-        llm_confidence = float(getattr(llm_meta, "confidence", 0.0) or 0.0)
-        if fallback_confidence > 0.3:
+        if extractor_semantics.is_authoritative_override(fallback_meta):
             return False
+        if extractor_semantics.is_replaceable_by_llm(
+            fallback_meta,
+            threshold=CONFIDENCE_THRESHOLD,
+        ):
+            return True
 
         fallback_value = float(fallback_meta.value)
         llm_value = float(llm_meta.value)
@@ -385,7 +393,7 @@ async def _try_llm_extraction(
             min(abs(fallback_value), abs(llm_value)),
             1e-9,
         )
-        return llm_confidence >= 0.8 and ratio < 10.0
+        return ratio < 10.0
 
     result = {}
     llm_contributed: list[str] = []

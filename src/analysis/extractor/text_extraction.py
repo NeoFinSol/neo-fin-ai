@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import legacy_helpers
+from . import legacy_helpers, semantics
 from .guardrails import _apply_form_like_pnl_sanity, _metric_candidate_quality
 from .ranking import _raw_set, _source_priority
 from .rules import _METRIC_KEYWORDS, _NUMBER_REGEX_FRAGMENT, _TEXT_LINE_CODE_MAP
@@ -40,6 +40,10 @@ def _collect_text_code_candidates(
                 "text_regex",
                 False,
                 candidate_quality=115,
+                source=semantics.SOURCE_TEXT,
+                match_semantics=semantics.MATCH_CODE,
+                inference_mode=semantics.MODE_DIRECT,
+                signal_flags=["ev:line_code"],
             )
 
 
@@ -78,6 +82,10 @@ def _collect_form_pnl_code_candidates(
             "text_regex",
             True,
             candidate_quality=candidate_quality,
+            source=semantics.SOURCE_TEXT,
+            match_semantics=semantics.MATCH_CODE,
+            inference_mode=semantics.MODE_DIRECT,
+            signal_flags=["ev:line_code"],
         )
 
 
@@ -138,6 +146,9 @@ def _collect_keyword_proximity_candidates(
                 candidate_quality=(
                     candidate_quality if candidate_quality is not None else 50
                 ),
+                source=semantics.SOURCE_TEXT,
+                match_semantics=semantics.MATCH_KEYWORD,
+                inference_mode=semantics.MODE_DIRECT,
             )
 
 
@@ -260,6 +271,9 @@ def _collect_broad_regex_candidates(
                 "text_regex",
                 False,
                 candidate_quality=pattern_quality,
+                source=semantics.SOURCE_TEXT,
+                match_semantics=semantics.MATCH_KEYWORD,
+                inference_mode=semantics.MODE_DIRECT,
             )
             break
 
@@ -288,6 +302,10 @@ def _collect_form_balance_candidates(
                 "text_regex",
                 True,
                 candidate_quality=110,
+                source=semantics.SOURCE_TEXT,
+                match_semantics=semantics.MATCH_SECTION,
+                inference_mode=semantics.MODE_DIRECT,
+                signal_flags=["ev:section_total"],
             )
 
     if context.signals.is_balance_like and "long_term_liabilities" not in raw:
@@ -304,6 +322,10 @@ def _collect_form_balance_candidates(
                 "text_regex",
                 True,
                 candidate_quality=105,
+                source=semantics.SOURCE_TEXT,
+                match_semantics=semantics.MATCH_SECTION,
+                inference_mode=semantics.MODE_DIRECT,
+                signal_flags=["ev:section_total"],
             )
 
     if context.signals.is_balance_like and not context.tables and "equity" not in raw:
@@ -321,6 +343,10 @@ def _collect_form_balance_candidates(
                 "text_regex",
                 True,
                 candidate_quality=105,
+                source=semantics.SOURCE_TEXT,
+                match_semantics=semantics.MATCH_SECTION,
+                inference_mode=semantics.MODE_DIRECT,
+                signal_flags=["ev:section_total"],
             )
 
 
@@ -344,6 +370,11 @@ def _collect_form_like_pnl_candidates(
             "text_regex",
             is_exact,
             candidate_quality=quality,
+            source=semantics.SOURCE_TEXT,
+            match_semantics=(
+                semantics.MATCH_EXACT if is_exact else semantics.MATCH_KEYWORD
+            ),
+            inference_mode=semantics.MODE_DIRECT,
         )
 
     _apply_form_like_pnl_sanity(

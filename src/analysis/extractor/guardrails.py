@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from . import legacy_helpers
+from . import legacy_helpers, semantics
 from .ranking import _raw_set, _source_priority
 from .types import (
     ExtractionMetadata,
@@ -98,6 +98,10 @@ def _apply_form_like_pnl_sanity(
             "text_regex",
             True,
             candidate_quality=120,
+            source=semantics.SOURCE_TEXT,
+            match_semantics=semantics.MATCH_CODE,
+            inference_mode=semantics.MODE_DIRECT,
+            signal_flags=["ev:line_code"],
         )
         return
 
@@ -137,6 +141,10 @@ def _apply_form_like_pnl_sanity(
             "text_regex",
             True,
             candidate_quality=120,
+            source=semantics.SOURCE_TEXT,
+            match_semantics=semantics.MATCH_CODE,
+            inference_mode=semantics.MODE_DIRECT,
+            signal_flags=["ev:line_code"],
         )
         revenue_entry = raw["revenue"]
     if best_net_profit != net_profit:
@@ -147,6 +155,10 @@ def _apply_form_like_pnl_sanity(
             "text_regex",
             True,
             candidate_quality=120,
+            source=semantics.SOURCE_TEXT,
+            match_semantics=semantics.MATCH_CODE,
+            inference_mode=semantics.MODE_DIRECT,
+            signal_flags=["ev:line_code"],
         )
         net_profit_entry = raw["net_profit"]
 
@@ -232,7 +244,17 @@ def derive_missing_metrics(
                 short_term,
                 derived,
             )
-            _raw_set(raw, "liabilities", derived, "derived_strong", False, 60)
+            _raw_set(
+                raw,
+                "liabilities",
+                derived,
+                "derived_strong",
+                False,
+                60,
+                source=semantics.SOURCE_DERIVED,
+                match_semantics=semantics.MATCH_NA,
+                inference_mode=semantics.MODE_DERIVED,
+            )
         elif (
             total_assets is not None
             and equity is not None
@@ -249,7 +271,17 @@ def derive_missing_metrics(
                 ratio = derived / total_assets
                 if ratio >= 0.02:
                     logger.debug("Derived liabilities = assets - equity = %s", derived)
-                    _raw_set(raw, "liabilities", derived, "derived_strong", False, 60)
+                    _raw_set(
+                        raw,
+                        "liabilities",
+                        derived,
+                        "derived_strong",
+                        False,
+                        60,
+                        source=semantics.SOURCE_DERIVED,
+                        match_semantics=semantics.MATCH_NA,
+                        inference_mode=semantics.MODE_DERIVED,
+                    )
 
     if "short_term_liabilities" not in raw and "liabilities" in raw:
         long_term = raw.get_value("long_term_liabilities")
@@ -270,13 +302,26 @@ def derive_missing_metrics(
                     "derived",
                     False,
                     30,
+                    source=semantics.SOURCE_DERIVED,
+                    match_semantics=semantics.MATCH_NA,
+                    inference_mode=semantics.MODE_DERIVED,
                 )
 
     if "current_assets" not in raw:
         derived = _derive_current_assets_from_available(raw)
         if legacy_helpers._is_valid_financial_value(derived):
             logger.debug("Derived current_assets from available fields = %s", derived)
-            _raw_set(raw, "current_assets", derived, "derived", False, 30)
+            _raw_set(
+                raw,
+                "current_assets",
+                derived,
+                "derived",
+                False,
+                30,
+                source=semantics.SOURCE_DERIVED,
+                match_semantics=semantics.MATCH_NA,
+                inference_mode=semantics.MODE_DERIVED,
+            )
 
     current_assets_value = raw.get_value("current_assets")
     component_values = [
@@ -300,11 +345,95 @@ def derive_missing_metrics(
             logger.debug(
                 "Derived current_assets after guardrail fallback = %s", derived
             )
-            _raw_set(raw, "current_assets", derived, "derived", False, 30)
+            _raw_set(
+                raw,
+                "current_assets",
+                derived,
+                "derived",
+                False,
+                30,
+                source=semantics.SOURCE_DERIVED,
+                match_semantics=semantics.MATCH_NA,
+                inference_mode=semantics.MODE_DERIVED,
+            )
 
 
 def _apply_form_like_guardrails(result: dict[str, ExtractionMetadata]) -> None:
-    legacy_helpers._apply_form_like_guardrails(result)
+    def _guardrail_soft_null(metric_key: str, reason_code: str) -> None:
+        current = semantics.normalize_legacy_metadata(result[metric_key])
+        next_signal_flags = list(current.signal_flags)
+        if semantics.FLAG_POSTPROCESS_GUARDRAIL_ADJUSTED not in next_signal_flags:
+            next_signal_flags.append(semantics.FLAG_POSTPROCESS_GUARDRAIL_ADJUSTED)
+        result[metric_key] = ExtractionMetadata(
+            value=None,
+            confidence=0.0,
+            source=current.source,
+            evidence_version=current.evidence_version,
+            match_semantics=current.match_semantics,
+            inference_mode=current.inference_mode,
+            postprocess_state=semantics.POSTPROCESS_GUARDRAIL,
+            reason_code=reason_code,
+            signal_flags=next_signal_flags,
+            candidate_quality=current.candidate_quality,
+            authoritative_override=current.authoritative_override,
+        )
+
+    total_assets = result["total_assets"].value
+    current_assets = result["current_assets"].value
+    liabilities = result["liabilities"].value
+    equity = result["equity"].value
+    short_term = result["short_term_liabilities"].value
+
+    if total_assets is not None:
+        if current_assets is not None and current_assets > total_assets:
+            _guardrail_soft_null(
+                "current_assets",
+                semantics.REASON_GUARDRAIL_CURRENT_ASSETS_GT_TOTAL_ASSETS,
+            )
+            current_assets = None
+
+        if liabilities is not None and liabilities > total_assets:
+            _guardrail_soft_null(
+                "liabilities",
+                semantics.REASON_GUARDRAIL_LIABILITIES_GT_TOTAL_ASSETS,
+            )
+            liabilities = None
+
+        if equity is not None and equity > total_assets:
+            _guardrail_soft_null(
+                "equity",
+                semantics.REASON_GUARDRAIL_EQUITY_GT_TOTAL_ASSETS,
+            )
+            equity = None
+
+        if short_term is not None and short_term > total_assets:
+            _guardrail_soft_null(
+                "short_term_liabilities",
+                semantics.REASON_GUARDRAIL_SHORT_TERM_GT_TOTAL_ASSETS,
+            )
+            short_term = None
+
+    for component_key in (
+        "cash_and_equivalents",
+        "inventory",
+        "accounts_receivable",
+    ):
+        component = result[component_key].value
+        if (
+            current_assets is not None
+            and component is not None
+            and component > current_assets
+        ):
+            _guardrail_soft_null(
+                component_key,
+                semantics.REASON_GUARDRAIL_COMPONENT_GT_CURRENT_ASSETS,
+            )
+
+    if liabilities is not None and short_term is not None and short_term > liabilities:
+        _guardrail_soft_null(
+            "short_term_liabilities",
+            semantics.REASON_GUARDRAIL_SHORT_TERM_GT_LIABILITIES,
+        )
 
 
 def apply_result_guardrails(

@@ -17,10 +17,10 @@ describe('DetailedMetricsCard', () => {
                         equity: 500,
                     } as never}
                     extractionMetadata={{
-                        revenue: { confidence: 0.9, source: 'table_exact' },
-                        net_profit: { confidence: 0.9, source: 'table_exact' },
-                        total_assets: { confidence: 0.9, source: 'table_exact' },
-                        equity: { confidence: 0.9, source: 'table_exact' },
+                        revenue: { confidence: 0.9, source: 'table', match_semantics: 'exact', inference_mode: 'direct' },
+                        net_profit: { confidence: 0.9, source: 'table', match_semantics: 'exact', inference_mode: 'direct' },
+                        total_assets: { confidence: 0.9, source: 'table', match_semantics: 'exact', inference_mode: 'direct' },
+                        equity: { confidence: 0.9, source: 'table', match_semantics: 'exact', inference_mode: 'direct' },
                     }}
                     reliableCount={4}
                 />

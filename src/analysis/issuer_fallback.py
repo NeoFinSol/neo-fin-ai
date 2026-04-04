@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from copy import deepcopy
 
+from src.analysis.extractor import semantics
 from src.analysis.pdf_extractor import ExtractionMetadata
 
 logger = logging.getLogger(__name__)
@@ -62,8 +63,16 @@ def apply_issuer_metric_overrides(
         )
         updated[metric_key] = ExtractionMetadata(
             value=issuer_value,
-            confidence=1.0,
+            confidence=0.95,
             source="issuer_fallback",
+            evidence_version=semantics.V2,
+            match_semantics=semantics.MATCH_NA,
+            inference_mode=semantics.MODE_POLICY_OVERRIDE,
+            postprocess_state=semantics.POSTPROCESS_NONE,
+            reason_code=semantics.REASON_ISSUER_REPO_OVERRIDE,
+            signal_flags=[],
+            candidate_quality=None,
+            authoritative_override=True,
         )
 
     return updated

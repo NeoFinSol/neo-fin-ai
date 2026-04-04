@@ -78,12 +78,56 @@ class AnalyzeResponse(BaseModel):
 
 
 class ExtractionMetadataItem(BaseModel):
+    evidence_version: Literal["v1", "v2"] = Field(
+        default="v1",
+        description="Версия explainability payload",
+    )
     confidence: float = Field(
         ge=0.0, le=1.0, description="Уверенность извлечения [0.0–1.0]"
     )
     source: Literal[
-        "table_exact", "table_partial", "text_regex", "derived", "issuer_fallback"
+        "table",
+        "text",
+        "ocr",
+        "derived",
+        "issuer_fallback",
+        "table_exact",
+        "table_partial",
+        "text_regex",
     ] = Field(description="Метод извлечения показателя")
+    match_semantics: Literal[
+        "exact",
+        "code_match",
+        "section_match",
+        "keyword_match",
+        "not_applicable",
+    ] = Field(default="not_applicable", description="Семантика совпадения")
+    inference_mode: Literal[
+        "direct",
+        "derived",
+        "approximation",
+        "policy_override",
+    ] = Field(default="direct", description="Режим вывода значения")
+    postprocess_state: Literal["none", "guardrail_adjusted"] = Field(
+        default="none",
+        description="Состояние постобработки",
+    )
+    reason_code: str | None = Field(
+        default=None,
+        description="Машинно-читаемая причина особого explainability-состояния",
+    )
+    signal_flags: list[str] = Field(
+        default_factory=list,
+        description="Список флагов сигналов и compatibility-маркеров",
+    )
+    candidate_quality: int | None = Field(
+        default=None,
+        description="Внутренний quality score кандидата",
+    )
+    authoritative_override: bool = Field(
+        default=False,
+        description="Признак policy override вместо обычного evidence score",
+    )
 
 
 class ScoreFactor(BaseModel):
