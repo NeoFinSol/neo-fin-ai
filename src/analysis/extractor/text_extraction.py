@@ -353,6 +353,8 @@ def _collect_form_balance_candidates(
 def _collect_form_like_pnl_candidates(
     context: ExtractorContext,
     raw: RawCandidates,
+    *,
+    guardrail_events: list[semantics.GuardrailEvent] | None = None,
 ) -> None:
     if not context.signals.is_form_like or context.tables:
         return
@@ -384,19 +386,26 @@ def _collect_form_like_pnl_candidates(
             "консолид" not in context.signals.text_lower
             and "consolidated" not in context.signals.text_lower
         ),
+        guardrail_events=guardrail_events,
     )
 
 
 def collect_text_candidates(
     context: ExtractorContext,
     raw: RawCandidates,
+    *,
+    guardrail_events: list[semantics.GuardrailEvent] | None = None,
 ) -> None:
     _collect_text_code_candidates(context, raw)
     _collect_form_pnl_code_candidates(context, raw)
     _collect_keyword_proximity_candidates(context, raw)
     _collect_broad_regex_candidates(context, raw)
     _collect_form_balance_candidates(context, raw)
-    _collect_form_like_pnl_candidates(context, raw)
+    _collect_form_like_pnl_candidates(
+        context,
+        raw,
+        guardrail_events=guardrail_events,
+    )
 
 
 _detect_scale_factor = legacy_helpers._detect_scale_factor

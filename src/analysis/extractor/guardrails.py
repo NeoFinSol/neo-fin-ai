@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from . import legacy_helpers, semantics
-from .ranking import _raw_set, _source_priority
+from .ranking import _raw_set, _resolve_candidate_semantics, _source_priority
 from .types import (
     ExtractionMetadata,
     ExtractorContext,
@@ -12,6 +12,80 @@ from .types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _snapshot_value(
+    entry: RawMetricCandidate | ExtractionMetadata | tuple | None,
+) -> float | None:
+    if entry is None:
+        return None
+    if isinstance(entry, RawMetricCandidate):
+        return entry.value
+    if isinstance(entry, ExtractionMetadata):
+        return entry.value
+    return entry[0]
+
+
+def _snapshot_profile_key(
+    entry: RawMetricCandidate | ExtractionMetadata | tuple | None,
+) -> semantics.ProfileKey | None:
+    if entry is None:
+        return None
+    if isinstance(entry, ExtractionMetadata):
+        normalized = semantics.normalize_legacy_metadata(entry)
+        return (
+            normalized.source,
+            normalized.match_semantics,
+            normalized.inference_mode,
+        )
+    if isinstance(entry, RawMetricCandidate):
+        source = entry.source
+        match_semantics = entry.match_semantics
+        inference_mode = entry.inference_mode
+        if source is None or match_semantics is None or inference_mode is None:
+            source, match_semantics, inference_mode = _resolve_candidate_semantics(
+                match_type=entry.match_type,
+                is_exact=entry.is_exact,
+                source=source,
+                match_semantics=match_semantics,
+                inference_mode=inference_mode,
+            )
+        return (source, match_semantics, inference_mode)
+    source, match_semantics, inference_mode = _resolve_candidate_semantics(
+        match_type=entry[1],
+        is_exact=entry[2],
+        source=None,
+        match_semantics=None,
+        inference_mode=None,
+    )
+    return (source, match_semantics, inference_mode)
+
+
+def _record_guardrail_event(
+    guardrail_events: list[semantics.GuardrailEvent] | None,
+    *,
+    metric_key: str,
+    stage: str,
+    reason_code: str,
+    before_entry: RawMetricCandidate | ExtractionMetadata | tuple | None,
+    after_entry: RawMetricCandidate | ExtractionMetadata | tuple | None,
+) -> None:
+    if guardrail_events is None:
+        return
+
+    definition = semantics.get_reason_definition(reason_code)
+    guardrail_events.append(
+        semantics.GuardrailEvent(
+            metric_key=metric_key,
+            stage=stage,
+            action=definition.event_action,
+            reason_code=reason_code,
+            before_value=_snapshot_value(before_entry),
+            after_value=_snapshot_value(after_entry),
+            before_profile_key=_snapshot_profile_key(before_entry),
+            after_profile_key=_snapshot_profile_key(after_entry),
+        )
+    )
 
 
 def _metric_candidate_quality(metric_key: str, candidate_text: str) -> int | None:
@@ -56,6 +130,7 @@ def _apply_form_like_pnl_sanity(
     code_candidates: dict[str, float],
     *,
     is_standalone_form: bool = False,
+    guardrail_events: list[semantics.GuardrailEvent] | None = None,
 ) -> None:
     def _entry_value(entry: RawMetricCandidate | tuple) -> float:
         return entry.value if isinstance(entry, RawMetricCandidate) else entry[0]
@@ -91,6 +166,8 @@ def _apply_form_like_pnl_sanity(
     revenue_code = code_candidates.get("revenue")
     net_profit_code = code_candidates.get("net_profit")
     if revenue_code is not None and net_profit_code is not None:
+        revenue_before = raw.get("revenue")
+        net_profit_before = raw.get("net_profit")
         _raw_set(
             raw,
             "revenue",
@@ -101,7 +178,37 @@ def _apply_form_like_pnl_sanity(
             source=semantics.SOURCE_TEXT,
             match_semantics=semantics.MATCH_CODE,
             inference_mode=semantics.MODE_DIRECT,
+            reason_code=semantics.REASON_SANITY_PNL_REPLACED_REVENUE_WITH_CODE,
             signal_flags=["ev:line_code"],
+        )
+        _record_guardrail_event(
+            guardrail_events,
+            metric_key="revenue",
+            stage="pnl_sanity",
+            reason_code=semantics.REASON_SANITY_PNL_REPLACED_REVENUE_WITH_CODE,
+            before_entry=revenue_before,
+            after_entry=raw.get("revenue"),
+        )
+        _raw_set(
+            raw,
+            "net_profit",
+            net_profit_code,
+            "text_regex",
+            True,
+            candidate_quality=120,
+            source=semantics.SOURCE_TEXT,
+            match_semantics=semantics.MATCH_CODE,
+            inference_mode=semantics.MODE_DIRECT,
+            reason_code=semantics.REASON_SANITY_PNL_REPLACED_NET_PROFIT_WITH_CODE,
+            signal_flags=["ev:line_code"],
+        )
+        _record_guardrail_event(
+            guardrail_events,
+            metric_key="net_profit",
+            stage="pnl_sanity",
+            reason_code=semantics.REASON_SANITY_PNL_REPLACED_NET_PROFIT_WITH_CODE,
+            before_entry=net_profit_before,
+            after_entry=raw.get("net_profit"),
         )
         return
 
@@ -134,6 +241,7 @@ def _apply_form_like_pnl_sanity(
             best_net_profit = candidate_net_profit
 
     if best_revenue != revenue:
+        revenue_before = raw.get("revenue")
         _raw_set(
             raw,
             "revenue",
@@ -144,10 +252,20 @@ def _apply_form_like_pnl_sanity(
             source=semantics.SOURCE_TEXT,
             match_semantics=semantics.MATCH_CODE,
             inference_mode=semantics.MODE_DIRECT,
+            reason_code=semantics.REASON_SANITY_PNL_REPLACED_REVENUE_WITH_CODE,
             signal_flags=["ev:line_code"],
+        )
+        _record_guardrail_event(
+            guardrail_events,
+            metric_key="revenue",
+            stage="pnl_sanity",
+            reason_code=semantics.REASON_SANITY_PNL_REPLACED_REVENUE_WITH_CODE,
+            before_entry=revenue_before,
+            after_entry=raw.get("revenue"),
         )
         revenue_entry = raw["revenue"]
     if best_net_profit != net_profit:
+        net_profit_before = raw.get("net_profit")
         _raw_set(
             raw,
             "net_profit",
@@ -158,7 +276,16 @@ def _apply_form_like_pnl_sanity(
             source=semantics.SOURCE_TEXT,
             match_semantics=semantics.MATCH_CODE,
             inference_mode=semantics.MODE_DIRECT,
+            reason_code=semantics.REASON_SANITY_PNL_REPLACED_NET_PROFIT_WITH_CODE,
             signal_flags=["ev:line_code"],
+        )
+        _record_guardrail_event(
+            guardrail_events,
+            metric_key="net_profit",
+            stage="pnl_sanity",
+            reason_code=semantics.REASON_SANITY_PNL_REPLACED_NET_PROFIT_WITH_CODE,
+            before_entry=net_profit_before,
+            after_entry=raw.get("net_profit"),
         )
         net_profit_entry = raw["net_profit"]
 
@@ -196,7 +323,20 @@ def _apply_form_like_pnl_sanity(
         revenue_reliability,
         net_profit_reliability,
     )
+    conflicting_before = raw.get(conflicting_key)
     raw.pop(conflicting_key, None)
+    _record_guardrail_event(
+        guardrail_events,
+        metric_key=conflicting_key,
+        stage="pnl_sanity",
+        reason_code=(
+            semantics.REASON_SANITY_PNL_CONFLICT_DROP_REVENUE
+            if conflicting_key == "revenue"
+            else semantics.REASON_SANITY_PNL_CONFLICT_DROP_NET_PROFIT
+        ),
+        before_entry=conflicting_before,
+        after_entry=None,
+    )
 
 
 def _derive_liabilities_from_components(
@@ -216,6 +356,8 @@ def _derive_liabilities_from_components(
 def derive_missing_metrics(
     context: ExtractorContext,
     raw: RawCandidates,
+    *,
+    guardrail_events: list[semantics.GuardrailEvent] | None = None,
 ) -> None:
     if "liabilities" not in raw:
         long_term = raw.get_value("long_term_liabilities")
@@ -339,7 +481,18 @@ def derive_missing_metrics(
             current_assets_value,
             max(component_values),
         )
+        rejected_candidate = raw.get("current_assets")
         raw.pop("current_assets", None)
+        _record_guardrail_event(
+            guardrail_events,
+            metric_key="current_assets",
+            stage="derive_missing_metrics",
+            reason_code=(
+                semantics.REASON_GUARDRAIL_CURRENT_ASSETS_CANDIDATE_LT_COMPONENT_DROPPED
+            ),
+            before_entry=rejected_candidate,
+            after_entry=None,
+        )
         derived = _derive_current_assets_from_available(raw)
         if legacy_helpers._is_valid_financial_value(derived):
             logger.debug(
@@ -355,16 +508,37 @@ def derive_missing_metrics(
                 source=semantics.SOURCE_DERIVED,
                 match_semantics=semantics.MATCH_NA,
                 inference_mode=semantics.MODE_DERIVED,
+                reason_code=(
+                    semantics.REASON_GUARDRAIL_CURRENT_ASSETS_CANDIDATE_LT_COMPONENT_REPLACED
+                ),
+            )
+            _record_guardrail_event(
+                guardrail_events,
+                metric_key="current_assets",
+                stage="derive_missing_metrics",
+                reason_code=(
+                    semantics.REASON_GUARDRAIL_CURRENT_ASSETS_CANDIDATE_LT_COMPONENT_REPLACED
+                ),
+                before_entry=rejected_candidate,
+                after_entry=raw.get("current_assets"),
             )
 
 
-def _apply_form_like_guardrails(result: dict[str, ExtractionMetadata]) -> None:
+def _apply_form_like_guardrails(
+    result: dict[str, ExtractionMetadata],
+    *,
+    guardrail_events: list[semantics.GuardrailEvent] | None = None,
+) -> None:
     def _guardrail_soft_null(metric_key: str, reason_code: str) -> None:
         current = semantics.normalize_legacy_metadata(result[metric_key])
         next_signal_flags = list(current.signal_flags)
         if semantics.FLAG_POSTPROCESS_GUARDRAIL_ADJUSTED not in next_signal_flags:
             next_signal_flags.append(semantics.FLAG_POSTPROCESS_GUARDRAIL_ADJUSTED)
-        result[metric_key] = ExtractionMetadata(
+        resolved_reason_code = (
+            semantics.select_preferred_reason_code(current.reason_code, reason_code)
+            or reason_code
+        )
+        updated = ExtractionMetadata(
             value=None,
             confidence=0.0,
             source=current.source,
@@ -372,10 +546,19 @@ def _apply_form_like_guardrails(result: dict[str, ExtractionMetadata]) -> None:
             match_semantics=current.match_semantics,
             inference_mode=current.inference_mode,
             postprocess_state=semantics.POSTPROCESS_GUARDRAIL,
-            reason_code=reason_code,
+            reason_code=resolved_reason_code,
             signal_flags=next_signal_flags,
             candidate_quality=current.candidate_quality,
             authoritative_override=current.authoritative_override,
+        )
+        result[metric_key] = updated
+        _record_guardrail_event(
+            guardrail_events,
+            metric_key=metric_key,
+            stage="result_guardrails",
+            reason_code=resolved_reason_code,
+            before_entry=current,
+            after_entry=updated,
         )
 
     total_assets = result["total_assets"].value
@@ -439,6 +622,8 @@ def _apply_form_like_guardrails(result: dict[str, ExtractionMetadata]) -> None:
 def apply_result_guardrails(
     context: ExtractorContext,
     result: dict[str, ExtractionMetadata],
+    *,
+    guardrail_events: list[semantics.GuardrailEvent] | None = None,
 ) -> None:
     if context.signals.is_balance_like:
-        _apply_form_like_guardrails(result)
+        _apply_form_like_guardrails(result, guardrail_events=guardrail_events)

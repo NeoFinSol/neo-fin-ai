@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.analysis.extractor import semantics
 from src.analysis.extractor.types import RawMetricCandidate
 
 
@@ -40,15 +41,15 @@ def test_build_metadata_from_candidate_applies_conflict_and_guardrail_penalties(
         inference_mode="direct",
         conflict_count=4,
         postprocess_state="guardrail_adjusted",
-        reason_code="guardrail_reduced_confidence",
-        signal_flags=["pp:guardrail_adjusted"],
+        reason_code=semantics.REASON_GUARDRAIL_SHORT_TERM_GT_TOTAL_ASSETS,
+        signal_flags=[semantics.FLAG_POSTPROCESS_GUARDRAIL_ADJUSTED],
     )
 
     metadata = ranking.build_metadata_from_candidate(candidate)
 
     assert metadata.confidence == 0.40
     assert metadata.postprocess_state == "guardrail_adjusted"
-    assert metadata.reason_code == "guardrail_reduced_confidence"
+    assert metadata.reason_code == semantics.REASON_GUARDRAIL_SHORT_TERM_GT_TOTAL_ASSETS
 
 
 def test_apply_confidence_filter_normalizes_v1_payload_to_extended_metadata() -> None:
@@ -70,8 +71,13 @@ def test_apply_confidence_filter_normalizes_v1_payload_to_extended_metadata() ->
     assert payload["revenue"]["evidence_version"] == "v1"
     assert payload["revenue"]["source"] == "table"
     assert payload["revenue"]["match_semantics"] == "not_applicable"
-    assert payload["revenue"]["reason_code"] == "legacy_table_partial_unresolved"
-    assert "compat:normalized_from_v1" in payload["revenue"]["signal_flags"]
+    assert (
+        payload["revenue"]["reason_code"]
+        == semantics.REASON_LEGACY_TABLE_PARTIAL_UNRESOLVED
+    )
+    assert (
+        semantics.FLAG_COMPAT_NORMALIZED_FROM_V1 in payload["revenue"]["signal_flags"]
+    )
 
 
 def test_apply_confidence_filter_keeps_authoritative_override_even_below_threshold() -> (
@@ -90,7 +96,7 @@ def test_apply_confidence_filter_keeps_authoritative_override_even_below_thresho
                 match_semantics="not_applicable",
                 inference_mode="policy_override",
                 postprocess_state="none",
-                reason_code="issuer_repo_override",
+                reason_code=semantics.REASON_ISSUER_REPO_OVERRIDE,
                 signal_flags=[],
                 candidate_quality=None,
                 authoritative_override=True,

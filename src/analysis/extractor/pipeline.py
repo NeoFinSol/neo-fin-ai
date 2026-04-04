@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from . import legacy_helpers, semantics
 from .guardrails import apply_result_guardrails, derive_missing_metrics
-from .ranking import build_metadata_from_candidate
+from .ranking import build_metadata_from_candidate, build_metadata_with_decision_log
 from .rules import _METRIC_KEYWORDS
 from .tables import collect_table_candidates
 from .text_extraction import (
@@ -62,22 +62,35 @@ def _collect_table_candidates(
 def _collect_text_candidates(
     context: ExtractorContext,
     raw: RawCandidates,
+    *,
+    guardrail_events: list[semantics.GuardrailEvent] | None = None,
 ) -> None:
-    collect_text_candidates(context, raw)
+    collect_text_candidates(context, raw, guardrail_events=guardrail_events)
 
 
 def _derive_missing_metrics(
     context: ExtractorContext,
     raw: RawCandidates,
+    *,
+    guardrail_events: list[semantics.GuardrailEvent] | None = None,
 ) -> None:
-    derive_missing_metrics(context, raw)
+    derive_missing_metrics(context, raw, guardrail_events=guardrail_events)
 
 
 def _build_metadata_result(
     context: ExtractorContext,
     raw: RawCandidates,
-) -> dict[str, ExtractionMetadata]:
+    *,
+    guardrail_events: list[semantics.GuardrailEvent] | None = None,
+    include_decision_logs: bool = False,
+) -> (
+    dict[str, ExtractionMetadata]
+    | tuple[dict[str, ExtractionMetadata], dict[str, semantics.SemanticsDecisionLog]]
+):
     result: dict[str, ExtractionMetadata] = {}
+    decision_logs: dict[str, semantics.SemanticsDecisionLog] | None = (
+        {} if include_decision_logs else None
+    )
     for key in _METRIC_KEYWORDS:
         candidate = raw.get(key)
         if candidate is None:
@@ -96,7 +109,11 @@ def _build_metadata_result(
             )
             continue
 
-        metadata = build_metadata_from_candidate(candidate)
+        if decision_logs is None:
+            metadata = build_metadata_from_candidate(candidate)
+        else:
+            metadata, decision_log = build_metadata_with_decision_log(key, candidate)
+            decision_logs[key] = decision_log
         value = metadata.value
         if context.signals.scale_factor != 1.0 and key not in _RATIO_KEYS:
             value = value * context.signals.scale_factor
@@ -115,8 +132,18 @@ def _build_metadata_result(
             authoritative_override=metadata.authoritative_override,
         )
 
-    apply_result_guardrails(context, result)
-    return result
+    apply_result_guardrails(
+        context,
+        result,
+        guardrail_events=guardrail_events,
+    )
+    if decision_logs is None:
+        return result
+
+    decision_logs = {
+        key: log for key, log in decision_logs.items() if result[key].value is not None
+    }
+    return result, decision_logs
 
 
 def parse_financial_statements_with_metadata(
@@ -136,3 +163,45 @@ def parse_financial_statements_with_metadata(
 def parse_financial_statements(tables: list, text: str) -> dict[str, float | None]:
     metadata = parse_financial_statements_with_metadata(tables, text)
     return {key: meta.value for key, meta in metadata.items()}
+
+
+def parse_financial_statements_debug(
+    tables: list,
+    text: str,
+) -> semantics.ExtractionDebugTrace:
+    context = _build_context(tables, text)
+    raw = RawCandidates()
+    guardrail_events: list[semantics.GuardrailEvent] = []
+
+    _collect_table_candidates(context, raw)
+    _collect_text_candidates(
+        context,
+        raw,
+        guardrail_events=guardrail_events,
+    )
+    _derive_missing_metrics(
+        context,
+        raw,
+        guardrail_events=guardrail_events,
+    )
+    metadata, decision_logs = _build_metadata_result(
+        context,
+        raw,
+        guardrail_events=guardrail_events,
+        include_decision_logs=True,
+    )
+    return semantics.ExtractionDebugTrace(
+        metadata=metadata,
+        decision_logs=decision_logs,
+        guardrail_events=guardrail_events,
+    )
+
+
+def format_metric_debug_trace(
+    debug_trace: semantics.ExtractionDebugTrace,
+    metric_key: str,
+) -> str:
+    return semantics.format_metric_decision_trace(
+        debug_trace.decision_logs[metric_key],
+        debug_trace.guardrail_events,
+    )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.analysis.extractor import semantics
 from src.analysis.extractor.guardrails import apply_result_guardrails
 from src.analysis.extractor.tables import collect_table_candidates
 from src.analysis.extractor.text_extraction import collect_text_candidates
@@ -99,7 +100,9 @@ def test_gross_profit_mapping_is_emitted_as_approximation() -> None:
     candidate = raw["ebitda"]
     assert candidate.source == "table"
     assert candidate.inference_mode == "approximation"
-    assert candidate.reason_code == "gross_profit_to_ebitda_approximation"
+    assert (
+        candidate.reason_code == semantics.REASON_GROSS_PROFIT_TO_EBITDA_APPROXIMATION
+    )
 
 
 def test_issuer_fallback_emits_policy_override_metadata() -> None:
@@ -125,7 +128,7 @@ def test_issuer_fallback_emits_policy_override_metadata() -> None:
     assert candidate.match_semantics == "not_applicable"
     assert candidate.inference_mode == "policy_override"
     assert candidate.authoritative_override is True
-    assert candidate.reason_code == "issuer_repo_override"
+    assert candidate.reason_code == semantics.REASON_ISSUER_REPO_OVERRIDE
 
 
 def test_result_guardrail_marks_invalidated_metric_without_changing_provenance() -> (
@@ -208,5 +211,7 @@ def test_result_guardrail_marks_invalidated_metric_without_changing_provenance()
     assert invalidated.match_semantics == "keyword_match"
     assert invalidated.inference_mode == "direct"
     assert invalidated.postprocess_state == "guardrail_adjusted"
-    assert invalidated.reason_code == "guardrail_component_gt_current_assets"
+    assert invalidated.reason_code == (
+        semantics.REASON_GUARDRAIL_COMPONENT_GT_CURRENT_ASSETS
+    )
     assert "pp:guardrail_adjusted" in invalidated.signal_flags

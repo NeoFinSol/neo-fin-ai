@@ -8,6 +8,7 @@ import pytest
 from cryptography.utils import CryptographyDeprecationWarning
 from fastapi import BackgroundTasks
 
+from src.analysis.extractor import semantics
 from src.analysis.llm_extractor import LlmExtractionRunResult, _build_empty_result
 from src.analysis.pdf_extractor import extract_text
 from src.analysis.ratios import translate_ratios
@@ -549,7 +550,7 @@ class TestTryLlmExtraction:
             evidence_version="v2",
             match_semantics="keyword_match",
             inference_mode="direct",
-            reason_code="llm_extraction",
+            reason_code=semantics.REASON_LLM_EXTRACTION,
         )
         llm_metrics["total_assets"] = llm_metrics["total_assets"].__class__(
             value=2_500_000.0,
@@ -558,7 +559,7 @@ class TestTryLlmExtraction:
             evidence_version="v2",
             match_semantics="keyword_match",
             inference_mode="direct",
-            reason_code="llm_extraction",
+            reason_code=semantics.REASON_LLM_EXTRACTION,
         )
         llm_metrics["cash_and_equivalents"] = llm_metrics[
             "cash_and_equivalents"
@@ -569,7 +570,7 @@ class TestTryLlmExtraction:
             evidence_version="v2",
             match_semantics="keyword_match",
             inference_mode="direct",
-            reason_code="llm_extraction",
+            reason_code=semantics.REASON_LLM_EXTRACTION,
         )
 
         with patch(
@@ -597,7 +598,10 @@ class TestTryLlmExtraction:
         assert result["total_assets"].evidence_version == "v2"
         assert result["cash_and_equivalents"].value == 250_000.0
         assert result["cash_and_equivalents"].source == "text"
-        assert result["cash_and_equivalents"].reason_code == "llm_extraction"
+        assert (
+            result["cash_and_equivalents"].reason_code
+            == semantics.REASON_LLM_EXTRACTION
+        )
         assert "contributed metrics" in caplog.text
         assert "rejected for existing fallback metrics" in caplog.text
 
@@ -612,7 +616,7 @@ class TestTryLlmExtraction:
             match_semantics="not_applicable",
             inference_mode="policy_override",
             postprocess_state="none",
-            reason_code="issuer_repo_override",
+            reason_code=semantics.REASON_ISSUER_REPO_OVERRIDE,
             authoritative_override=True,
         )
 
@@ -624,7 +628,7 @@ class TestTryLlmExtraction:
             evidence_version="v2",
             match_semantics="keyword_match",
             inference_mode="direct",
-            reason_code="llm_extraction",
+            reason_code=semantics.REASON_LLM_EXTRACTION,
         )
 
         with patch(

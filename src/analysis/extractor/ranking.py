@@ -257,6 +257,14 @@ def _resolve_candidate_semantics(
 
 
 def build_metadata_from_candidate(candidate: RawMetricCandidate) -> ExtractionMetadata:
+    metadata, _ = build_metadata_with_decision_log("", candidate)
+    return metadata
+
+
+def build_metadata_with_decision_log(
+    metric_key: str,
+    candidate: RawMetricCandidate,
+) -> tuple[ExtractionMetadata, semantics.SemanticsDecisionLog]:
     source = candidate.source
     match_semantics = candidate.match_semantics
     inference_mode = candidate.inference_mode
@@ -272,11 +280,13 @@ def build_metadata_from_candidate(candidate: RawMetricCandidate) -> ExtractionMe
     profile_key = (source, match_semantics, inference_mode)
     decision_log = semantics.build_decision_log(
         profile_key,
+        metric_key=metric_key,
         candidate_quality=candidate.candidate_quality,
         signal_flags=candidate.signal_flags,
         conflict_count=candidate.conflict_count,
         postprocess_state=candidate.postprocess_state,
         authoritative_override=candidate.authoritative_override,
+        reason_code=candidate.reason_code,
     )
     confidence = decision_log.final_confidence
     metadata = ExtractionMetadata(
@@ -293,4 +303,4 @@ def build_metadata_from_candidate(candidate: RawMetricCandidate) -> ExtractionMe
         authoritative_override=candidate.authoritative_override,
     )
     semantics.validate_public_metadata_state(metadata)
-    return metadata
+    return metadata, decision_log

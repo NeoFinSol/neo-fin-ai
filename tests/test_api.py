@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 import src.routers.pdf_tasks as pdf_tasks
+from src.analysis.extractor import semantics
 
 
 class FakeAnalysis:
@@ -193,7 +194,7 @@ def test_result_returns_v2_extraction_metadata_shape(client, monkeypatch):
                         "match_semantics": "not_applicable",
                         "inference_mode": "policy_override",
                         "postprocess_state": "none",
-                        "reason_code": "issuer_repo_override",
+                        "reason_code": semantics.REASON_ISSUER_REPO_OVERRIDE,
                         "signal_flags": [],
                         "candidate_quality": None,
                         "authoritative_override": True,
