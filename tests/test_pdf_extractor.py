@@ -1242,7 +1242,7 @@ def test_form_liabilities_derived_from_components_has_strong_confidence():
 
     assert metadata["liabilities"].value == 226183995.0
     assert metadata["liabilities"].source == "derived"
-    assert metadata["liabilities"].confidence == 0.31
+    assert metadata["liabilities"].confidence == 0.29
 
 
 def test_tables_and_text_can_derive_short_term_liabilities_from_section_iv_total():

@@ -106,10 +106,10 @@ def test_source_confidence_mapping(match_params):
         expected_confidence = 0.35
     elif match_type == "table":
         expected_source = "table"
-        expected_confidence = 0.92 if is_exact else 0.62
+        expected_confidence = 0.92 if is_exact else 0.60
     elif match_type == "text_regex":
         expected_source = "text"
-        expected_confidence = 0.58
+        expected_confidence = 0.56
     else:
         expected_source = "derived"
         expected_confidence = 0.35

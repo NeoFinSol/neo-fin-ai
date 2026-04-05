@@ -36,17 +36,17 @@ class TestConfidenceMapping:
         assert source == "table"
         assert confidence == 0.92
 
-    def test_table_keyword_confidence_is_0_62(self):
-        """table keyword profile should map to table/0.62."""
+    def test_table_keyword_confidence_is_0_60(self):
+        """table keyword profile should map to table/0.60."""
         source, confidence = determine_source("table", is_exact=False)
         assert source == "table"
-        assert confidence == 0.62
+        assert confidence == 0.60
 
-    def test_text_keyword_confidence_is_0_58(self):
-        """text keyword profile should map to text/0.58."""
+    def test_text_keyword_confidence_is_0_56(self):
+        """text keyword profile should map to text/0.56."""
         source, confidence = determine_source("text_regex")
         assert source == "text"
-        assert confidence == 0.58
+        assert confidence == 0.56
 
     def test_derived_confidence_is_0_35(self):
         """derived profile should have confidence 0.35."""

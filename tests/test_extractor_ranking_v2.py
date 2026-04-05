@@ -23,7 +23,7 @@ def test_build_metadata_from_candidate_emits_v2_shape_and_quality_bonus() -> Non
     assert metadata.source == "table"
     assert metadata.match_semantics == "exact"
     assert metadata.inference_mode == "direct"
-    assert metadata.confidence == 0.96
+    assert metadata.confidence == 0.97
 
 
 def test_build_metadata_from_candidate_applies_conflict_and_guardrail_penalties() -> (
@@ -47,7 +47,7 @@ def test_build_metadata_from_candidate_applies_conflict_and_guardrail_penalties(
 
     metadata = ranking.build_metadata_from_candidate(candidate)
 
-    assert metadata.confidence == 0.40
+    assert metadata.confidence == 0.34
     assert metadata.postprocess_state == "guardrail_adjusted"
     assert metadata.reason_code == semantics.REASON_GUARDRAIL_SHORT_TERM_GT_TOTAL_ASSETS
 

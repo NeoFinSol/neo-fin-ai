@@ -1,0 +1,687 @@
+{
+  "baseline": {
+    "runtime": "baseline_runtime_v2",
+    "summary": {
+      "total_cases": 9,
+      "correct_cases": 6,
+      "operational_accuracy": 0.666667,
+      "false_accept_count": 2,
+      "false_reject_count": 0,
+      "survivor_count": 5,
+      "acceptance_rate": 0.714286,
+      "boundary_density": 0.333333,
+      "mean_confidence": 0.563333,
+      "brier_score": 0.314567,
+      "ece": 0.316667,
+      "decision_surface_counts": {
+        "threshold": 5,
+        "winner": 2,
+        "merge": 2
+      },
+      "reliability_bins": [
+        {
+          "lower": 0.0,
+          "upper": 0.2,
+          "count": 1,
+          "mean_confidence": 0.0,
+          "accuracy": 1.0
+        },
+        {
+          "lower": 0.2,
+          "upper": 0.4,
+          "count": 1,
+          "mean_confidence": 0.2,
+          "accuracy": 1.0
+        },
+        {
+          "lower": 0.4,
+          "upper": 0.6,
+          "count": 3,
+          "mean_confidence": 0.513333,
+          "accuracy": 0.333333
+        },
+        {
+          "lower": 0.6,
+          "upper": 0.8,
+          "count": 2,
+          "mean_confidence": 0.71,
+          "accuracy": 0.5
+        },
+        {
+          "lower": 0.8,
+          "upper": 1.0,
+          "count": 2,
+          "mean_confidence": 0.955,
+          "accuracy": 1.0
+        }
+      ]
+    },
+    "case_outcomes": {
+      "table_exact_high_quality_survives": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive:table",
+        "confidence": 0.96,
+        "source": "table",
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "weak_text_keyword_should_not_survive": {
+        "decision_type": "threshold",
+        "correct": false,
+        "outcome": "survive:text",
+        "expected_outcome": "absent",
+        "confidence": 0.5,
+        "source": "text",
+        "survived": true,
+        "false_accept": true,
+        "false_reject": false
+      },
+      "weak_ocr_exact_should_not_survive": {
+        "decision_type": "threshold",
+        "correct": false,
+        "outcome": "survive:ocr",
+        "expected_outcome": "absent",
+        "confidence": 0.65,
+        "source": "ocr",
+        "survived": true,
+        "false_accept": true,
+        "false_reject": false
+      },
+      "text_code_medium_quality_survives": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.77,
+        "source": "text",
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gross_profit_approximation_stays_filtered": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.2,
+        "source": "table",
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "parse_table_exact_source_is_decision_critical": {
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive:table",
+        "confidence": 0.54,
+        "source": "table",
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "parse_ifrs_approximation_remains_absent": {
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.0,
+        "source": null,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "llm_replaces_weak_text_keyword_fallback": {
+        "decision_type": "merge",
+        "correct": false,
+        "outcome": "fallback",
+        "expected_outcome": "llm",
+        "confidence": 0.5,
+        "source": "text",
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "llm_keeps_authoritative_override": {
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "fallback",
+        "expected_outcome": "fallback",
+        "confidence": 0.95,
+        "source": "issuer_fallback",
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      }
+    }
+  },
+  "candidate": {
+    "runtime": "calibrated_runtime_v2_2026_04",
+    "summary": {
+      "total_cases": 9,
+      "correct_cases": 9,
+      "operational_accuracy": 1.0,
+      "false_accept_count": 0,
+      "false_reject_count": 0,
+      "survivor_count": 3,
+      "acceptance_rate": 0.428571,
+      "boundary_density": 0.333333,
+      "mean_confidence": 0.585556,
+      "brier_score": 0.278433,
+      "ece": 0.414444,
+      "decision_surface_counts": {
+        "threshold": 5,
+        "winner": 2,
+        "merge": 2
+      },
+      "reliability_bins": [
+        {
+          "lower": 0.0,
+          "upper": 0.2,
+          "count": 1,
+          "mean_confidence": 0.0,
+          "accuracy": 1.0
+        },
+        {
+          "lower": 0.2,
+          "upper": 0.4,
+          "count": 1,
+          "mean_confidence": 0.2,
+          "accuracy": 1.0
+        },
+        {
+          "lower": 0.4,
+          "upper": 0.6,
+          "count": 3,
+          "mean_confidence": 0.48,
+          "accuracy": 1.0
+        },
+        {
+          "lower": 0.6,
+          "upper": 0.8,
+          "count": 1,
+          "mean_confidence": 0.79,
+          "accuracy": 1.0
+        },
+        {
+          "lower": 0.8,
+          "upper": 1.0,
+          "count": 3,
+          "mean_confidence": 0.946667,
+          "accuracy": 1.0
+        }
+      ]
+    },
+    "case_outcomes": {
+      "table_exact_high_quality_survives": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive:table",
+        "confidence": 0.97,
+        "source": "table",
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "weak_text_keyword_should_not_survive": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.46,
+        "source": "text",
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "weak_ocr_exact_should_not_survive": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.48,
+        "source": "ocr",
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "text_code_medium_quality_survives": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.79,
+        "source": "text",
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gross_profit_approximation_stays_filtered": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.2,
+        "source": "table",
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "parse_table_exact_source_is_decision_critical": {
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive:table",
+        "confidence": 0.5,
+        "source": "table",
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "parse_ifrs_approximation_remains_absent": {
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.0,
+        "source": null,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "llm_replaces_weak_text_keyword_fallback": {
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "llm",
+        "expected_outcome": "llm",
+        "confidence": 0.92,
+        "source": "text",
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "llm_keeps_authoritative_override": {
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "fallback",
+        "expected_outcome": "fallback",
+        "confidence": 0.95,
+        "source": "issuer_fallback",
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      }
+    }
+  },
+  "shadow_policies": {
+    "shadow_relaxed_consumer": {
+      "runtime": "shadow_relaxed_consumer",
+      "summary": {
+        "total_cases": 9,
+        "correct_cases": 9,
+        "operational_accuracy": 1.0,
+        "false_accept_count": 0,
+        "false_reject_count": 0,
+        "survivor_count": 3,
+        "acceptance_rate": 0.428571,
+        "boundary_density": 0.333333,
+        "mean_confidence": 0.585556,
+        "brier_score": 0.278433,
+        "ece": 0.414444,
+        "decision_surface_counts": {
+          "threshold": 5,
+          "winner": 2,
+          "merge": 2
+        },
+        "reliability_bins": [
+          {
+            "lower": 0.0,
+            "upper": 0.2,
+            "count": 1,
+            "mean_confidence": 0.0,
+            "accuracy": 1.0
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.4,
+            "count": 1,
+            "mean_confidence": 0.2,
+            "accuracy": 1.0
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.6,
+            "count": 3,
+            "mean_confidence": 0.48,
+            "accuracy": 1.0
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.8,
+            "count": 1,
+            "mean_confidence": 0.79,
+            "accuracy": 1.0
+          },
+          {
+            "lower": 0.8,
+            "upper": 1.0,
+            "count": 3,
+            "mean_confidence": 0.946667,
+            "accuracy": 1.0
+          }
+        ]
+      }
+    }
+  },
+  "threshold_sweep": {
+    "baseline_runtime_v2": [
+      {
+        "threshold": 0.4,
+        "operational_accuracy": 0.666667,
+        "false_accept_count": 2,
+        "false_reject_count": 0,
+        "survivor_count": 5,
+        "acceptance_rate": 0.714286
+      },
+      {
+        "threshold": 0.45,
+        "operational_accuracy": 0.666667,
+        "false_accept_count": 2,
+        "false_reject_count": 0,
+        "survivor_count": 5,
+        "acceptance_rate": 0.714286
+      },
+      {
+        "threshold": 0.5,
+        "operational_accuracy": 0.666667,
+        "false_accept_count": 2,
+        "false_reject_count": 0,
+        "survivor_count": 5,
+        "acceptance_rate": 0.714286
+      },
+      {
+        "threshold": 0.55,
+        "operational_accuracy": 0.777778,
+        "false_accept_count": 1,
+        "false_reject_count": 1,
+        "survivor_count": 3,
+        "acceptance_rate": 0.428571
+      },
+      {
+        "threshold": 0.6,
+        "operational_accuracy": 0.777778,
+        "false_accept_count": 1,
+        "false_reject_count": 1,
+        "survivor_count": 3,
+        "acceptance_rate": 0.428571
+      }
+    ],
+    "calibrated_runtime_v2_2026_04": [
+      {
+        "threshold": 0.4,
+        "operational_accuracy": 0.666667,
+        "false_accept_count": 2,
+        "false_reject_count": 0,
+        "survivor_count": 5,
+        "acceptance_rate": 0.714286
+      },
+      {
+        "threshold": 0.45,
+        "operational_accuracy": 0.666667,
+        "false_accept_count": 2,
+        "false_reject_count": 0,
+        "survivor_count": 5,
+        "acceptance_rate": 0.714286
+      },
+      {
+        "threshold": 0.5,
+        "operational_accuracy": 1.0,
+        "false_accept_count": 0,
+        "false_reject_count": 0,
+        "survivor_count": 3,
+        "acceptance_rate": 0.428571
+      },
+      {
+        "threshold": 0.55,
+        "operational_accuracy": 0.888889,
+        "false_accept_count": 0,
+        "false_reject_count": 1,
+        "survivor_count": 2,
+        "acceptance_rate": 0.285714
+      },
+      {
+        "threshold": 0.6,
+        "operational_accuracy": 0.888889,
+        "false_accept_count": 0,
+        "false_reject_count": 1,
+        "survivor_count": 2,
+        "acceptance_rate": 0.285714
+      }
+    ]
+  },
+  "invariant_checks": [
+    {
+      "name": "trust_order:('table', 'exact', 'direct')>('table', 'code_match', 'direct')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=90, right_rank=80"
+    },
+    {
+      "name": "trust_order:('table', 'code_match', 'direct')>('table', 'section_match', 'direct')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=80, right_rank=70"
+    },
+    {
+      "name": "trust_order:('table', 'section_match', 'direct')>('text', 'code_match', 'direct')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=70, right_rank=60"
+    },
+    {
+      "name": "trust_order:('text', 'code_match', 'direct')>('ocr', 'exact', 'direct')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=60, right_rank=55"
+    },
+    {
+      "name": "trust_order:('ocr', 'exact', 'direct')>('ocr', 'code_match', 'direct')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=55, right_rank=50"
+    },
+    {
+      "name": "trust_order:('ocr', 'code_match', 'direct')>('ocr', 'section_match', 'direct')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=50, right_rank=45"
+    },
+    {
+      "name": "trust_order:('ocr', 'section_match', 'direct')>('table', 'keyword_match', 'direct')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=45, right_rank=40"
+    },
+    {
+      "name": "trust_order:('table', 'keyword_match', 'direct')>('text', 'keyword_match', 'direct')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=40, right_rank=30"
+    },
+    {
+      "name": "trust_order:('text', 'keyword_match', 'direct')>('derived', 'not_applicable', 'derived')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=30, right_rank=20"
+    },
+    {
+      "name": "trust_order:('derived', 'not_applicable', 'derived')>('table', 'exact', 'approximation')",
+      "passed": true,
+      "details": "baseline=1, candidate=1, left_rank=20, right_rank=10"
+    },
+    {
+      "name": "policy_override_confidence_unchanged",
+      "passed": true,
+      "details": "baseline=0.95, candidate=0.95"
+    },
+    {
+      "name": "strong_direct_threshold_unchanged",
+      "passed": true,
+      "details": "baseline=0.70, candidate=0.70"
+    }
+  ],
+  "policy_diffs": [
+    {
+      "setting": "profile:text/code_match/direct",
+      "baseline": 0.72,
+      "candidate": 0.74
+    },
+    {
+      "setting": "profile:text/exact/direct",
+      "baseline": 0.66,
+      "candidate": 0.68
+    },
+    {
+      "setting": "profile:text/section_match/direct",
+      "baseline": 0.64,
+      "candidate": 0.66
+    },
+    {
+      "setting": "profile:ocr/exact/direct",
+      "baseline": 0.7,
+      "candidate": 0.56
+    },
+    {
+      "setting": "profile:ocr/code_match/direct",
+      "baseline": 0.68,
+      "candidate": 0.6
+    },
+    {
+      "setting": "profile:ocr/section_match/direct",
+      "baseline": 0.64,
+      "candidate": 0.58
+    },
+    {
+      "setting": "profile:table/keyword_match/direct",
+      "baseline": 0.62,
+      "candidate": 0.6
+    },
+    {
+      "setting": "profile:text/keyword_match/direct",
+      "baseline": 0.58,
+      "candidate": 0.56
+    },
+    {
+      "setting": "quality_band>=110",
+      "baseline": 0.04,
+      "candidate": 0.05
+    },
+    {
+      "setting": "quality_band>=90",
+      "baseline": 0.02,
+      "candidate": 0.03
+    },
+    {
+      "setting": "quality_band>=60",
+      "baseline": -0.04,
+      "candidate": -0.06
+    },
+    {
+      "setting": "quality_band<fallback",
+      "baseline": -0.08,
+      "candidate": -0.1
+    },
+    {
+      "setting": "structural_bonus_delta",
+      "baseline": 0.03,
+      "candidate": 0.02
+    },
+    {
+      "setting": "guardrail_penalty_delta",
+      "baseline": -0.08,
+      "candidate": -0.1
+    },
+    {
+      "setting": "conflict_penalty_step",
+      "baseline": -0.04,
+      "candidate": -0.05
+    },
+    {
+      "setting": "conflict_penalty_cap",
+      "baseline": -0.12,
+      "candidate": -0.15
+    }
+  ],
+  "case_diffs": {
+    "weak_text_keyword_should_not_survive": {
+      "decision_type": "threshold",
+      "baseline": {
+        "decision_type": "threshold",
+        "correct": false,
+        "outcome": "survive:text",
+        "expected_outcome": "absent",
+        "confidence": 0.5,
+        "source": "text",
+        "survived": true,
+        "false_accept": true,
+        "false_reject": false
+      },
+      "candidate": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.46,
+        "source": "text",
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      }
+    },
+    "weak_ocr_exact_should_not_survive": {
+      "decision_type": "threshold",
+      "baseline": {
+        "decision_type": "threshold",
+        "correct": false,
+        "outcome": "survive:ocr",
+        "expected_outcome": "absent",
+        "confidence": 0.65,
+        "source": "ocr",
+        "survived": true,
+        "false_accept": true,
+        "false_reject": false
+      },
+      "candidate": {
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.48,
+        "source": "ocr",
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      }
+    },
+    "llm_replaces_weak_text_keyword_fallback": {
+      "decision_type": "merge",
+      "baseline": {
+        "decision_type": "merge",
+        "correct": false,
+        "outcome": "fallback",
+        "expected_outcome": "llm",
+        "confidence": 0.5,
+        "source": "text",
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "candidate": {
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "llm",
+        "expected_outcome": "llm",
+        "confidence": 0.92,
+        "source": "text",
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      }
+    }
+  }
+}

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import inspect
+from dataclasses import dataclass
+
 from . import legacy_helpers, semantics
+from .confidence_policy import ConfidencePolicy
 from .guardrails import apply_result_guardrails, derive_missing_metrics
 from .ranking import build_metadata_from_candidate, build_metadata_with_decision_log
 from .rules import _METRIC_KEYWORDS
@@ -21,6 +25,13 @@ _RATIO_KEYS = frozenset(
         "debt_to_revenue",
     }
 )
+
+
+@dataclass(slots=True)
+class ExtractorStageTrace:
+    context: ExtractorContext
+    raw_candidates: RawCandidates
+    guardrail_events: list[semantics.GuardrailEvent]
 
 
 def _build_context(tables: list, text: str) -> ExtractorContext:
@@ -83,6 +94,7 @@ def _build_metadata_result(
     *,
     guardrail_events: list[semantics.GuardrailEvent] | None = None,
     include_decision_logs: bool = False,
+    confidence_policy: ConfidencePolicy | None = None,
 ) -> (
     dict[str, ExtractionMetadata]
     | tuple[dict[str, ExtractionMetadata], dict[str, semantics.SemanticsDecisionLog]]
@@ -110,9 +122,16 @@ def _build_metadata_result(
             continue
 
         if decision_logs is None:
-            metadata = build_metadata_from_candidate(candidate)
+            metadata = build_metadata_from_candidate(
+                candidate,
+                confidence_policy=confidence_policy,
+            )
         else:
-            metadata, decision_log = build_metadata_with_decision_log(key, candidate)
+            metadata, decision_log = build_metadata_with_decision_log(
+                key,
+                candidate,
+                confidence_policy=confidence_policy,
+            )
             decision_logs[key] = decision_log
         value = metadata.value
         if context.signals.scale_factor != 1.0 and key not in _RATIO_KEYS:
@@ -146,18 +165,62 @@ def _build_metadata_result(
     return result, decision_logs
 
 
+def _invoke_stage_collector(
+    collector,
+    context: ExtractorContext,
+    raw: RawCandidates,
+    *,
+    guardrail_events: list[semantics.GuardrailEvent],
+) -> None:
+    try:
+        signature = inspect.signature(collector)
+    except (TypeError, ValueError):
+        collector(context, raw, guardrail_events=guardrail_events)
+        return
+
+    if "guardrail_events" in signature.parameters:
+        collector(context, raw, guardrail_events=guardrail_events)
+        return
+
+    collector(context, raw)
+
+
+def _invoke_metadata_builder(
+    builder,
+    context: ExtractorContext,
+    raw: RawCandidates,
+    *,
+    guardrail_events: list[semantics.GuardrailEvent],
+    include_decision_logs: bool,
+    confidence_policy: ConfidencePolicy | None,
+):
+    try:
+        signature = inspect.signature(builder)
+    except (TypeError, ValueError):
+        return builder(
+            context,
+            raw,
+            guardrail_events=guardrail_events,
+            include_decision_logs=include_decision_logs,
+            confidence_policy=confidence_policy,
+        )
+
+    kwargs = {}
+    if "guardrail_events" in signature.parameters:
+        kwargs["guardrail_events"] = guardrail_events
+    if "include_decision_logs" in signature.parameters:
+        kwargs["include_decision_logs"] = include_decision_logs
+    if "confidence_policy" in signature.parameters:
+        kwargs["confidence_policy"] = confidence_policy
+    return builder(context, raw, **kwargs)
+
+
 def parse_financial_statements_with_metadata(
     tables: list,
     text: str,
 ) -> dict[str, ExtractionMetadata]:
-    context = _build_context(tables, text)
-    raw = RawCandidates()
-
-    _collect_table_candidates(context, raw)
-    _collect_text_candidates(context, raw)
-    _derive_missing_metrics(context, raw)
-
-    return _build_metadata_result(context, raw)
+    trace = build_extractor_trace(tables, text)
+    return build_metadata_from_trace(trace)
 
 
 def parse_financial_statements(tables: list, text: str) -> dict[str, float | None]:
@@ -165,35 +228,66 @@ def parse_financial_statements(tables: list, text: str) -> dict[str, float | Non
     return {key: meta.value for key, meta in metadata.items()}
 
 
-def parse_financial_statements_debug(
+def build_extractor_trace(
     tables: list,
     text: str,
-) -> semantics.ExtractionDebugTrace:
+) -> ExtractorStageTrace:
     context = _build_context(tables, text)
     raw = RawCandidates()
     guardrail_events: list[semantics.GuardrailEvent] = []
 
     _collect_table_candidates(context, raw)
-    _collect_text_candidates(
+    _invoke_stage_collector(
+        _collect_text_candidates,
         context,
         raw,
         guardrail_events=guardrail_events,
     )
-    _derive_missing_metrics(
+    _invoke_stage_collector(
+        _derive_missing_metrics,
         context,
         raw,
         guardrail_events=guardrail_events,
     )
-    metadata, decision_logs = _build_metadata_result(
-        context,
-        raw,
+    return ExtractorStageTrace(
+        context=context,
+        raw_candidates=raw,
         guardrail_events=guardrail_events,
+    )
+
+
+def build_metadata_from_trace(
+    trace: ExtractorStageTrace,
+    *,
+    confidence_policy: ConfidencePolicy | None = None,
+    include_decision_logs: bool = False,
+) -> (
+    dict[str, ExtractionMetadata]
+    | tuple[dict[str, ExtractionMetadata], dict[str, semantics.SemanticsDecisionLog]]
+):
+    return _invoke_metadata_builder(
+        _build_metadata_result,
+        trace.context,
+        trace.raw_candidates,
+        guardrail_events=trace.guardrail_events,
+        include_decision_logs=include_decision_logs,
+        confidence_policy=confidence_policy,
+    )
+
+
+def parse_financial_statements_debug(
+    tables: list,
+    text: str,
+) -> semantics.ExtractionDebugTrace:
+    trace = build_extractor_trace(tables, text)
+    metadata, decision_logs = build_metadata_from_trace(
+        trace,
         include_decision_logs=True,
     )
     return semantics.ExtractionDebugTrace(
         metadata=metadata,
         decision_logs=decision_logs,
-        guardrail_events=guardrail_events,
+        guardrail_events=trace.guardrail_events,
     )
 
 

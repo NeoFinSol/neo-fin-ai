@@ -3,6 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, Iterable
 
+from .confidence_policy import (
+    BASELINE_RUNTIME_CONFIDENCE_POLICY,
+    CALIBRATED_RUNTIME_CONFIDENCE_POLICY,
+    RUNTIME_CONFIDENCE_POLICY,
+    STRUCTURAL_BONUS_SIGNALS,
+    ConfidencePolicy,
+    EvidenceProfile,
+    build_policy_decision_log,
+)
 from .types import ExtractionMetadata
 
 V1: Final = "v1"
@@ -80,14 +89,6 @@ ProfileKey = tuple[str, str, str]
 
 
 @dataclass(frozen=True, slots=True)
-class EvidenceProfile:
-    rank: int
-    baseline_confidence: float
-    description: str
-    allowed_signal_whitelist: frozenset[str]
-
-
-@dataclass(frozen=True, slots=True)
 class ReasonDefinition:
     category: str
     final_state_eligible: bool
@@ -131,173 +132,15 @@ class ExtractionDebugTrace:
     guardrail_events: list[GuardrailEvent]
 
 
-STRUCTURAL_BONUS_SIGNALS: Final[frozenset[str]] = frozenset(
-    {
-        "ev:line_code",
-        "ev:section_total",
-        "ev:ocr_row_crop_exact",
-    }
-)
-
-QUALITY_BAND_HIGH_PLUS: Final = 0.04
-QUALITY_BAND_MEDIUM_PLUS: Final = 0.02
-QUALITY_BAND_NEUTRAL: Final = 0.00
-QUALITY_BAND_LOW_MINUS: Final = -0.04
-QUALITY_BAND_VERY_LOW_MINUS: Final = -0.08
-STRUCTURAL_BONUS: Final = 0.03
-GUARDRAIL_PENALTY: Final = -0.08
-CONFLICT_PENALTY_STEP: Final = -0.04
-CONFLICT_PENALTY_CAP: Final = -0.12
-
 SEMANTIC_SIGNAL_FLAGS: Final[frozenset[str]] = frozenset(
     {
         FLAG_POSTPROCESS_GUARDRAIL_ADJUSTED,
     }
 )
-
-EVIDENCE_PROFILES: Final[dict[ProfileKey, EvidenceProfile]] = {
-    (SOURCE_TABLE, MATCH_EXACT, MODE_DIRECT): EvidenceProfile(
-        rank=90,
-        baseline_confidence=0.92,
-        description="Exact metric match in a table row.",
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_TABLE, MATCH_CODE, MODE_DIRECT): EvidenceProfile(
-        rank=80,
-        baseline_confidence=0.88,
-        description="Table candidate supported by a statement line code.",
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_TABLE, MATCH_SECTION, MODE_DIRECT): EvidenceProfile(
-        rank=70,
-        baseline_confidence=0.80,
-        description="Table section total or heading-supported match.",
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_TEXT, MATCH_CODE, MODE_DIRECT): EvidenceProfile(
-        rank=60,
-        baseline_confidence=0.72,
-        description="Text candidate supported by statement line code.",
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_TEXT, MATCH_EXACT, MODE_DIRECT): EvidenceProfile(
-        rank=48,
-        baseline_confidence=0.66,
-        description="Exact textual line match without explicit statement code.",
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_TEXT, MATCH_SECTION, MODE_DIRECT): EvidenceProfile(
-        rank=44,
-        baseline_confidence=0.64,
-        description="Section-total match recovered from structured text.",
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_OCR, MATCH_EXACT, MODE_DIRECT): EvidenceProfile(
-        rank=55,
-        baseline_confidence=0.70,
-        description="OCR candidate with exact structural match.",
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_OCR, MATCH_CODE, MODE_DIRECT): EvidenceProfile(
-        rank=50,
-        baseline_confidence=0.68,
-        description="OCR candidate supported by statement line code.",
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_OCR, MATCH_SECTION, MODE_DIRECT): EvidenceProfile(
-        rank=45,
-        baseline_confidence=0.64,
-        description="OCR candidate supported by section-total structure.",
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_TABLE, MATCH_KEYWORD, MODE_DIRECT): EvidenceProfile(
-        rank=40,
-        baseline_confidence=0.62,
-        description=(
-            "Keyword match in a table row; higher than text keyword matches due to "
-            "tabular structural prior."
-        ),
-        allowed_signal_whitelist=STRUCTURAL_BONUS_SIGNALS,
-    ),
-    (SOURCE_TEXT, MATCH_KEYWORD, MODE_DIRECT): EvidenceProfile(
-        rank=30,
-        baseline_confidence=0.58,
-        description="Keyword match in plain text without stronger structure.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_DERIVED, MATCH_NA, MODE_DERIVED): EvidenceProfile(
-        rank=20,
-        baseline_confidence=0.35,
-        description="Value derived from already accepted evidence using an allowed formula.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_TABLE, MATCH_EXACT, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from table evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_TABLE, MATCH_CODE, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from code-supported table evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_TABLE, MATCH_SECTION, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from section-supported table evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_TABLE, MATCH_KEYWORD, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from keyword-supported table evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_TEXT, MATCH_CODE, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from code-supported text evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_TEXT, MATCH_SECTION, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from section-supported text evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_TEXT, MATCH_KEYWORD, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from keyword-supported text evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_OCR, MATCH_EXACT, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from OCR exact evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_OCR, MATCH_CODE, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from OCR code-supported evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_OCR, MATCH_SECTION, MODE_APPROXIMATION): EvidenceProfile(
-        rank=10,
-        baseline_confidence=0.20,
-        description="Approximation from OCR section-supported evidence.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-    (SOURCE_ISSUER_FALLBACK, MATCH_NA, MODE_POLICY_OVERRIDE): EvidenceProfile(
-        rank=0,
-        baseline_confidence=0.95,
-        description="Authoritative repo-backed issuer override policy path.",
-        allowed_signal_whitelist=frozenset(),
-    ),
-}
+ACTIVE_CONFIDENCE_POLICY: Final[ConfidencePolicy] = RUNTIME_CONFIDENCE_POLICY
+EVIDENCE_PROFILES: Final[dict[ProfileKey, EvidenceProfile]] = (
+    ACTIVE_CONFIDENCE_POLICY.profiles
+)
 
 REASON_REGISTRY: Final[dict[str, ReasonDefinition]] = {
     REASON_ISSUER_REPO_OVERRIDE: ReasonDefinition(
@@ -406,18 +249,11 @@ REASON_REGISTRY: Final[dict[str, ReasonDefinition]] = {
 
 
 def get_profile(profile_key: ProfileKey) -> EvidenceProfile:
-    try:
-        return EVIDENCE_PROFILES[profile_key]
-    except KeyError as exc:
-        raise ValueError(f"Unsupported evidence profile: {profile_key!r}") from exc
+    return ACTIVE_CONFIDENCE_POLICY.get_profile(profile_key)
 
 
 def compare_profile_trust(left: ProfileKey, right: ProfileKey) -> int:
-    left_profile = get_profile(left)
-    right_profile = get_profile(right)
-    return (left_profile.rank > right_profile.rank) - (
-        left_profile.rank < right_profile.rank
-    )
+    return ACTIVE_CONFIDENCE_POLICY.compare_profile_trust(left, right)
 
 
 def get_reason_definition(reason_code: str) -> ReasonDefinition:
@@ -466,37 +302,26 @@ def guardrail_events_for_metric(
 
 
 def quality_delta(candidate_quality: int | None) -> float:
-    if candidate_quality is None:
-        return QUALITY_BAND_NEUTRAL
-    if candidate_quality >= 110:
-        return QUALITY_BAND_HIGH_PLUS
-    if candidate_quality >= 90:
-        return QUALITY_BAND_MEDIUM_PLUS
-    if candidate_quality >= 75:
-        return QUALITY_BAND_NEUTRAL
-    if candidate_quality >= 60:
-        return QUALITY_BAND_LOW_MINUS
-    return QUALITY_BAND_VERY_LOW_MINUS
+    return ACTIVE_CONFIDENCE_POLICY.quality_delta(candidate_quality)
 
 
 def structural_bonus(
     signal_flags: list[str] | tuple[str, ...] | frozenset[str]
 ) -> float:
-    if any(flag in STRUCTURAL_BONUS_SIGNALS for flag in signal_flags):
-        return STRUCTURAL_BONUS
+    if any(
+        flag in ACTIVE_CONFIDENCE_POLICY.structural_bonus_signals
+        for flag in signal_flags
+    ):
+        return ACTIVE_CONFIDENCE_POLICY.structural_bonus_delta
     return 0.0
 
 
 def conflict_penalty(conflict_count: int) -> float:
-    if conflict_count <= 0:
-        return 0.0
-    return max(CONFLICT_PENALTY_CAP, conflict_count * CONFLICT_PENALTY_STEP)
+    return ACTIVE_CONFIDENCE_POLICY.conflict_penalty(conflict_count)
 
 
 def guardrail_penalty(postprocess_state: str) -> float:
-    if postprocess_state == POSTPROCESS_GUARDRAIL:
-        return GUARDRAIL_PENALTY
-    return 0.0
+    return ACTIVE_CONFIDENCE_POLICY.guardrail_penalty(postprocess_state)
 
 
 def calculate_confidence(
@@ -506,6 +331,7 @@ def calculate_confidence(
     signal_flags: list[str] | tuple[str, ...] | frozenset[str],
     conflict_count: int,
     postprocess_state: str,
+    confidence_policy: ConfidencePolicy | None = None,
 ) -> float:
     return build_decision_log(
         profile_key,
@@ -516,6 +342,7 @@ def calculate_confidence(
         postprocess_state=postprocess_state,
         authoritative_override=False,
         reason_code=None,
+        confidence_policy=confidence_policy,
     ).final_confidence
 
 
@@ -529,26 +356,29 @@ def build_decision_log(
     postprocess_state: str,
     authoritative_override: bool,
     reason_code: str | None = None,
+    confidence_policy: ConfidencePolicy | None = None,
 ) -> SemanticsDecisionLog:
-    profile = get_profile(profile_key)
-    quality_delta_value = quality_delta(candidate_quality)
-    structural_bonus_value = structural_bonus(signal_flags)
-    conflict_penalty_value = conflict_penalty(conflict_count)
-    guardrail_penalty_value = guardrail_penalty(postprocess_state)
-    score = profile.baseline_confidence
-    score += quality_delta_value
-    score += structural_bonus_value
-    score += conflict_penalty_value
-    score += guardrail_penalty_value
+    policy = confidence_policy or ACTIVE_CONFIDENCE_POLICY
+    breakdown = build_policy_decision_log(
+        policy,
+        profile_key,
+        metric_key=metric_key,
+        candidate_quality=candidate_quality,
+        signal_flags=signal_flags,
+        conflict_count=conflict_count,
+        postprocess_state=postprocess_state,
+        authoritative_override=authoritative_override,
+        reason_code=reason_code,
+    )
     return SemanticsDecisionLog(
         metric_key=metric_key,
         profile_key=profile_key,
-        baseline_confidence=profile.baseline_confidence,
-        quality_delta=quality_delta_value,
-        structural_bonus=structural_bonus_value,
-        conflict_penalty=conflict_penalty_value,
-        guardrail_penalty=guardrail_penalty_value,
-        final_confidence=max(0.0, min(1.0, round(score, 6))),
+        baseline_confidence=breakdown.baseline_confidence,
+        quality_delta=breakdown.quality_delta,
+        structural_bonus=breakdown.structural_bonus,
+        conflict_penalty=breakdown.conflict_penalty,
+        guardrail_penalty=breakdown.guardrail_penalty,
+        final_confidence=breakdown.final_confidence,
         postprocess_state=postprocess_state,
         authoritative_override=authoritative_override,
         reason_code=reason_code,
@@ -714,7 +544,7 @@ def is_strong_direct_evidence(metadata: ExtractionMetadata) -> bool:
     normalized = normalize_legacy_metadata(metadata)
     if normalized.inference_mode != MODE_DIRECT:
         return False
-    return normalized.confidence >= 0.7
+    return normalized.confidence >= ACTIVE_CONFIDENCE_POLICY.strong_direct_threshold
 
 
 def is_replaceable_by_llm(

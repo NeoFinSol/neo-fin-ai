@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .confidence_policy import ConfidencePolicy
 from . import semantics
 from .types import (
     ExtractionMetadata,
@@ -13,6 +14,8 @@ def determine_source(
     match_type: str,
     is_exact: bool = False,
     is_derived: bool = False,
+    *,
+    confidence_policy: ConfidencePolicy | None = None,
 ) -> tuple[ExtractionSource, float]:
     """
     Backward-compatible helper that maps legacy raw match hints to a V2 source family
@@ -29,6 +32,7 @@ def determine_source(
         signal_flags=(),
         conflict_count=0,
         postprocess_state=semantics.POSTPROCESS_NONE,
+        confidence_policy=confidence_policy,
     )
     return source, confidence
 
@@ -256,14 +260,24 @@ def _resolve_candidate_semantics(
     )
 
 
-def build_metadata_from_candidate(candidate: RawMetricCandidate) -> ExtractionMetadata:
-    metadata, _ = build_metadata_with_decision_log("", candidate)
+def build_metadata_from_candidate(
+    candidate: RawMetricCandidate,
+    *,
+    confidence_policy: ConfidencePolicy | None = None,
+) -> ExtractionMetadata:
+    metadata, _ = build_metadata_with_decision_log(
+        "",
+        candidate,
+        confidence_policy=confidence_policy,
+    )
     return metadata
 
 
 def build_metadata_with_decision_log(
     metric_key: str,
     candidate: RawMetricCandidate,
+    *,
+    confidence_policy: ConfidencePolicy | None = None,
 ) -> tuple[ExtractionMetadata, semantics.SemanticsDecisionLog]:
     source = candidate.source
     match_semantics = candidate.match_semantics
@@ -287,6 +301,7 @@ def build_metadata_with_decision_log(
         postprocess_state=candidate.postprocess_state,
         authoritative_override=candidate.authoritative_override,
         reason_code=candidate.reason_code,
+        confidence_policy=confidence_policy,
     )
     confidence = decision_log.final_confidence
     metadata = ExtractionMetadata(

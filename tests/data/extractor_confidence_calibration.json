@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "threshold": 0.5,
+  "cases": [
+    {
+      "id": "table_exact_high_quality_survives",
+      "kind": "candidate_threshold",
+      "metric_key": "revenue",
+      "candidate": {
+        "value": 2300000.0,
+        "match_type": "table",
+        "is_exact": true,
+        "candidate_quality": 115,
+        "source": "table",
+        "match_semantics": "exact",
+        "inference_mode": "direct",
+        "signal_flags": []
+      },
+      "expected": {
+        "survives": true,
+        "expected_source": "table",
+        "source_decision_critical": true
+      }
+    },
+    {
+      "id": "weak_text_keyword_should_not_survive",
+      "kind": "candidate_threshold",
+      "metric_key": "revenue",
+      "candidate": {
+        "value": 1200000.0,
+        "match_type": "text_regex",
+        "is_exact": false,
+        "candidate_quality": 50,
+        "source": "text",
+        "match_semantics": "keyword_match",
+        "inference_mode": "direct",
+        "signal_flags": []
+      },
+      "expected": {
+        "survives": false
+      }
+    },
+    {
+      "id": "weak_ocr_exact_should_not_survive",
+      "kind": "candidate_threshold",
+      "metric_key": "total_assets",
+      "candidate": {
+        "value": 10000000.0,
+        "match_type": "text_regex",
+        "is_exact": true,
+        "candidate_quality": 50,
+        "source": "ocr",
+        "match_semantics": "exact",
+        "inference_mode": "direct",
+        "signal_flags": [
+          "ev:ocr_row_crop_exact"
+        ]
+      },
+      "expected": {
+        "survives": false
+      }
+    },
+    {
+      "id": "text_code_medium_quality_survives",
+      "kind": "candidate_threshold",
+      "metric_key": "revenue",
+      "candidate": {
+        "value": 2400000.0,
+        "match_type": "text_regex",
+        "is_exact": false,
+        "candidate_quality": 95,
+        "source": "text",
+        "match_semantics": "code_match",
+        "inference_mode": "direct",
+        "signal_flags": [
+          "ev:line_code"
+        ]
+      },
+      "expected": {
+        "survives": true,
+        "expected_source": "text",
+        "source_decision_critical": true
+      }
+    },
+    {
+      "id": "gross_profit_approximation_stays_filtered",
+      "kind": "candidate_threshold",
+      "metric_key": "ebitda",
+      "candidate": {
+        "value": 500000.0,
+        "match_type": "table",
+        "is_exact": false,
+        "candidate_quality": 75,
+        "source": "table",
+        "match_semantics": "keyword_match",
+        "inference_mode": "approximation",
+        "reason_code": "gross_profit_to_ebitda_approximation",
+        "signal_flags": []
+      },
+      "expected": {
+        "survives": false
+      }
+    },
+    {
+      "id": "llm_replaces_weak_text_keyword_fallback",
+      "kind": "merge",
+      "metric_key": "revenue",
+      "fallback_candidate": {
+        "value": 1200000.0,
+        "match_type": "text_regex",
+        "is_exact": false,
+        "candidate_quality": 50,
+        "source": "text",
+        "match_semantics": "keyword_match",
+        "inference_mode": "direct",
+        "signal_flags": []
+      },
+      "llm_metadata": {
+        "value": 15000000.0,
+        "confidence": 0.92,
+        "source": "text",
+        "evidence_version": "v2",
+        "match_semantics": "keyword_match",
+        "inference_mode": "direct",
+        "postprocess_state": "none",
+        "reason_code": "llm_extraction",
+        "signal_flags": [],
+        "candidate_quality": null,
+        "authoritative_override": false
+      },
+      "expected": {
+        "winner": "llm"
+      }
+    },
+    {
+      "id": "llm_keeps_authoritative_override",
+      "kind": "merge",
+      "metric_key": "ebitda",
+      "fallback_metadata": {
+        "value": 85628000000.0,
+        "confidence": 0.95,
+        "source": "issuer_fallback",
+        "evidence_version": "v2",
+        "match_semantics": "not_applicable",
+        "inference_mode": "policy_override",
+        "postprocess_state": "none",
+        "reason_code": "issuer_repo_override",
+        "signal_flags": [],
+        "candidate_quality": null,
+        "authoritative_override": true
+      },
+      "llm_metadata": {
+        "value": 81000000000.0,
+        "confidence": 0.99,
+        "source": "text",
+        "evidence_version": "v2",
+        "match_semantics": "keyword_match",
+        "inference_mode": "direct",
+        "postprocess_state": "none",
+        "reason_code": "llm_extraction",
+        "signal_flags": [],
+        "candidate_quality": null,
+        "authoritative_override": false
+      },
+      "expected": {
+        "winner": "fallback"
+      }
+    },
+    {
+      "id": "parse_table_exact_source_is_decision_critical",
+      "kind": "parse",
+      "tables": [
+        {
+          "flavor": "lattice",
+          "rows": [
+            [
+              "Выручка",
+              "5",
+              "2 300 000",
+              "2 100 000"
+            ]
+          ]
+        }
+      ],
+      "text": "",
+      "expectations": {
+        "revenue": {
+          "value": 2300000.0,
+          "survives": true,
+          "expected_source": "table",
+          "source_decision_critical": true
+        }
+      }
+    },
+    {
+      "id": "parse_ifrs_approximation_remains_absent",
+      "kind": "parse",
+      "tables": [
+        {
+          "flavor": "lattice",
+          "rows": [
+            [
+              "Gross profit",
+              "500 000"
+            ]
+          ]
+        }
+      ],
+      "text": "",
+      "expectations": {
+        "ebitda": {
+          "survives": false
+        }
+      }
+    }
+  ]
+}

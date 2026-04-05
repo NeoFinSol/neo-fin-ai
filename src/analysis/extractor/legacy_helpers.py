@@ -10,6 +10,8 @@ import pytesseract
 from pdf2image import convert_from_path
 from pytesseract import Output
 
+from src.models.settings import app_settings
+
 logger = logging.getLogger(__name__)
 
 # Configure Tesseract via env variable (optional); falls back to system PATH
@@ -31,21 +33,7 @@ TESSERACT_AVAILABLE = _check_tesseract_available()
 # Maximum number of pages to process via OCR to prevent hangs on large scanned PDFs
 MAX_OCR_PAGES = 50
 
-_RAW_THRESHOLD = os.getenv("CONFIDENCE_THRESHOLD", "0.5")
-try:
-    CONFIDENCE_THRESHOLD: float = float(_RAW_THRESHOLD)
-    if not (0.0 <= CONFIDENCE_THRESHOLD <= 1.0):
-        logger.warning(
-            "CONFIDENCE_THRESHOLD=%s out of [0.0, 1.0], using default 0.5",
-            _RAW_THRESHOLD,
-        )
-        CONFIDENCE_THRESHOLD = 0.5
-except ValueError:
-    logger.warning(
-        "CONFIDENCE_THRESHOLD=%r is not a valid float, using default 0.5",
-        _RAW_THRESHOLD,
-    )
-    CONFIDENCE_THRESHOLD = 0.5
+CONFIDENCE_THRESHOLD: float = app_settings.confidence_threshold
 
 # ---------------------------------------------------------------------------
 # Extraction metadata types
