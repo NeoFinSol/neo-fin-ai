@@ -5,6 +5,8 @@ from typing import Any, Iterator
 
 from . import legacy_helpers
 
+_LEGACY_EXTRACT_TEXT_FROM_SCANNED = legacy_helpers.extract_text_from_scanned
+
 
 @contextmanager
 def _patched_legacy(**overrides: Any) -> Iterator[None]:
@@ -27,7 +29,7 @@ def is_scanned_pdf(pdf_path: str) -> bool:
     return legacy_helpers.is_scanned_pdf(pdf_path)
 
 
-def extract_text_from_scanned(pdf_path: str) -> str:
+def _extract_text_from_scanned_with_facade_dependencies(pdf_path: str) -> str:
     from src.analysis import pdf_extractor as facade
 
     with _patched_legacy(
@@ -41,4 +43,8 @@ def extract_text_from_scanned(pdf_path: str) -> str:
         _extract_layout_metric_value_lines=facade._extract_layout_metric_value_lines,
         _should_stop_scanned_ocr=facade._should_stop_scanned_ocr,
     ):
-        return legacy_helpers.extract_text_from_scanned(pdf_path)
+        return _LEGACY_EXTRACT_TEXT_FROM_SCANNED(pdf_path)
+
+
+def extract_text_from_scanned(pdf_path: str) -> str:
+    return _extract_text_from_scanned_with_facade_dependencies(pdf_path)

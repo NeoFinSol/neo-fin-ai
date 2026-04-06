@@ -6,6 +6,7 @@ from typing import Any, Iterator
 
 from . import legacy_helpers, semantics
 from .guardrails import _metric_candidate_quality
+from .ocr import _extract_text_from_scanned_with_facade_dependencies
 from .ranking import _raw_set
 from .rules import (
     _GARBLED_KEYWORDS,
@@ -41,7 +42,7 @@ def extract_tables(
 
     with _patched_legacy(
         camelot=facade.camelot,
-        extract_text_from_scanned=facade.extract_text_from_scanned,
+        extract_text_from_scanned=_extract_text_from_scanned_with_facade_dependencies,
     ):
         return legacy_helpers.extract_tables(pdf_path, force_ocr=force_ocr)
 

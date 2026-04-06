@@ -3,11 +3,14 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import logging
+import warnings
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Callable, Final
 
 from .confidence_policy import ConfidencePolicy
 from .pipeline import build_extractor_trace, build_metadata_from_trace
@@ -61,7 +64,20 @@ RISK_TAG_VOCABULARY: Final[tuple[str, ...]] = (
     "weak_keyword",
     "weak_ocr_direct",
 )
-PIPELINE_MODES: Final[tuple[str, ...]] = ("text_only", "tables+text")
+PIPELINE_MODES: Final[tuple[str, ...]] = (
+    "text_only",
+    "tables+text",
+    "force_ocr",
+)
+DIAGNOSTIC_KINDS: Final[tuple[str, ...]] = (
+    "camelot_warning",
+    "camelot_timeout",
+    "ocr_fallback_warning",
+    "unexpected_error",
+)
+_CAPTURED_WARNING_LOGGERS: Final[tuple[str, ...]] = (
+    "src.analysis.extractor.legacy_helpers",
+)
 CANONICAL_TRUST_ORDER: Final[tuple[tuple[str, str, str], ...]] = (
     ("table", "exact", "direct"),
     ("table", "code_match", "direct"),
@@ -158,6 +174,9 @@ class MergeCase:
     metric_key: str
     llm_metadata: ExtractionMetadata
     expected_winner: str
+    expected_source: str | None = None
+    expected_authoritative_override: bool | None = None
+    expected_reason_code: str | None = None
     fallback_candidate: CandidateDescriptor | None = None
     fallback_metadata: ExtractionMetadata | None = None
 
@@ -238,11 +257,42 @@ class ResolvedFixture:
 
 
 @dataclass(frozen=True, slots=True)
+class CapturedDiagnosticEvent:
+    sequence: int
+    kind: str
+    message: str
+    source: str
+    logger_name: str | None = None
+    warning_category: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureParseBundle:
+    tables: tuple[dict[str, Any], ...]
+    text: str
+    diagnostics: tuple[CapturedDiagnosticEvent, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationRuntime:
     name: str
     confidence_policy: ConfidencePolicy
     threshold: float
     strong_direct_threshold: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DiagnosticEvent:
+    sequence: int
+    kind: str
+    suite_id: str
+    suite_tier: str
+    case_id: str
+    fixture_ref: str | None
+    message: str
+    source: str
+    logger_name: str | None = None
+    warning_category: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +315,12 @@ class CaseOutcome:
     source_strictness: str = "unspecified"
     expected_source: str | None = None
     source_mismatch: bool = False
+    authoritative_override: bool | None = None
+    expected_authoritative_override: bool | None = None
+    authoritative_override_mismatch: bool = False
+    reason_code: str | None = None
+    expected_reason_code: str | None = None
+    reason_code_mismatch: bool = False
     survived: bool | None = None
     false_accept: bool = False
     false_reject: bool = False
@@ -309,6 +365,7 @@ class PolicyEvaluationReport:
     suite_summaries: dict[str, EvaluationSummary]
     case_outcomes: dict[str, CaseOutcome]
     source_mismatch_audit: SourceMismatchAudit
+    diagnostics: tuple[DiagnosticEvent, ...] = ()
 
     @property
     def summary(self) -> EvaluationSummary:
@@ -394,6 +451,128 @@ def _suite_sort_key(suite_id: str, suite_tier: str) -> tuple[int, str]:
     return (_SUITE_TIER_RANK.get(suite_tier, len(_SUITE_TIER_RANK)), suite_id)
 
 
+class CalibrationCaseEvaluationError(RuntimeError):
+    def __init__(
+        self,
+        original_exc: Exception,
+        diagnostics: tuple[DiagnosticEvent, ...],
+    ) -> None:
+        super().__init__(str(original_exc))
+        self.original_exc = original_exc
+        self.diagnostics = diagnostics
+
+
+class _DiagnosticLogHandler(logging.Handler):
+    def __init__(self, recorder: Callable[..., None]) -> None:
+        super().__init__(level=logging.WARNING)
+        self._recorder = recorder
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._recorder(
+            kind=_classify_diagnostic_kind(record.getMessage(), source="log"),
+            message=record.getMessage(),
+            source="log",
+            logger_name=record.name,
+        )
+
+
+def _classify_diagnostic_kind(message: str, *, source: str) -> str:
+    lowered = message.lower()
+    if source == "exception":
+        return "unexpected_error"
+    if "camelot" in lowered and "timed out" in lowered:
+        return "camelot_timeout"
+    if "camelot" in lowered or "no tables found" in lowered or "image-based" in lowered:
+        return "camelot_warning"
+    if "ocr" in lowered:
+        return "ocr_fallback_warning"
+    return "camelot_warning" if source == "warning" else "ocr_fallback_warning"
+
+
+@contextmanager
+def _capture_fixture_diagnostics() -> Any:
+    diagnostics: list[CapturedDiagnosticEvent] = []
+    sequence = 0
+
+    def _record(
+        *,
+        kind: str,
+        message: str,
+        source: str,
+        logger_name: str | None = None,
+        warning_category: str | None = None,
+    ) -> None:
+        nonlocal sequence
+        sequence += 1
+        diagnostics.append(
+            CapturedDiagnosticEvent(
+                sequence=sequence,
+                kind=kind,
+                message=message,
+                source=source,
+                logger_name=logger_name,
+                warning_category=warning_category,
+            )
+        )
+
+    handler = _DiagnosticLogHandler(_record)
+    logger_state: list[
+        tuple[logging.Logger, list[logging.Handler], int, bool, bool]
+    ] = []
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("always")
+        original_showwarning = warnings.showwarning
+
+        def _showwarning(
+            message: warnings.WarningMessage | Warning,
+            category: type[Warning],
+            filename: str,
+            lineno: int,
+            file: Any | None = None,
+            line: str | None = None,
+        ) -> None:
+            _record(
+                kind=_classify_diagnostic_kind(str(message), source="warning"),
+                message=str(message),
+                source="warning",
+                warning_category=category.__name__,
+            )
+
+        warnings.showwarning = _showwarning
+        try:
+            for logger_name in _CAPTURED_WARNING_LOGGERS:
+                logger = logging.getLogger(logger_name)
+                logger_state.append(
+                    (
+                        logger,
+                        list(logger.handlers),
+                        logger.level,
+                        logger.propagate,
+                        logger.disabled,
+                    )
+                )
+                logger.handlers = [handler]
+                logger.setLevel(logging.WARNING)
+                logger.propagate = False
+                logger.disabled = False
+            yield diagnostics
+        except Exception as exc:
+            _record(
+                kind=_classify_diagnostic_kind(str(exc), source="exception"),
+                message=f"{type(exc).__name__}: {exc}",
+                source="exception",
+            )
+            raise
+        finally:
+            warnings.showwarning = original_showwarning
+            for logger, handlers, level, propagate, disabled in reversed(logger_state):
+                logger.handlers = handlers
+                logger.setLevel(level)
+                logger.propagate = propagate
+                logger.disabled = disabled
+
+
 def _load_json(path: Path) -> dict[str, Any] | list[dict[str, Any]]:
     with path.open(encoding="utf-8") as fh:
         return json.load(fh)
@@ -451,6 +630,25 @@ def _build_expectation(payload: dict[str, Any]) -> MetricExpectation:
         tolerance=float(payload.get("tolerance", 0.0)),
         expected_source=expected_source,
         source_strictness=source_strictness,
+    )
+
+
+def _build_merge_expectation(
+    payload: dict[str, Any],
+) -> tuple[str, str | None, bool | None, str | None]:
+    expected_winner = payload["winner"]
+    expected_source = payload.get("expected_source")
+    expected_authoritative_override = payload.get("expected_authoritative_override")
+    if expected_authoritative_override is not None:
+        expected_authoritative_override = bool(expected_authoritative_override)
+    expected_reason_code = payload.get("expected_reason_code")
+    if expected_reason_code is not None and not expected_reason_code:
+        raise ValueError("expected_reason_code cannot be empty")
+    return (
+        expected_winner,
+        expected_source,
+        expected_authoritative_override,
+        expected_reason_code,
     )
 
 
@@ -561,6 +759,12 @@ def _load_suite_file(path: Path) -> tuple[int, float, CalibrationSuite]:
                 raise ValueError(
                     "Merge cases require fallback_candidate or fallback_metadata"
                 )
+            (
+                expected_winner,
+                expected_source,
+                expected_authoritative_override,
+                expected_reason_code,
+            ) = _build_merge_expectation(raw_case["expected"])
             cases.append(
                 MergeCase(
                     case_id=case_id,
@@ -573,7 +777,10 @@ def _load_suite_file(path: Path) -> tuple[int, float, CalibrationSuite]:
                     pipeline_mode=pipeline_mode,
                     metric_key=raw_case["metric_key"],
                     llm_metadata=_build_metadata(raw_case["llm_metadata"]),
-                    expected_winner=raw_case["expected"]["winner"],
+                    expected_winner=expected_winner,
+                    expected_source=expected_source,
+                    expected_authoritative_override=expected_authoritative_override,
+                    expected_reason_code=expected_reason_code,
                     fallback_candidate=(
                         _build_candidate_descriptor(fallback_candidate)
                         if fallback_candidate is not None
@@ -684,13 +891,34 @@ def _load_fixture_catalog(
     fixtures: dict[str, ResolvedFixture] = {}
     for item in payload:
         fixture_id = item["id"]
-        fixture_path = manifest_path.parent / item["filename"]
+        fixture_path = _resolve_manifest_fixture_path(
+            manifest_path,
+            item["filename"],
+        )
         fixtures[fixture_id] = ResolvedFixture(
             fixture_id=fixture_id,
             path=fixture_path,
             sha256=item["sha256"],
         )
     return fixtures
+
+
+def _resolve_manifest_fixture_path(manifest_path: Path, filename: str) -> Path:
+    normalized_filename = filename.replace("\\", "/")
+    if normalized_filename.startswith("/") or (
+        len(normalized_filename) > 1 and normalized_filename[1] == ":"
+    ):
+        raise ValueError(
+            f"Fixture filename must be relative to the committed fixture manifest root: {filename!r}"
+        )
+    candidate = (manifest_path.parent / Path(normalized_filename)).resolve()
+    try:
+        candidate.relative_to(manifest_path.parent.resolve())
+    except ValueError as exc:
+        raise ValueError(
+            f"Fixture filename must resolve inside the committed fixture manifest root: {filename!r}"
+        ) from exc
+    return candidate
 
 
 def resolve_fixture_ref(
@@ -710,11 +938,11 @@ def _sha256(path: Path) -> str:
 
 
 @lru_cache(maxsize=16)
-def _load_fixture_parse_inputs(
+def _load_fixture_parse_bundle(
     fixture_manifest_path: str,
     fixture_id: str,
     pipeline_mode: str,
-) -> tuple[list[dict[str, Any]], str]:
+) -> FixtureParseBundle:
     if pipeline_mode not in PIPELINE_MODES:
         raise ValueError(f"Unsupported pipeline_mode: {pipeline_mode!r}")
 
@@ -731,27 +959,54 @@ def _load_fixture_parse_inputs(
 
     from src.analysis import pdf_extractor
 
-    text = pdf_extractor.extract_text(str(resolved.path))
-    if pipeline_mode == "text_only":
-        tables: list[dict[str, Any]] = []
-    else:
-        tables = pdf_extractor.extract_tables(str(resolved.path))
-    return copy.deepcopy(tables), text
+    with _capture_fixture_diagnostics() as captured_diagnostics:
+        if pipeline_mode == "force_ocr":
+            # `force_ocr` is an OCR-only calibration execution mode, not a
+            # document classification. It intentionally bypasses table extraction.
+            text = pdf_extractor.extract_text_from_scanned(str(resolved.path))
+            tables: list[dict[str, Any]] = []
+        else:
+            text = pdf_extractor.extract_text(str(resolved.path))
+            if pipeline_mode == "text_only":
+                tables = []
+            else:
+                tables = pdf_extractor.extract_tables(str(resolved.path))
+    return FixtureParseBundle(
+        tables=tuple(copy.deepcopy(tables)),
+        text=text,
+        diagnostics=tuple(captured_diagnostics),
+    )
+
+
+def _load_fixture_parse_inputs(
+    fixture_manifest_path: str,
+    fixture_id: str,
+    pipeline_mode: str,
+) -> tuple[list[dict[str, Any]], str]:
+    bundle = _load_fixture_parse_bundle(
+        fixture_manifest_path,
+        fixture_id,
+        pipeline_mode,
+    )
+    return copy.deepcopy(list(bundle.tables)), bundle.text
+
+
+_load_fixture_parse_inputs.cache_clear = _load_fixture_parse_bundle.cache_clear  # type: ignore[attr-defined]
 
 
 def _prepare_parse_inputs(
     case: ParseCase,
     *,
     fixture_manifest_path: Path | str,
-) -> tuple[list[dict[str, Any]], str]:
+) -> tuple[list[dict[str, Any]], str, tuple[CapturedDiagnosticEvent, ...]]:
     if case.fixture_ref is None:
-        return copy.deepcopy(list(case.tables)), case.text
-    tables, text = _load_fixture_parse_inputs(
+        return copy.deepcopy(list(case.tables)), case.text, ()
+    bundle = _load_fixture_parse_bundle(
         str(Path(fixture_manifest_path).resolve()),
         case.fixture_ref,
         case.pipeline_mode,
     )
-    return copy.deepcopy(tables), text
+    return copy.deepcopy(list(bundle.tables)), bundle.text, bundle.diagnostics
 
 
 def _to_candidate(descriptor: CandidateDescriptor) -> RawMetricCandidate:
@@ -863,23 +1118,61 @@ def _evaluate_candidate_threshold_case(
     )
 
 
+def _materialize_case_diagnostics(
+    case: ParseCase,
+    captured: tuple[CapturedDiagnosticEvent, ...],
+) -> list[DiagnosticEvent]:
+    return [
+        DiagnosticEvent(
+            sequence=event.sequence,
+            kind=event.kind,
+            suite_id=case.suite_id,
+            suite_tier=case.suite_tier,
+            case_id=case.case_id,
+            fixture_ref=case.fixture_ref,
+            message=event.message,
+            source=event.source,
+            logger_name=event.logger_name,
+            warning_category=event.warning_category,
+        )
+        for event in captured
+    ]
+
+
 def _evaluate_parse_case(
     case: ParseCase,
     runtime: EvaluationRuntime,
     *,
     fixture_manifest_path: Path | str,
-) -> list[CaseOutcome]:
-    tables, text = _prepare_parse_inputs(
+) -> tuple[list[CaseOutcome], list[DiagnosticEvent]]:
+    tables, text, captured_diagnostics = _prepare_parse_inputs(
         case,
         fixture_manifest_path=fixture_manifest_path,
     )
-    trace = build_extractor_trace(tables, text)
-    metadata, _ = build_metadata_from_trace(
-        trace,
-        confidence_policy=runtime.confidence_policy,
-        include_decision_logs=True,
-    )
-    return [
+    diagnostics = _materialize_case_diagnostics(case, captured_diagnostics)
+    try:
+        trace = build_extractor_trace(tables, text)
+        metadata, _ = build_metadata_from_trace(
+            trace,
+            confidence_policy=runtime.confidence_policy,
+            include_decision_logs=True,
+        )
+    except Exception as exc:
+        diagnostics.append(
+            DiagnosticEvent(
+                sequence=len(diagnostics) + 1,
+                kind="unexpected_error",
+                suite_id=case.suite_id,
+                suite_tier=case.suite_tier,
+                case_id=case.case_id,
+                fixture_ref=case.fixture_ref,
+                message=f"{type(exc).__name__}: {exc}",
+                source="exception",
+            )
+        )
+        raise CalibrationCaseEvaluationError(exc, tuple(diagnostics)) from exc
+
+    outcomes = [
         _evaluate_threshold_expectation(
             outcome_id=f"{case.case_id}::{metric_key}",
             case_id=case.case_id,
@@ -897,6 +1190,7 @@ def _evaluate_parse_case(
         )
         for metric_key, expectation in sorted(case.expectations.items())
     ]
+    return outcomes, diagnostics
 
 
 def _evaluate_merge_case(
@@ -925,6 +1219,49 @@ def _evaluate_merge_case(
     selected = case.llm_metadata if prefer_llm else fallback_metadata
     confidence = selected.confidence if selected is not None else 0.0
     source = selected.source if selected is not None else None
+    authoritative_override = (
+        selected.authoritative_override if selected is not None else None
+    )
+    reason_code = selected.reason_code if selected is not None else None
+    source_mismatch = (
+        case.expected_source is not None and source != case.expected_source
+    )
+    authoritative_override_mismatch = (
+        case.expected_authoritative_override is not None
+        and authoritative_override != case.expected_authoritative_override
+    )
+    reason_code_mismatch = (
+        case.expected_reason_code is not None
+        and reason_code != case.expected_reason_code
+    )
+    correct = actual_winner == case.expected_winner
+    if correct and source_mismatch:
+        correct = False
+    if correct and authoritative_override_mismatch:
+        correct = False
+    if correct and reason_code_mismatch:
+        correct = False
+
+    expected_outcome_parts = [case.expected_winner]
+    if case.expected_source is not None:
+        expected_outcome_parts.append(case.expected_source)
+    if case.expected_authoritative_override is not None:
+        expected_outcome_parts.append(
+            f"authoritative_override={case.expected_authoritative_override!s}"
+        )
+    if case.expected_reason_code is not None:
+        expected_outcome_parts.append(f"reason_code={case.expected_reason_code}")
+
+    actual_outcome_parts = [actual_winner]
+    if source is not None:
+        actual_outcome_parts.append(source)
+    if authoritative_override is not None:
+        actual_outcome_parts.append(
+            f"authoritative_override={authoritative_override!s}"
+        )
+    if reason_code is not None:
+        actual_outcome_parts.append(f"reason_code={reason_code}")
+
     return CaseOutcome(
         outcome_id=case.case_id,
         case_id=case.case_id,
@@ -936,11 +1273,22 @@ def _evaluate_merge_case(
         anchor=case.anchor,
         fixture_ref=case.fixture_ref,
         decision_type="merge",
-        correct=actual_winner == case.expected_winner,
-        outcome=actual_winner,
-        expected_outcome=case.expected_winner,
+        correct=correct,
+        outcome="|".join(actual_outcome_parts),
+        expected_outcome="|".join(expected_outcome_parts),
         confidence=confidence,
         source=source,
+        source_strictness=(
+            "critical" if case.expected_source is not None else "unspecified"
+        ),
+        expected_source=case.expected_source,
+        source_mismatch=source_mismatch,
+        authoritative_override=authoritative_override,
+        expected_authoritative_override=case.expected_authoritative_override,
+        authoritative_override_mismatch=authoritative_override_mismatch,
+        reason_code=reason_code,
+        expected_reason_code=case.expected_reason_code,
+        reason_code_mismatch=reason_code_mismatch,
         survived=None,
     )
 
@@ -1282,6 +1630,58 @@ def _build_coverage_audit(manifest: CalibrationManifest) -> CoverageAudit:
     )
 
 
+def _diagnostic_event_to_dict(event: DiagnosticEvent) -> dict[str, Any]:
+    return {
+        "sequence": event.sequence,
+        "kind": event.kind,
+        "suite_id": event.suite_id,
+        "suite_tier": event.suite_tier,
+        "case_id": event.case_id,
+        "fixture_ref": event.fixture_ref,
+        "message": event.message,
+        "source": event.source,
+        "logger_name": event.logger_name,
+        "warning_category": event.warning_category,
+    }
+
+
+def _build_diagnostics_export(
+    report_obj: PolicyEvaluationReport,
+) -> dict[str, Any]:
+    aggregate_counts = {kind: 0 for kind in DIAGNOSTIC_KINDS}
+    suite_counts = {
+        suite_id: {kind: 0 for kind in DIAGNOSTIC_KINDS}
+        for suite_id in report_obj.suite_summaries
+    }
+    case_events: dict[str, list[dict[str, Any]]] = {}
+    unexpected_diagnostics: list[dict[str, Any]] = []
+
+    for event in report_obj.diagnostics:
+        aggregate_counts[event.kind] += 1
+        suite_counts.setdefault(
+            event.suite_id,
+            {kind: 0 for kind in DIAGNOSTIC_KINDS},
+        )
+        suite_counts[event.suite_id][event.kind] += 1
+        case_events.setdefault(event.case_id, []).append(
+            _diagnostic_event_to_dict(event)
+        )
+        if event.kind == "unexpected_error":
+            unexpected_diagnostics.append(_diagnostic_event_to_dict(event))
+
+    return {
+        "aggregate": {
+            "counts": aggregate_counts,
+        },
+        "suites": {
+            suite_id: {"counts": counts}
+            for suite_id, counts in sorted(suite_counts.items())
+        },
+        "cases": {case_id: case_events[case_id] for case_id in sorted(case_events)},
+        "unexpected_diagnostics": unexpected_diagnostics,
+    }
+
+
 def evaluate_runtime(
     manifest: CalibrationManifest,
     runtime: EvaluationRuntime,
@@ -1289,19 +1689,24 @@ def evaluate_runtime(
     fixture_manifest_path: Path | str = DEFAULT_FIXTURE_MANIFEST_PATH,
 ) -> PolicyEvaluationReport:
     outcomes: list[CaseOutcome] = []
+    diagnostics: list[DiagnosticEvent] = []
 
     for suite in manifest.suites:
         for case in suite.cases:
             if isinstance(case, CandidateThresholdCase):
                 outcomes.append(_evaluate_candidate_threshold_case(case, runtime))
             elif isinstance(case, ParseCase):
-                outcomes.extend(
-                    _evaluate_parse_case(
+                try:
+                    case_outcomes, case_diagnostics = _evaluate_parse_case(
                         case,
                         runtime,
                         fixture_manifest_path=fixture_manifest_path,
                     )
-                )
+                except CalibrationCaseEvaluationError as exc:
+                    diagnostics.extend(exc.diagnostics)
+                    raise exc.original_exc from exc
+                outcomes.extend(case_outcomes)
+                diagnostics.extend(case_diagnostics)
             else:
                 outcomes.append(_evaluate_merge_case(case, runtime))
 
@@ -1320,6 +1725,7 @@ def evaluate_runtime(
         suite_summaries=suite_summaries,
         case_outcomes=case_outcomes,
         source_mismatch_audit=_build_source_mismatch_audit(outcomes),
+        diagnostics=tuple(diagnostics),
     )
 
 
@@ -1422,6 +1828,8 @@ def compare_policies(
 def render_calibration_report(report: PolicyComparisonReport) -> str:
     baseline = report.baseline.summary
     candidate = report.candidate.summary
+    baseline_diagnostics = _build_diagnostics_export(report.baseline)
+    candidate_diagnostics = _build_diagnostics_export(report.candidate)
     coverage_audit = report.coverage_audit or _build_coverage_audit(report.manifest)
     lines = [
         "# Extractor Confidence Calibration Evidence Pack",
@@ -1486,6 +1894,46 @@ def render_calibration_report(report: PolicyComparisonReport) -> str:
     lines.append(
         f"- Candidate critical mismatches: {', '.join(report.candidate.source_mismatch_audit.critical_mismatches) or 'none'}"
     )
+
+    lines.extend(["", "## Diagnostics Summary", ""])
+    lines.append(
+        "- Baseline diagnostics: "
+        + ", ".join(
+            f"{kind}={baseline_diagnostics['aggregate']['counts'][kind]}"
+            for kind in DIAGNOSTIC_KINDS
+        )
+    )
+    lines.append(
+        "- Candidate diagnostics: "
+        + ", ".join(
+            f"{kind}={candidate_diagnostics['aggregate']['counts'][kind]}"
+            for kind in DIAGNOSTIC_KINDS
+        )
+    )
+    if baseline_diagnostics["cases"] or candidate_diagnostics["cases"]:
+        lines.extend(["", "## Notable Noisy Cases", ""])
+        if baseline_diagnostics["cases"]:
+            lines.append("### Baseline")
+            lines.append("")
+            for case_id, events in baseline_diagnostics["cases"].items():
+                lines.append(
+                    f"- `{case_id}`: "
+                    + ", ".join(
+                        f"{event['sequence']}:{event['kind']}" for event in events
+                    )
+                )
+            lines.append("")
+        if candidate_diagnostics["cases"]:
+            lines.append("### Candidate")
+            lines.append("")
+            for case_id, events in candidate_diagnostics["cases"].items():
+                lines.append(
+                    f"- `{case_id}`: "
+                    + ", ".join(
+                        f"{event['sequence']}:{event['kind']}" for event in events
+                    )
+                )
+            lines.append("")
 
     lines.extend(["", "## Policy Diffs", ""])
     if not report.policy_diffs:
@@ -1599,6 +2047,12 @@ def report_to_dict(report: PolicyComparisonReport) -> dict[str, Any]:
             "source_strictness": outcome.source_strictness,
             "expected_source": outcome.expected_source,
             "source_mismatch": outcome.source_mismatch,
+            "authoritative_override": outcome.authoritative_override,
+            "expected_authoritative_override": outcome.expected_authoritative_override,
+            "authoritative_override_mismatch": outcome.authoritative_override_mismatch,
+            "reason_code": outcome.reason_code,
+            "expected_reason_code": outcome.expected_reason_code,
+            "reason_code_mismatch": outcome.reason_code_mismatch,
             "survived": outcome.survived,
             "false_accept": outcome.false_accept,
             "false_reject": outcome.false_reject,
@@ -1621,6 +2075,7 @@ def report_to_dict(report: PolicyComparisonReport) -> dict[str, Any]:
             "source_mismatch_audit": _source_mismatch_audit_to_dict(
                 report_obj.source_mismatch_audit
             ),
+            "diagnostics": _build_diagnostics_export(report_obj),
             "case_outcomes": {
                 outcome_id: _outcome_to_dict(report_obj.case_outcomes[outcome_id])
                 for outcome_id in sorted(report_obj.case_outcomes)

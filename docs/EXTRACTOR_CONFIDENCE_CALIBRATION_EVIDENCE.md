@@ -9,15 +9,15 @@
 
 | Policy | Accuracy | False Accepts | False Rejects | Survivors | Boundary Density | ECE | Brier |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| baseline_runtime_v2 | 0.750 | 2 | 0 | 10 | 0.438 | 0.148 | 0.228 |
-| calibrated_runtime_v2_2026_04 | 0.875 | 0 | 2 | 6 | 0.375 | 0.241 | 0.190 |
+| baseline_runtime_v2 | 0.656 | 2 | 1 | 23 | 0.438 | 0.086 | 0.215 |
+| calibrated_runtime_v2_2026_04 | 0.625 | 0 | 8 | 14 | 0.406 | 0.144 | 0.188 |
 
 ## Per-Suite Summary
 
 | Suite | Baseline Accuracy | Candidate Accuracy | Baseline Survivors | Candidate Survivors |
 | --- | ---: | ---: | ---: | ---: |
 | fast | 0.750 | 1.000 | 5 | 4 |
-| gated | 0.750 | 0.750 | 5 | 2 |
+| gated | 0.625 | 0.500 | 18 | 10 |
 
 ## Coverage Audit
 
@@ -30,10 +30,10 @@
 
 ## Source Mismatch Audit
 
-- Baseline advisory mismatches: none
-- Baseline critical mismatches: none
+- Baseline advisory mismatches: gated_magnit_2023_ifrs_boundary_anchor::equity, gated_magnit_2023_ifrs_boundary_anchor::net_profit, gated_magnit_2023_ifrs_boundary_anchor::revenue, gated_magnit_2023_ifrs_boundary_anchor::total_assets
+- Baseline critical mismatches: gated_magnit_2025_h1_debt_components_anchor::long_term_borrowings, gated_magnit_2025_h1_debt_components_anchor::long_term_lease_liabilities, gated_magnit_2025_h1_debt_components_anchor::short_term_borrowings, gated_magnit_2025_h1_debt_components_anchor::short_term_lease_liabilities
 - Candidate advisory mismatches: none
-- Candidate critical mismatches: none
+- Candidate critical mismatches: gated_magnit_2025_h1_debt_components_anchor::long_term_borrowings, gated_magnit_2025_h1_debt_components_anchor::long_term_lease_liabilities, gated_magnit_2025_h1_debt_components_anchor::short_term_borrowings, gated_magnit_2025_h1_debt_components_anchor::short_term_lease_liabilities
 
 ## Policy Diffs
 
@@ -75,36 +75,41 @@
 
 | Threshold | Accuracy | False Accepts | False Rejects | Survivors | Acceptance Rate |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.40 | 0.750 | 2 | 0 | 10 | 0.833 |
-| 0.45 | 0.750 | 2 | 0 | 10 | 0.833 |
-| 0.50 | 0.750 | 2 | 0 | 10 | 0.833 |
-| 0.55 | 0.688 | 1 | 4 | 5 | 0.417 |
-| 0.60 | 0.688 | 1 | 4 | 5 | 0.417 |
+| 0.40 | 0.656 | 2 | 1 | 23 | 0.885 |
+| 0.45 | 0.656 | 2 | 1 | 23 | 0.885 |
+| 0.50 | 0.656 | 2 | 1 | 23 | 0.885 |
+| 0.55 | 0.469 | 1 | 12 | 11 | 0.423 |
+| 0.60 | 0.469 | 1 | 16 | 7 | 0.269 |
 
 ### `calibrated_runtime_v2_2026_04`
 
 | Threshold | Accuracy | False Accepts | False Rejects | Survivors | Acceptance Rate |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.40 | 0.750 | 2 | 0 | 10 | 0.833 |
-| 0.45 | 0.750 | 2 | 0 | 10 | 0.833 |
-| 0.50 | 0.875 | 0 | 2 | 6 | 0.500 |
-| 0.55 | 0.750 | 0 | 4 | 4 | 0.333 |
-| 0.60 | 0.688 | 0 | 5 | 3 | 0.250 |
+| 0.40 | 0.656 | 2 | 1 | 23 | 0.885 |
+| 0.45 | 0.656 | 2 | 1 | 23 | 0.885 |
+| 0.50 | 0.625 | 0 | 8 | 14 | 0.538 |
+| 0.55 | 0.500 | 0 | 12 | 10 | 0.385 |
+| 0.60 | 0.469 | 0 | 17 | 5 | 0.192 |
 
 ## Notable Case Diffs
 
 ### `fast`
 
-- `fast_llm_replacement` (merge): `fallback` -> `llm` (correct `False` -> `True`)
+- `fast_llm_replacement` (merge): `fallback|text|authoritative_override=False` -> `llm|text|authoritative_override=False|reason_code=llm_extraction` (correct `False` -> `True`)
 - `fast_weak_text_keyword_absent` (threshold): `survive:text` -> `absent` (correct `False` -> `True`)
 
 ### `gated`
 
 - `gated_cloudflare_expected_absent_anchor` (threshold): `survive:ocr` -> `absent` (correct `False` -> `True`)
-- `gated_cloudflare_merge_anchor` (merge): `fallback` -> `llm` (correct `False` -> `True`)
+- `gated_cloudflare_merge_anchor` (merge): `fallback|text|authoritative_override=False` -> `llm|text|authoritative_override=False|reason_code=llm_extraction` (correct `False` -> `True`)
 - `gated_cloudflare_threshold_survival::cash_and_equivalents` (winner): `survive:text` -> `absent` (correct `True` -> `False`)
 - `gated_corvel_parse_anchor::revenue` (winner): `survive:text` -> `absent` (correct `True` -> `False`)
+- `gated_magnit_2023_ifrs_boundary_anchor::equity` (winner): `survive:text` -> `absent` (correct `False` -> `False`)
+- `gated_magnit_2023_ifrs_boundary_anchor::net_profit` (winner): `survive:text` -> `absent` (correct `True` -> `False`)
+- `gated_magnit_2023_ifrs_boundary_anchor::revenue` (winner): `survive:text` -> `absent` (correct `False` -> `False`)
+- `gated_magnit_2023_ifrs_boundary_anchor::total_assets` (winner): `survive:text` -> `absent` (correct `True` -> `False`)
+- `gated_magnit_q1_scanned_inventory_blind_spot::inventory` (winner): `survive:text` -> `absent` (correct `True` -> `False`)
 
 ## Shadow Consumer Diffs
 
-- `shadow_relaxed_consumer` accuracy=0.875, survivors=6, false_accepts=0, false_rejects=2
+- `shadow_relaxed_consumer` accuracy=0.625, survivors=14, false_accepts=0, false_rejects=8

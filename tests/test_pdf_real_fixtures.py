@@ -37,7 +37,11 @@ def _load_cases() -> list[dict]:
         return json.load(fh)
 
 
-REAL_PDF_CASES = _load_cases()
+def _load_smoke_cases() -> list[dict]:
+    return [case for case in _load_cases() if case.get("kind") == "smoke"]
+
+
+REAL_PDF_CASES = _load_smoke_cases()
 
 
 @pytest.mark.pdf_real
@@ -81,3 +85,34 @@ def test_pdf_real_smoke_fixtures(case: dict) -> None:
             f"{case['id']}: expected source for {key} in {expected_sources}, "
             f"got {actual_source}"
         )
+
+
+def test_default_smoke_loader_only_includes_smoke_kind() -> None:
+    assert REAL_PDF_CASES
+    assert all(case["kind"] == "smoke" for case in REAL_PDF_CASES)
+
+
+def test_calibration_anchor_fixtures_are_excluded_from_default_smoke_loader() -> None:
+    all_cases = _load_cases()
+    calibration_anchor_ids = {
+        case["id"] for case in all_cases if case.get("kind") == "calibration_anchor"
+    }
+    smoke_ids = {case["id"] for case in REAL_PDF_CASES}
+
+    assert calibration_anchor_ids
+    assert smoke_ids.isdisjoint(calibration_anchor_ids)
+
+
+def test_calibration_anchor_fixtures_resolve_via_calibration_harness() -> None:
+    from src.analysis.extractor.calibration import resolve_fixture_ref
+
+    calibration_anchor_ids = [
+        case["id"] for case in _load_cases() if case.get("kind") == "calibration_anchor"
+    ]
+
+    assert calibration_anchor_ids
+
+    for fixture_id in calibration_anchor_ids:
+        resolved = resolve_fixture_ref(fixture_id, fixture_manifest_path=MANIFEST_PATH)
+        assert resolved.fixture_id == fixture_id
+        assert resolved.path.exists()

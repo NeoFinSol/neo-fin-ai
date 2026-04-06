@@ -125,6 +125,13 @@ Fixture resolution contract intentionally minimal:
 - `filename`
 - `sha256`
 
+`fixture_ref` resolution must be manifest-only:
+
+- calibration cases не ссылаются напрямую на старые пути из `PDFforTests`;
+- harness резолвит fixture только через committed `manifest.json`;
+- `filename` обязан оставаться внутри committed fixture root;
+- `sha256` — часть fixture identity и invariant against silent fixture substitution, а не декоративная metadata.
+
 Calibration layer не должен зависеть от:
 
 - fixture-side semantics labels;
@@ -134,6 +141,25 @@ Calibration layer не должен зависеть от:
 - любых неустойчивых вспомогательных полей.
 
 `pipeline_mode` принадлежит calibration case, а не fixture manifest.
+
+`expected_scanned` — fixture-level observational property. Он не диктует `pipeline_mode`.
+
+Один и тот же committed fixture может участвовать в нескольких calibration cases с разными `pipeline_mode`, если это нужно для разных decision surfaces.
+
+Поддерживаемые `pipeline_mode`:
+
+- `text_only`
+- `tables+text`
+- `force_ocr`
+
+`force_ocr` — это OCR-only execution mode for calibration, not a document classification.
+
+Contract для `force_ocr`:
+
+- используется `extract_text_from_scanned(pdf)`;
+- table extraction отключена;
+- harness передаёт `tables = []`;
+- hybrid behavior в этой волне запрещён.
 
 ## Multi-Metric Parse Cases
 
@@ -208,3 +234,17 @@ Expected report layers:
 - consumer-policy redesign;
 - shadow-policy leakage into runtime;
 - explainability strictness expansion beyond source tri-state.
+
+## Russian Anchor Expansion
+
+Текущая волна selectively promotes committed Russian Magnit fixtures в `tests/data/pdf_real_fixtures/` как `kind: calibration_anchor`.
+
+Их назначение:
+
+- усиливать gated coverage;
+- добавлять OCR boundary / annual table boundary / issuer override / debt-component anchors;
+- не увеличивать default smoke cardinality.
+
+Инвариант acceptance для этой волны:
+
+- promoted Russian fixtures increase gated coverage without increasing default smoke cardinality.

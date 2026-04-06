@@ -15,7 +15,25 @@
 - `manifest_heavy.json` — отдельный manifest для optional heavy-tier с full pipeline
 - `*.pdf` — committed smoke fixtures
 
+`sha256` здесь хранится не “для справки”, а как часть fixture identity:
+
+- hash используется как invariant against silent fixture substitution;
+- calibration harness и smoke tests должны доверять только manifest-backed `filename + sha256`, а не старым локальным путям.
+
 ## Smoke tier (`manifest.json`)
+
+`manifest.json` теперь может содержать два `kind`:
+
+- `smoke`
+- `calibration_anchor`
+
+Default smoke loader обязан брать только `kind == "smoke"`.
+
+`kind == "calibration_anchor"` означает:
+
+- fixture committed и доступен calibration harness через `fixture_ref`;
+- fixture не попадает в default smoke path;
+- fixture существует для gated calibration coverage, а не для расширения fast CI cardinality.
 
 Для первой итерации smoke pack intentionally использует:
 
@@ -71,3 +89,11 @@ python -m pytest tests/test_pdf_real_heavy_fixtures.py -q --run-pdf-real-heavy
 ## OCR cases
 
 Формат `manifest_heavy.json` уже допускает `pipeline = "force_ocr"`, но committed scanned real-PDF fixtures пока не добавлены. Когда появится curated scanned corpus, он должен входить только в этот optional heavy layer, а не в default smoke path.
+
+Для calibration harness действует отдельный более жёсткий contract:
+
+- `force_ocr` — OCR-only execution mode for calibration, not a document classification;
+- `force_ocr` intentionally disables table extraction;
+- в calibration wave это всегда `extract_text_from_scanned(pdf)` + `tables = []`.
+
+Committed Russian fixtures в этой волне могут жить в `manifest.json` как `calibration_anchor`, не попадая в default smoke tier.

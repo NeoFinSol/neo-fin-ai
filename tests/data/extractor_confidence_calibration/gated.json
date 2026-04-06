@@ -185,6 +185,238 @@
       "expected": {
         "survives": false
       }
+    },
+    {
+      "case_id": "gated_magnit_2023_ifrs_boundary_anchor",
+      "kind": "parse",
+      "decision_surface": "threshold_boundary",
+      "risk_tags": ["boundary_near_0_5", "source_sensitive", "weak_keyword"],
+      "anchor": true,
+      "fixture_ref": "magnit_2023_ifrs",
+      "pipeline_mode": "tables+text",
+      "expectations": {
+        "equity": {
+          "survives": true,
+          "value": 158467332000.0,
+          "expected_source": "table",
+          "source_strictness": "advisory"
+        },
+        "net_profit": {
+          "survives": true,
+          "value": 58677601000.0,
+          "expected_source": "table",
+          "source_strictness": "advisory"
+        },
+        "revenue": {
+          "survives": true,
+          "value": 2544688774000.0,
+          "expected_source": "table",
+          "source_strictness": "advisory"
+        },
+        "total_assets": {
+          "survives": true,
+          "value": 1429543267000.0,
+          "expected_source": "table",
+          "source_strictness": "advisory"
+        }
+      }
+    },
+    {
+      "case_id": "gated_magnit_2023_ifrs_current_assets_winner",
+      "kind": "parse",
+      "decision_surface": "winner_selection",
+      "risk_tags": ["source_sensitive"],
+      "anchor": false,
+      "fixture_ref": "magnit_2023_ifrs",
+      "pipeline_mode": "tables+text",
+      "expectations": {
+        "current_assets": {
+          "survives": true,
+          "value": 544425405000.0,
+          "expected_source": "table",
+          "source_strictness": "critical"
+        }
+      }
+    },
+    {
+      "case_id": "gated_magnit_2025_h1_debt_components_anchor",
+      "kind": "parse",
+      "decision_surface": "winner_selection",
+      "risk_tags": ["source_sensitive"],
+      "anchor": true,
+      "fixture_ref": "magnit_2025_h1_ifrs",
+      "pipeline_mode": "tables+text",
+      "expectations": {
+        "long_term_borrowings": {
+          "survives": true,
+          "value": 281923796000.0,
+          "expected_source": "table",
+          "source_strictness": "critical"
+        },
+        "long_term_lease_liabilities": {
+          "survives": true,
+          "value": 501014759000.0,
+          "expected_source": "table",
+          "source_strictness": "critical"
+        },
+        "short_term_borrowings": {
+          "survives": true,
+          "value": 220921813000.0,
+          "expected_source": "table",
+          "source_strictness": "critical"
+        },
+        "short_term_lease_liabilities": {
+          "survives": true,
+          "value": 60914519000.0,
+          "expected_source": "table",
+          "source_strictness": "critical"
+        }
+      }
+    },
+    {
+      "case_id": "gated_magnit_2025_h1_override_ebitda",
+      "kind": "merge",
+      "decision_surface": "authoritative_override",
+      "risk_tags": ["replacement_path", "source_sensitive"],
+      "anchor": true,
+      "fixture_ref": "magnit_2025_h1_ifrs",
+      "metric_key": "ebitda",
+      "fallback_metadata": {
+        "value": 85628000000.0,
+        "confidence": 0.95,
+        "source": "issuer_fallback",
+        "evidence_version": "v2",
+        "match_semantics": "not_applicable",
+        "inference_mode": "policy_override",
+        "postprocess_state": "none",
+        "reason_code": "issuer_repo_override",
+        "signal_flags": [],
+        "candidate_quality": null,
+        "authoritative_override": true
+      },
+      "llm_metadata": {
+        "value": 81000000000.0,
+        "confidence": 0.99,
+        "source": "text",
+        "evidence_version": "v2",
+        "match_semantics": "keyword_match",
+        "inference_mode": "direct",
+        "postprocess_state": "none",
+        "reason_code": "llm_extraction",
+        "signal_flags": [],
+        "candidate_quality": null,
+        "authoritative_override": false
+      },
+      "expected": {
+        "winner": "fallback",
+        "expected_source": "issuer_fallback",
+        "expected_authoritative_override": true,
+        "expected_reason_code": "issuer_repo_override"
+      }
+    },
+    {
+      "case_id": "gated_magnit_2025_h1_override_interest_expense",
+      "kind": "merge",
+      "decision_surface": "authoritative_override",
+      "risk_tags": ["replacement_path", "source_sensitive"],
+      "anchor": false,
+      "fixture_ref": "magnit_2025_h1_ifrs",
+      "metric_key": "interest_expense",
+      "fallback_metadata": {
+        "value": 29095000000.0,
+        "confidence": 0.95,
+        "source": "issuer_fallback",
+        "evidence_version": "v2",
+        "match_semantics": "not_applicable",
+        "inference_mode": "policy_override",
+        "postprocess_state": "none",
+        "reason_code": "issuer_repo_override",
+        "signal_flags": [],
+        "candidate_quality": null,
+        "authoritative_override": true
+      },
+      "llm_metadata": {
+        "value": 31000000000.0,
+        "confidence": 0.99,
+        "source": "text",
+        "evidence_version": "v2",
+        "match_semantics": "keyword_match",
+        "inference_mode": "direct",
+        "postprocess_state": "none",
+        "reason_code": "llm_extraction",
+        "signal_flags": [],
+        "candidate_quality": null,
+        "authoritative_override": false
+      },
+      "expected": {
+        "winner": "fallback",
+        "expected_source": "issuer_fallback",
+        "expected_authoritative_override": true,
+        "expected_reason_code": "issuer_repo_override"
+      }
+    },
+    {
+      "case_id": "gated_magnit_q1_scanned_inventory_blind_spot",
+      "kind": "parse",
+      "decision_surface": "threshold_survival",
+      "risk_tags": ["historically_flaky", "ocr_fragile", "weak_keyword"],
+      "anchor": false,
+      "fixture_ref": "magnit_2025_q1_scanned",
+      "pipeline_mode": "force_ocr",
+      "expectations": {
+        "inventory": {
+          "survives": true,
+          "value": 2142153000.0,
+          "expected_source": "text",
+          "source_strictness": "advisory"
+        }
+      }
+    },
+    {
+      "case_id": "gated_magnit_q1_scanned_receivables_boundary_anchor",
+      "kind": "parse",
+      "decision_surface": "threshold_boundary",
+      "risk_tags": ["boundary_near_0_5", "ocr_fragile", "source_sensitive", "weak_keyword"],
+      "anchor": true,
+      "fixture_ref": "magnit_2025_q1_scanned",
+      "pipeline_mode": "force_ocr",
+      "expectations": {
+        "accounts_receivable": {
+          "survives": true,
+          "value": 26998240000.0,
+          "expected_source": "text",
+          "source_strictness": "critical"
+        }
+      }
+    },
+    {
+      "case_id": "gated_magnit_q1_scanned_winner_anchor",
+      "kind": "parse",
+      "decision_surface": "winner_selection",
+      "risk_tags": ["ocr_fragile", "source_sensitive", "weak_ocr_direct"],
+      "anchor": true,
+      "fixture_ref": "magnit_2025_q1_scanned",
+      "pipeline_mode": "force_ocr",
+      "expectations": {
+        "accounts_receivable": {
+          "survives": true,
+          "value": 26998240000.0,
+          "expected_source": "text",
+          "source_strictness": "critical"
+        },
+        "current_assets": {
+          "survives": true,
+          "value": 174989150000.0,
+          "expected_source": "text",
+          "source_strictness": "advisory"
+        },
+        "short_term_liabilities": {
+          "survives": true,
+          "value": 192460146000.0,
+          "expected_source": "text",
+          "source_strictness": "advisory"
+        }
+      }
     }
   ]
 }

@@ -882,6 +882,41 @@ def test_extract_tables_keeps_statement_tables_when_many_tables_found(monkeypatc
     )
 
 
+def test_extract_tables_falls_back_to_non_recursive_ocr_adapter(monkeypatch):
+    class FakeTables(list):
+        @property
+        def n(self):
+            return len(self)
+
+    calls: list[tuple[str, object | None, object | None]] = []
+
+    def fake_read_pdf(_path, pages, flavor):
+        calls.append(("camelot", flavor, None))
+        return FakeTables([])
+
+    def fake_convert(path, first_page=None, last_page=None, poppler_path=None):
+        assert path == "dummy.pdf"
+        calls.append(("convert", first_page, last_page))
+        if first_page == 1 and last_page == 1:
+            return ["img1"]
+        return []
+
+    def fake_ocr(image, lang=None):
+        calls.append(("ocr", image, lang))
+        return "Бухгалтерский баланс"
+
+    monkeypatch.setattr(pdf_extractor.camelot, "read_pdf", fake_read_pdf)
+    monkeypatch.setattr(pdf_extractor, "convert_from_path", fake_convert)
+    monkeypatch.setattr(pdf_extractor.pytesseract, "image_to_string", fake_ocr)
+
+    tables = pdf_extractor.extract_tables("dummy.pdf")
+
+    assert calls[:2] == [("camelot", "stream", None), ("camelot", "lattice", None)]
+    assert ("convert", 1, 1) in calls
+    assert ("ocr", "img1", "rus+eng") in calls
+    assert tables == [{"flavor": "ocr", "rows": [["OCR_TEXT", "Бухгалтерский баланс"]]}]
+
+
 def test_parse_financial_statements():
     tables = [
         {"rows": [["Выручка", "1000"], ["Чистая прибыль", "50"]]},
