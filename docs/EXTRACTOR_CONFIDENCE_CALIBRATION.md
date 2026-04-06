@@ -1,26 +1,32 @@
-# Extractor Confidence Calibration Wave
+# Extractor Confidence Calibration
 
 ## Контекст
 
-Эта волна реализована как `Internal-First+` для extractor confidence policy:
+Extractor confidence живёт в двух уже разделённых слоях:
+
+- runtime calibration policy;
+- offline calibration corpus and harness.
+
+Runtime calibration policy была landed в предыдущей волне как `Internal-First+`:
 
 - public V2 wire shape не меняется;
 - frontend contract не меняется;
 - default `CONFIDENCE_THRESHOLD=0.5` не меняется;
-- меняется только extractor-side runtime calibration policy и внутренний evaluation tooling.
+- меняется только extractor-side runtime confidence math.
 
-Primary objective этой волны: улучшить `operational trust` на явной decision surface:
+Текущая hardening wave поверх этого runtime не retune-ит policy заново. Она делает corpus/harness слой более устойчивым и управляемым:
 
-- threshold decision;
-- winner decision;
-- merge / replacement decision;
-- false-positive absence decision.
+- suite-aware corpus layout;
+- real-fixture-backed gated tier;
+- explicit source strictness tri-state;
+- machine-checkable coverage audit;
+- stricter isolation между execution tier и assertion strictness.
 
-## Что изменилось
+## Runtime Policy
 
-В runtime введён единый declarative-first policy layer в [confidence_policy.py](/E:/neo-fin-ai/src/analysis/extractor/confidence_policy.py).
+В runtime единым source of truth остаётся declarative-first policy layer в [confidence_policy.py](/E:/neo-fin-ai/src/analysis/extractor/confidence_policy.py).
 
-Policy теперь является single source of truth для:
+Policy по-прежнему централизует:
 
 - profile baselines;
 - quality bands;
@@ -29,85 +35,149 @@ Policy теперь является single source of truth для:
 - conflict penalty;
 - strong direct threshold.
 
-Внутри extractor добавлен отдельный calibration harness:
-
-- [calibration.py](/E:/neo-fin-ai/src/analysis/extractor/calibration.py)
-- [run_extractor_confidence_calibration.py](/E:/neo-fin-ai/scripts/run_extractor_confidence_calibration.py)
-- [extractor_confidence_calibration.json](/E:/neo-fin-ai/tests/data/extractor_confidence_calibration.json)
-
-Также убраны дублирующиеся runtime reads threshold-конфига: `tasks.py` и legacy extractor helpers теперь берут `CONFIDENCE_THRESHOLD` из `app_settings`, а не парсят env по отдельности.
-
-## Runtime calibration decision
-
-После offline calibration и review evidence pack landed policy:
-
-- усиливает `text/code_match/direct` и соседние text-direct profiles;
-- заметно ужесточает weak OCR direct profiles;
-- немного ужесточает weak keyword evidence;
-- усиливает penalties для weak-quality, conflicts и guardrail-adjusted states;
-- сохраняет `issuer_fallback` и `strong_direct_threshold` без semantic drift.
-
-Итоговый runtime policy зафиксирован как:
+Итоговый landed runtime policy остаётся:
 
 - `RUNTIME_CONFIDENCE_POLICY = CALIBRATED_RUNTIME_CONFIDENCE_POLICY`
 
-## Почему policy принята
+Текущая corpus hardening wave этот выбор не меняет.
 
-Evidence pack в [EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.md](/E:/neo-fin-ai/docs/EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.md) показывает:
+## Corpus Hardening Wave
 
-- baseline operational accuracy: `0.667`
-- calibrated operational accuracy: `1.000`
-- false accepts: `2 -> 0`
-- false rejects: `0 -> 0`
-- survivors: `5 -> 3`
-- boundary density: `0.333 -> 0.333`
-- threshold sweep показывает лучший operational outcome именно на runtime threshold `0.50`
+Новая волна переводит calibration corpus из single-manifest shape в suite-aware contract под [tests/data/extractor_confidence_calibration](/E:/neo-fin-ai/tests/data/extractor_confidence_calibration):
 
-Важно:
+- [fast.json](/E:/neo-fin-ai/tests/data/extractor_confidence_calibration/fast.json)
+- [gated.json](/E:/neo-fin-ai/tests/data/extractor_confidence_calibration/gated.json)
 
-- survivor coverage действительно стала уже, но improvement не достигнут за счёт collapse в ноль;
-- calibrated policy сохраняет три корректных survivor path и убирает два ложных survive;
-- source-critical parse case для table keyword path сохранён;
-- merge-sensitive case `llm_replaces_weak_text_keyword_fallback` исправлен в пользу правильного operational outcome.
+Execution topology теперь tiered:
+
+- `fast` — compact deterministic suite для default CI;
+- `gated` — real-fixture-backed suite для gated/nightly runs.
+
+Важный инвариант:
+
+- suite membership определяет только execution topology;
+- assertion strictness определяется на уровне конкретного case/expectation.
+
+То есть:
+
+- `fast` case может быть source-critical;
+- `gated` case может быть outcome-only;
+- strictness не выводится автоматически из suite tier.
+
+## Case Contract
+
+Каждый calibration case теперь несёт явный suite-aware contract:
+
+- `case_id`
+- `suite_id`
+- `suite_tier`
+- `decision_surface`
+- `risk_tags`
+- `anchor`
+
+`anchor` intentionally остаётся бинарным в этой волне:
+
+- без `anchor_weight`;
+- без `anchor_strength`;
+- без ranked anchor model.
+
+Primary `decision_surface` single-valued и фиксирует, ради какой load-bearing surface кейс вообще существует.
+
+Machine-required surfaces для этой волны:
+
+- `threshold_boundary`
+- `winner_selection`
+- `merge_replacement`
+- `expected_absent`
+
+Expansion-priority surfaces пока только репортятся и используются для роста corpus:
+
+- `threshold_survival`
+- `authoritative_override`
+- `approximation_separation`
+
+Weak OCR / weak keyword paths остаются вторичными risk patterns через controlled `risk_tags`, а не отдельными primary surfaces.
+
+## Source Strictness
+
+Source expectations formalized как tri-state:
+
+- `unspecified`
+- `advisory`
+- `critical`
+
+Смысл:
+
+- `unspecified` — source expectation отсутствует и не проверяется;
+- `advisory` — mismatch попадает в report, но не валит case;
+- `critical` — mismatch валит case.
+
+Explainability в этой волне остаётся observational, кроме явно объявленного source strictness. Никакие `reason_code`, decision log или richer explainability assertions в gating contract не добавляются.
+
+## Real Fixture References
+
+Gated corpus использует `fixture_ref` на [manifest.json](/E:/neo-fin-ai/tests/data/pdf_real_fixtures/manifest.json), но calibration layer зависит только от минимального fixture contract:
+
+- `id`
+- `filename`
+- `sha256`
+
+Calibration layer сознательно **не** зависит от:
+
+- fixture-side expected values;
+- fixture-side expected sources;
+- notes/layout tags;
+- test-runner metadata;
+- любых нестабильных вспомогательных полей.
+
+`pipeline_mode` живёт в calibration case, а не в fixture manifest.
+
+## Harness
+
+Offline harness lives in:
+
+- [calibration.py](/E:/neo-fin-ai/src/analysis/extractor/calibration.py)
+- [run_extractor_confidence_calibration.py](/E:/neo-fin-ai/scripts/run_extractor_confidence_calibration.py)
+
+CLI теперь suite-aware:
+
+```powershell
+python scripts/run_extractor_confidence_calibration.py --suite fast --format markdown
+python scripts/run_extractor_confidence_calibration.py --suite gated --format markdown
+python scripts/run_extractor_confidence_calibration.py --suite all --format json
+```
+
+`fast` остаётся default suite для локального и CI smoke path.
+
+Harness output включает:
+
+- aggregate summary;
+- per-suite summaries;
+- suite-level diffs;
+- threshold sweep;
+- trust-order invariant checks;
+- source mismatch audit;
+- coverage audit с required surfaces и anchor coverage.
+
+## Evidence
+
+Checked-in evidence pack теперь строится на `--suite all` и отражает suite-aware corpus:
+
+- Human-readable evidence pack: [EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.md](/E:/neo-fin-ai/docs/EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.md)
+- Machine-readable evidence pack: [EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.json](/E:/neo-fin-ai/docs/EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.json)
+
+Отдельный corpus/harness contract зафиксирован в [EXTRACTOR_CONFIDENCE_CALIBRATION_CORPUS.md](/E:/neo-fin-ai/docs/EXTRACTOR_CONFIDENCE_CALIBRATION_CORPUS.md).
 
 ## Что сознательно НЕ менялось
 
+- runtime confidence policy;
 - public extractor metadata contract;
 - frontend explainability rendering;
 - consumer-policy redesign;
-- online/self-adjusting calibration;
-- adaptive runtime thresholding;
-- любые hidden runtime toggles для shadow policy.
+- shadow policy isolation rules.
 
 Shadow consumer semantics остаются strictly offline-only:
 
 - не импортируются в production decision path;
 - не влияют на persisted outputs;
-- используются только в reports и future design exploration.
-
-## Ограничения и наблюдения
-
-- На текущем frozen labeled corpus `ECE` не улучшился (`0.317 -> 0.414`), хотя `Brier score` улучшился (`0.315 -> 0.278`) и operational decision quality выросла до `1.000`.
-- Это допустимо для этой волны, потому что primary objective здесь — operational trust, а не generic score aesthetics.
-- Из-за малого calibration corpus `ECE` сейчас нужно трактовать как diagnostic signal, а не как самостоятельный ship/no-ship gate.
-
-Следующий логичный шаг после этой волны:
-
-- расширить labeled corpus;
-- добавить больше merge-sensitive и expected-absent cases;
-- повторно проверить reliability metrics на более широком наборе.
-
-## Артефакты волны
-
-- Human-readable evidence pack: [EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.md](/E:/neo-fin-ai/docs/EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.md)
-- Machine-readable evidence pack: [EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.json](/E:/neo-fin-ai/docs/EXTRACTOR_CONFIDENCE_CALIBRATION_EVIDENCE.json)
-- Frozen calibration manifest: [extractor_confidence_calibration.json](/E:/neo-fin-ai/tests/data/extractor_confidence_calibration.json)
-- Harness entrypoint: [run_extractor_confidence_calibration.py](/E:/neo-fin-ai/scripts/run_extractor_confidence_calibration.py)
-
-## Как перепроверить локально
-
-```powershell
-python scripts/run_extractor_confidence_calibration.py --format markdown
-python scripts/run_extractor_confidence_calibration.py --format json
-python -m pytest tests/test_extractor_confidence_calibration.py -q
-```
+- используются только в harness/reports и future design exploration.

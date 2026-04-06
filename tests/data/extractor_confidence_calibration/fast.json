@@ -1,10 +1,15 @@
 {
-  "version": 1,
+  "version": 2,
   "threshold": 0.5,
+  "suite_id": "fast",
+  "suite_tier": "fast",
   "cases": [
     {
-      "id": "table_exact_high_quality_survives",
+      "case_id": "fast_table_exact_survival",
       "kind": "candidate_threshold",
+      "decision_surface": "threshold_survival",
+      "risk_tags": [],
+      "anchor": false,
       "metric_key": "revenue",
       "candidate": {
         "value": 2300000.0,
@@ -17,14 +22,38 @@
         "signal_flags": []
       },
       "expected": {
-        "survives": true,
-        "expected_source": "table",
-        "source_decision_critical": true
+        "survives": true
       }
     },
     {
-      "id": "weak_text_keyword_should_not_survive",
+      "case_id": "fast_boundary_text_code",
       "kind": "candidate_threshold",
+      "decision_surface": "threshold_boundary",
+      "risk_tags": ["boundary_near_0_5", "source_sensitive"],
+      "anchor": false,
+      "metric_key": "revenue",
+      "candidate": {
+        "value": 2400000.0,
+        "match_type": "text_regex",
+        "is_exact": false,
+        "candidate_quality": 95,
+        "source": "text",
+        "match_semantics": "code_match",
+        "inference_mode": "direct",
+        "signal_flags": ["ev:line_code"]
+      },
+      "expected": {
+        "survives": true,
+        "expected_source": "text",
+        "source_strictness": "critical"
+      }
+    },
+    {
+      "case_id": "fast_weak_text_keyword_absent",
+      "kind": "candidate_threshold",
+      "decision_surface": "expected_absent",
+      "risk_tags": ["false_positive_trap", "low_confidence", "weak_keyword"],
+      "anchor": false,
       "metric_key": "revenue",
       "candidate": {
         "value": 1200000.0,
@@ -41,69 +70,43 @@
       }
     },
     {
-      "id": "weak_ocr_exact_should_not_survive",
-      "kind": "candidate_threshold",
-      "metric_key": "total_assets",
-      "candidate": {
-        "value": 10000000.0,
-        "match_type": "text_regex",
-        "is_exact": true,
-        "candidate_quality": 50,
-        "source": "ocr",
-        "match_semantics": "exact",
-        "inference_mode": "direct",
-        "signal_flags": [
-          "ev:ocr_row_crop_exact"
-        ]
-      },
-      "expected": {
-        "survives": false
+      "case_id": "fast_inline_winner_pair",
+      "kind": "parse",
+      "decision_surface": "winner_selection",
+      "risk_tags": ["source_sensitive"],
+      "anchor": false,
+      "pipeline_mode": "tables+text",
+      "tables": [
+        {
+          "flavor": "lattice",
+          "rows": [
+            ["Выручка", "5", "2 300 000"],
+            ["Чистая прибыль", "24", "100 000"]
+          ]
+        }
+      ],
+      "text": "",
+      "expectations": {
+        "revenue": {
+          "survives": true,
+          "value": 2300000.0,
+          "expected_source": "table",
+          "source_strictness": "critical"
+        },
+        "net_profit": {
+          "survives": true,
+          "value": 100000.0,
+          "expected_source": "table",
+          "source_strictness": "advisory"
+        }
       }
     },
     {
-      "id": "text_code_medium_quality_survives",
-      "kind": "candidate_threshold",
-      "metric_key": "revenue",
-      "candidate": {
-        "value": 2400000.0,
-        "match_type": "text_regex",
-        "is_exact": false,
-        "candidate_quality": 95,
-        "source": "text",
-        "match_semantics": "code_match",
-        "inference_mode": "direct",
-        "signal_flags": [
-          "ev:line_code"
-        ]
-      },
-      "expected": {
-        "survives": true,
-        "expected_source": "text",
-        "source_decision_critical": true
-      }
-    },
-    {
-      "id": "gross_profit_approximation_stays_filtered",
-      "kind": "candidate_threshold",
-      "metric_key": "ebitda",
-      "candidate": {
-        "value": 500000.0,
-        "match_type": "table",
-        "is_exact": false,
-        "candidate_quality": 75,
-        "source": "table",
-        "match_semantics": "keyword_match",
-        "inference_mode": "approximation",
-        "reason_code": "gross_profit_to_ebitda_approximation",
-        "signal_flags": []
-      },
-      "expected": {
-        "survives": false
-      }
-    },
-    {
-      "id": "llm_replaces_weak_text_keyword_fallback",
+      "case_id": "fast_llm_replacement",
       "kind": "merge",
+      "decision_surface": "merge_replacement",
+      "risk_tags": ["replacement_path"],
+      "anchor": false,
       "metric_key": "revenue",
       "fallback_candidate": {
         "value": 1200000.0,
@@ -133,8 +136,33 @@
       }
     },
     {
-      "id": "llm_keeps_authoritative_override",
+      "case_id": "fast_approximation_guard",
+      "kind": "candidate_threshold",
+      "decision_surface": "approximation_separation",
+      "risk_tags": ["low_confidence"],
+      "anchor": false,
+      "metric_key": "ebitda",
+      "candidate": {
+        "value": 500000.0,
+        "match_type": "table",
+        "is_exact": false,
+        "candidate_quality": 75,
+        "source": "table",
+        "match_semantics": "keyword_match",
+        "inference_mode": "approximation",
+        "reason_code": "gross_profit_to_ebitda_approximation",
+        "signal_flags": []
+      },
+      "expected": {
+        "survives": false
+      }
+    },
+    {
+      "case_id": "fast_authoritative_override",
       "kind": "merge",
+      "decision_surface": "authoritative_override",
+      "risk_tags": ["replacement_path", "source_sensitive"],
+      "anchor": false,
       "metric_key": "ebitda",
       "fallback_metadata": {
         "value": 85628000000.0,
@@ -164,53 +192,6 @@
       },
       "expected": {
         "winner": "fallback"
-      }
-    },
-    {
-      "id": "parse_table_exact_source_is_decision_critical",
-      "kind": "parse",
-      "tables": [
-        {
-          "flavor": "lattice",
-          "rows": [
-            [
-              "Выручка",
-              "5",
-              "2 300 000",
-              "2 100 000"
-            ]
-          ]
-        }
-      ],
-      "text": "",
-      "expectations": {
-        "revenue": {
-          "value": 2300000.0,
-          "survives": true,
-          "expected_source": "table",
-          "source_decision_critical": true
-        }
-      }
-    },
-    {
-      "id": "parse_ifrs_approximation_remains_absent",
-      "kind": "parse",
-      "tables": [
-        {
-          "flavor": "lattice",
-          "rows": [
-            [
-              "Gross profit",
-              "500 000"
-            ]
-          ]
-        }
-      ],
-      "text": "",
-      "expectations": {
-        "ebitda": {
-          "survives": false
-        }
       }
     }
   ]

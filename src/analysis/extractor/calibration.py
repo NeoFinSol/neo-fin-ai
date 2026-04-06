@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
+from collections import Counter, defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Final
 
@@ -15,9 +19,49 @@ DEFAULT_MANIFEST_PATH: Final = (
     Path(__file__).resolve().parents[3]
     / "tests"
     / "data"
-    / "extractor_confidence_calibration.json"
+    / "extractor_confidence_calibration"
+)
+DEFAULT_FIXTURE_MANIFEST_PATH: Final = (
+    Path(__file__).resolve().parents[3]
+    / "tests"
+    / "data"
+    / "pdf_real_fixtures"
+    / "manifest.json"
 )
 SWEEP_OFFSETS: Final[tuple[float, ...]] = (-0.10, -0.05, 0.0, 0.05, 0.10)
+SOURCE_STRICTNESS_VALUES: Final[tuple[str, ...]] = (
+    "unspecified",
+    "advisory",
+    "critical",
+)
+SUITE_TIERS: Final[tuple[str, ...]] = ("fast", "gated")
+REQUIRED_DECISION_SURFACES: Final[tuple[str, ...]] = (
+    "threshold_boundary",
+    "winner_selection",
+    "merge_replacement",
+    "expected_absent",
+)
+EXPANSION_PRIORITY_SURFACES: Final[tuple[str, ...]] = (
+    "threshold_survival",
+    "authoritative_override",
+    "approximation_separation",
+)
+DECISION_SURFACES: Final[tuple[str, ...]] = (
+    *REQUIRED_DECISION_SURFACES,
+    *EXPANSION_PRIORITY_SURFACES,
+)
+RISK_TAG_VOCABULARY: Final[tuple[str, ...]] = (
+    "historically_flaky",
+    "ocr_fragile",
+    "low_confidence",
+    "source_sensitive",
+    "replacement_path",
+    "false_positive_trap",
+    "boundary_near_0_5",
+    "weak_keyword",
+    "weak_ocr_direct",
+)
+PIPELINE_MODES: Final[tuple[str, ...]] = ("text_only", "tables+text")
 CANONICAL_TRUST_ORDER: Final[tuple[tuple[str, str, str], ...]] = (
     ("table", "exact", "direct"),
     ("table", "code_match", "direct"),
@@ -31,6 +75,9 @@ CANONICAL_TRUST_ORDER: Final[tuple[tuple[str, str, str], ...]] = (
     ("derived", "not_applicable", "derived"),
     ("table", "exact", "approximation"),
 )
+_SUITE_TIER_RANK: Final[dict[str, int]] = {
+    suite_tier: index for index, suite_tier in enumerate(SUITE_TIERS)
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,48 +102,139 @@ class MetricExpectation:
     value: float | None = None
     tolerance: float = 0.0
     expected_source: str | None = None
-    source_decision_critical: bool = False
+    source_strictness: str = "unspecified"
 
 
 @dataclass(frozen=True, slots=True)
 class CandidateThresholdCase:
     case_id: str
+    suite_id: str
+    suite_tier: str
+    decision_surface: str
+    risk_tags: tuple[str, ...]
+    anchor: bool
+    fixture_ref: str | None
+    pipeline_mode: str | None
     metric_key: str
     candidate: CandidateDescriptor
     expected: MetricExpectation
+
+    @property
+    def outcome_ids(self) -> tuple[str, ...]:
+        return (self.case_id,)
 
 
 @dataclass(frozen=True, slots=True)
 class ParseCase:
     case_id: str
-    tables: list
+    suite_id: str
+    suite_tier: str
+    decision_surface: str
+    risk_tags: tuple[str, ...]
+    anchor: bool
+    fixture_ref: str | None
+    pipeline_mode: str
+    tables: tuple[dict[str, Any], ...]
     text: str
-    metric_key: str
-    expected: MetricExpectation
+    expectations: dict[str, MetricExpectation]
+
+    @property
+    def outcome_ids(self) -> tuple[str, ...]:
+        return tuple(
+            f"{self.case_id}::{metric_key}" for metric_key in self.expectations
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class MergeCase:
     case_id: str
+    suite_id: str
+    suite_tier: str
+    decision_surface: str
+    risk_tags: tuple[str, ...]
+    anchor: bool
+    fixture_ref: str | None
+    pipeline_mode: str | None
     metric_key: str
     llm_metadata: ExtractionMetadata
     expected_winner: str
     fallback_candidate: CandidateDescriptor | None = None
     fallback_metadata: ExtractionMetadata | None = None
 
+    @property
+    def outcome_ids(self) -> tuple[str, ...]:
+        return (self.case_id,)
+
+
+CalibrationCase = CandidateThresholdCase | ParseCase | MergeCase
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationSuite:
+    suite_id: str
+    suite_tier: str
+    cases: tuple[CalibrationCase, ...]
+
+    @property
+    def case_ids(self) -> tuple[str, ...]:
+        return tuple(case.case_id for case in self.cases)
+
+    @property
+    def parse_cases(self) -> tuple[ParseCase, ...]:
+        return tuple(case for case in self.cases if isinstance(case, ParseCase))
+
+    @property
+    def merge_cases(self) -> tuple[MergeCase, ...]:
+        return tuple(case for case in self.cases if isinstance(case, MergeCase))
+
 
 @dataclass(frozen=True, slots=True)
 class CalibrationManifest:
     version: int
     threshold: float
-    threshold_cases: tuple[CandidateThresholdCase | ParseCase, ...]
-    merge_cases: tuple[MergeCase, ...]
+    suites: tuple[CalibrationSuite, ...]
+
+    @property
+    def suite_ids(self) -> tuple[str, ...]:
+        return tuple(suite.suite_id for suite in self.suites)
+
+    @property
+    def cases(self) -> tuple[CalibrationCase, ...]:
+        return tuple(case for suite in self.suites for case in suite.cases)
+
+    @property
+    def parse_cases(self) -> tuple[ParseCase, ...]:
+        return tuple(case for case in self.cases if isinstance(case, ParseCase))
+
+    @property
+    def merge_cases(self) -> tuple[MergeCase, ...]:
+        return tuple(case for case in self.cases if isinstance(case, MergeCase))
+
+    @property
+    def threshold_cases(self) -> tuple[CandidateThresholdCase | ParseCase, ...]:
+        return tuple(
+            case
+            for case in self.cases
+            if isinstance(case, (CandidateThresholdCase, ParseCase))
+        )
 
     @property
     def all_case_ids(self) -> tuple[str, ...]:
-        threshold_ids = [case.case_id for case in self.threshold_cases]
-        merge_ids = [case.case_id for case in self.merge_cases]
-        return tuple(threshold_ids + merge_ids)
+        return tuple(case.case_id for case in self.cases)
+
+    @property
+    def all_outcome_ids(self) -> tuple[str, ...]:
+        outcome_ids: list[str] = []
+        for case in self.cases:
+            outcome_ids.extend(case.outcome_ids)
+        return tuple(outcome_ids)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedFixture:
+    fixture_id: str
+    path: Path
+    sha256: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,14 +247,25 @@ class EvaluationRuntime:
 
 @dataclass(frozen=True, slots=True)
 class CaseOutcome:
+    outcome_id: str
     case_id: str
+    suite_id: str
+    suite_tier: str
+    metric_key: str | None
+    decision_surface: str
+    risk_tags: tuple[str, ...]
+    anchor: bool
+    fixture_ref: str | None
     decision_type: str
     correct: bool
     outcome: str
     expected_outcome: str
     confidence: float
     source: str | None
-    survived: bool | None
+    source_strictness: str = "unspecified"
+    expected_source: str | None = None
+    source_mismatch: bool = False
+    survived: bool | None = None
     false_accept: bool = False
     false_reject: bool = False
 
@@ -148,37 +297,31 @@ class EvaluationSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceMismatchAudit:
+    advisory_mismatches: tuple[str, ...]
+    critical_mismatches: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class PolicyEvaluationReport:
     runtime: EvaluationRuntime
-    summary: EvaluationSummary
+    aggregate_summary: EvaluationSummary
+    suite_summaries: dict[str, EvaluationSummary]
     case_outcomes: dict[str, CaseOutcome]
+    source_mismatch_audit: SourceMismatchAudit
+
+    @property
+    def summary(self) -> EvaluationSummary:
+        return self.aggregate_summary
 
 
 @dataclass(frozen=True, slots=True)
 class CaseDiff:
-    case_id: str
+    outcome_id: str
     decision_type: str
+    suite_id: str
     baseline: CaseOutcome
     candidate: CaseOutcome
-
-
-@dataclass(frozen=True, slots=True)
-class PolicyComparisonReport:
-    manifest: CalibrationManifest
-    baseline: PolicyEvaluationReport
-    candidate: PolicyEvaluationReport
-    shadow_policies: dict[str, PolicyEvaluationReport]
-    case_diffs: dict[str, CaseDiff]
-    threshold_sweep: dict[str, tuple["ThresholdSweepPoint", ...]]
-    invariant_checks: tuple["InvariantCheck", ...]
-    policy_diffs: tuple["PolicySettingDiff", ...]
-
-
-@dataclass(frozen=True, slots=True)
-class ShadowConsumerPolicy:
-    name: str
-    threshold: float
-    strong_direct_threshold: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +348,39 @@ class PolicySettingDiff:
     candidate: float
 
 
+@dataclass(frozen=True, slots=True)
+class ShadowConsumerPolicy:
+    name: str
+    threshold: float
+    strong_direct_threshold: float
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageAudit:
+    required_surfaces: tuple[str, ...]
+    expansion_priority_surfaces: tuple[str, ...]
+    present_surfaces: dict[str, tuple[str, ...]]
+    missing_required_surfaces: dict[str, tuple[str, ...]]
+    anchor_surfaces: dict[str, tuple[str, ...]]
+    real_fixture_anchor_surfaces: dict[str, tuple[str, ...]]
+    underanchored_required_surfaces: dict[str, tuple[str, ...]]
+    risk_tag_counts: dict[str, dict[str, int]]
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyComparisonReport:
+    manifest: CalibrationManifest
+    baseline: PolicyEvaluationReport
+    candidate: PolicyEvaluationReport
+    shadow_policies: dict[str, PolicyEvaluationReport]
+    case_diffs: dict[str, CaseDiff]
+    threshold_sweep: dict[str, tuple[ThresholdSweepPoint, ...]]
+    invariant_checks: tuple[InvariantCheck, ...]
+    policy_diffs: tuple[PolicySettingDiff, ...]
+    suite_case_diffs: dict[str, dict[str, CaseDiff]]
+    coverage_audit: CoverageAudit | None = None
+
+
 DEFAULT_SHADOW_POLICIES: Final[tuple[ShadowConsumerPolicy, ...]] = (
     ShadowConsumerPolicy(
         name="shadow_relaxed_consumer",
@@ -214,7 +390,11 @@ DEFAULT_SHADOW_POLICIES: Final[tuple[ShadowConsumerPolicy, ...]] = (
 )
 
 
-def _load_json(path: Path) -> dict[str, Any]:
+def _suite_sort_key(suite_id: str, suite_tier: str) -> tuple[int, str]:
+    return (_SUITE_TIER_RANK.get(suite_tier, len(_SUITE_TIER_RANK)), suite_id)
+
+
+def _load_json(path: Path) -> dict[str, Any] | list[dict[str, Any]]:
     with path.open(encoding="utf-8") as fh:
         return json.load(fh)
 
@@ -254,42 +434,91 @@ def _build_metadata(payload: dict[str, Any]) -> ExtractionMetadata:
 
 def _build_expectation(payload: dict[str, Any]) -> MetricExpectation:
     expected_source = payload.get("expected_source")
-    source_decision_critical = bool(payload.get("source_decision_critical", False))
-    if source_decision_critical and not expected_source:
-        raise ValueError("source_decision_critical requires expected_source")
+    source_strictness = payload.get("source_strictness", "unspecified")
+    if source_strictness not in SOURCE_STRICTNESS_VALUES:
+        raise ValueError(f"Unsupported source strictness: {source_strictness!r}")
+    if source_strictness == "unspecified" and expected_source is not None:
+        raise ValueError(
+            "expected_source requires source_strictness 'advisory' or 'critical'"
+        )
+    if source_strictness != "unspecified" and not expected_source:
+        raise ValueError(
+            "source strictness 'advisory' or 'critical' requires expected_source"
+        )
     return MetricExpectation(
         survives=bool(payload["survives"]),
         value=payload.get("value"),
         tolerance=float(payload.get("tolerance", 0.0)),
         expected_source=expected_source,
-        source_decision_critical=source_decision_critical,
+        source_strictness=source_strictness,
     )
 
 
-def load_calibration_manifest(
-    path: Path | str = DEFAULT_MANIFEST_PATH,
-) -> CalibrationManifest:
-    manifest_path = Path(path)
-    payload = _load_json(manifest_path)
+def _validate_case_contract(
+    raw_case: dict[str, Any],
+    *,
+    suite_id: str,
+    suite_tier: str,
+) -> tuple[str, tuple[str, ...], bool, str | None, str | None]:
+    decision_surface = raw_case["decision_surface"]
+    if decision_surface not in DECISION_SURFACES:
+        raise ValueError(f"Unsupported decision surface: {decision_surface!r}")
+
+    risk_tags = tuple(raw_case.get("risk_tags", []))
+    unknown_tags = sorted(set(risk_tags) - set(RISK_TAG_VOCABULARY))
+    if unknown_tags:
+        raise ValueError(f"Unknown risk tag(s): {', '.join(unknown_tags)}")
+
+    anchor = bool(raw_case.get("anchor", False))
+    fixture_ref = raw_case.get("fixture_ref")
+    pipeline_mode = raw_case.get("pipeline_mode")
+    if pipeline_mode is not None and pipeline_mode not in PIPELINE_MODES:
+        raise ValueError(f"Unsupported pipeline_mode: {pipeline_mode!r}")
+
+    if raw_case.get("suite_id") not in (None, suite_id):
+        raise ValueError(
+            f"Case {raw_case['case_id']} has mismatched suite_id "
+            f"{raw_case['suite_id']!r} != {suite_id!r}"
+        )
+    if raw_case.get("suite_tier") not in (None, suite_tier):
+        raise ValueError(
+            f"Case {raw_case['case_id']} has mismatched suite_tier "
+            f"{raw_case['suite_tier']!r} != {suite_tier!r}"
+        )
+
+    return decision_surface, risk_tags, anchor, fixture_ref, pipeline_mode
+
+
+def _load_suite_file(path: Path) -> tuple[int, float, CalibrationSuite]:
+    payload = _load_json(path)
+    if not isinstance(payload, dict):
+        raise ValueError(f"Calibration suite manifest must be a JSON object: {path}")
+
     version = int(payload["version"])
-    if version != 1:
-        raise ValueError(f"Unsupported calibration manifest version: {version}")
+    suite_id = payload["suite_id"]
+    suite_tier = payload["suite_tier"]
+    if suite_tier not in SUITE_TIERS:
+        raise ValueError(f"Unsupported suite tier: {suite_tier!r}")
 
-    threshold_cases: list[CandidateThresholdCase | ParseCase] = []
-    merge_cases: list[MergeCase] = []
-    seen_ids: set[str] = set()
-
+    cases: list[CalibrationCase] = []
     for raw_case in payload.get("cases", []):
-        case_id = raw_case["id"]
-        if case_id in seen_ids:
-            raise ValueError(f"Duplicate calibration case id: {case_id}")
-        seen_ids.add(case_id)
-
+        case_id = raw_case["case_id"]
+        decision_surface, risk_tags, anchor, fixture_ref, pipeline_mode = (
+            _validate_case_contract(raw_case, suite_id=suite_id, suite_tier=suite_tier)
+        )
         kind = raw_case["kind"]
+
         if kind == "candidate_threshold":
-            threshold_cases.append(
+            cases.append(
                 CandidateThresholdCase(
                     case_id=case_id,
+                    suite_id=suite_id,
+                    suite_tier=suite_tier,
+                    decision_surface=decision_surface,
+                    risk_tags=risk_tags,
+                    anchor=anchor,
+                    fixture_ref=fixture_ref,
+                    pipeline_mode=pipeline_mode,
                     metric_key=raw_case["metric_key"],
                     candidate=_build_candidate_descriptor(raw_case["candidate"]),
                     expected=_build_expectation(raw_case["expected"]),
@@ -298,19 +527,29 @@ def load_calibration_manifest(
             continue
 
         if kind == "parse":
-            expectations = raw_case["expectations"]
-            if len(expectations) != 1:
-                raise ValueError(
-                    "Parse calibration cases currently support exactly one metric expectation"
+            expectations = {
+                metric_key: _build_expectation(expectation_payload)
+                for metric_key, expectation_payload in sorted(
+                    raw_case["expectations"].items()
                 )
-            metric_key, expectation_payload = next(iter(expectations.items()))
-            threshold_cases.append(
+            }
+            if not expectations:
+                raise ValueError(
+                    f"Parse case {case_id} requires at least one expectation"
+                )
+            cases.append(
                 ParseCase(
                     case_id=case_id,
-                    tables=list(raw_case.get("tables", [])),
+                    suite_id=suite_id,
+                    suite_tier=suite_tier,
+                    decision_surface=decision_surface,
+                    risk_tags=risk_tags,
+                    anchor=anchor,
+                    fixture_ref=fixture_ref,
+                    pipeline_mode=pipeline_mode or "tables+text",
+                    tables=tuple(copy.deepcopy(raw_case.get("tables", []))),
                     text=raw_case.get("text", ""),
-                    metric_key=metric_key,
-                    expected=_build_expectation(expectation_payload),
+                    expectations=expectations,
                 )
             )
             continue
@@ -322,9 +561,16 @@ def load_calibration_manifest(
                 raise ValueError(
                     "Merge cases require fallback_candidate or fallback_metadata"
                 )
-            merge_cases.append(
+            cases.append(
                 MergeCase(
                     case_id=case_id,
+                    suite_id=suite_id,
+                    suite_tier=suite_tier,
+                    decision_surface=decision_surface,
+                    risk_tags=risk_tags,
+                    anchor=anchor,
+                    fixture_ref=fixture_ref,
+                    pipeline_mode=pipeline_mode,
                     metric_key=raw_case["metric_key"],
                     llm_metadata=_build_metadata(raw_case["llm_metadata"]),
                     expected_winner=raw_case["expected"]["winner"],
@@ -344,12 +590,168 @@ def load_calibration_manifest(
 
         raise ValueError(f"Unsupported calibration case kind: {kind!r}")
 
-    return CalibrationManifest(
-        version=version,
-        threshold=float(payload.get("threshold", 0.5)),
-        threshold_cases=tuple(threshold_cases),
-        merge_cases=tuple(merge_cases),
+    cases.sort(key=lambda case: case.case_id)
+    return (
+        version,
+        float(payload.get("threshold", 0.5)),
+        CalibrationSuite(
+            suite_id=suite_id,
+            suite_tier=suite_tier,
+            cases=tuple(cases),
+        ),
     )
+
+
+def load_calibration_manifest(
+    path: Path | str = DEFAULT_MANIFEST_PATH,
+    *,
+    suite: str = "all",
+) -> CalibrationManifest:
+    manifest_path = Path(path)
+    if suite not in {"all", *SUITE_TIERS}:
+        raise ValueError(f"Unsupported suite selector: {suite!r}")
+
+    if manifest_path.is_dir():
+        suite_files = sorted(
+            file_path
+            for file_path in manifest_path.glob("*.json")
+            if file_path.is_file()
+        )
+    else:
+        suite_files = [manifest_path]
+
+    if not suite_files:
+        raise ValueError(f"No calibration suite manifests found at {manifest_path}")
+
+    version: int | None = None
+    threshold: float | None = None
+    suites: list[CalibrationSuite] = []
+    seen_case_ids: set[str] = set()
+
+    for suite_file in suite_files:
+        suite_version, suite_threshold, calibration_suite = _load_suite_file(suite_file)
+        if suite not in {
+            "all",
+            calibration_suite.suite_id,
+            calibration_suite.suite_tier,
+        }:
+            continue
+        if version is None:
+            version = suite_version
+        elif version != suite_version:
+            raise ValueError(
+                "Calibration suite manifests must share the same schema version"
+            )
+        if threshold is None:
+            threshold = suite_threshold
+        elif threshold != suite_threshold:
+            raise ValueError(
+                "Calibration suite manifests must share the same threshold"
+            )
+
+        for case_id in calibration_suite.case_ids:
+            if case_id in seen_case_ids:
+                raise ValueError(f"Duplicate calibration case id: {case_id}")
+            seen_case_ids.add(case_id)
+        suites.append(calibration_suite)
+
+    if not suites:
+        raise ValueError(
+            f"No calibration suites matched selector {suite!r} at {manifest_path}"
+        )
+
+    suites.sort(
+        key=lambda suite_item: _suite_sort_key(
+            suite_item.suite_id, suite_item.suite_tier
+        )
+    )
+    return CalibrationManifest(
+        version=version or 2,
+        threshold=threshold if threshold is not None else 0.5,
+        suites=tuple(suites),
+    )
+
+
+@lru_cache(maxsize=16)
+def _load_fixture_catalog(
+    fixture_manifest_path: str,
+) -> dict[str, ResolvedFixture]:
+    manifest_path = Path(fixture_manifest_path)
+    payload = _load_json(manifest_path)
+    if not isinstance(payload, list):
+        raise ValueError("Fixture manifest must be a JSON array")
+
+    fixtures: dict[str, ResolvedFixture] = {}
+    for item in payload:
+        fixture_id = item["id"]
+        fixture_path = manifest_path.parent / item["filename"]
+        fixtures[fixture_id] = ResolvedFixture(
+            fixture_id=fixture_id,
+            path=fixture_path,
+            sha256=item["sha256"],
+        )
+    return fixtures
+
+
+def resolve_fixture_ref(
+    fixture_id: str,
+    *,
+    fixture_manifest_path: Path | str = DEFAULT_FIXTURE_MANIFEST_PATH,
+) -> ResolvedFixture:
+    catalog = _load_fixture_catalog(str(Path(fixture_manifest_path).resolve()))
+    try:
+        return catalog[fixture_id]
+    except KeyError as exc:
+        raise ValueError(f"Unknown fixture_ref: {fixture_id}") from exc
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@lru_cache(maxsize=16)
+def _load_fixture_parse_inputs(
+    fixture_manifest_path: str,
+    fixture_id: str,
+    pipeline_mode: str,
+) -> tuple[list[dict[str, Any]], str]:
+    if pipeline_mode not in PIPELINE_MODES:
+        raise ValueError(f"Unsupported pipeline_mode: {pipeline_mode!r}")
+
+    resolved = resolve_fixture_ref(
+        fixture_id,
+        fixture_manifest_path=Path(fixture_manifest_path),
+    )
+    actual_sha256 = _sha256(resolved.path)
+    if actual_sha256 != resolved.sha256:
+        raise ValueError(
+            f"Fixture integrity mismatch for {fixture_id}: "
+            f"{actual_sha256} != {resolved.sha256}"
+        )
+
+    from src.analysis import pdf_extractor
+
+    text = pdf_extractor.extract_text(str(resolved.path))
+    if pipeline_mode == "text_only":
+        tables: list[dict[str, Any]] = []
+    else:
+        tables = pdf_extractor.extract_tables(str(resolved.path))
+    return copy.deepcopy(tables), text
+
+
+def _prepare_parse_inputs(
+    case: ParseCase,
+    *,
+    fixture_manifest_path: Path | str,
+) -> tuple[list[dict[str, Any]], str]:
+    if case.fixture_ref is None:
+        return copy.deepcopy(list(case.tables)), case.text
+    tables, text = _load_fixture_parse_inputs(
+        str(Path(fixture_manifest_path).resolve()),
+        case.fixture_ref,
+        case.pipeline_mode,
+    )
+    return copy.deepcopy(tables), text
 
 
 def _to_candidate(descriptor: CandidateDescriptor) -> RawMetricCandidate:
@@ -370,33 +772,40 @@ def _to_candidate(descriptor: CandidateDescriptor) -> RawMetricCandidate:
 
 
 def _evaluate_threshold_expectation(
+    *,
+    outcome_id: str,
     case_id: str,
+    suite_id: str,
+    suite_tier: str,
+    decision_surface: str,
+    risk_tags: tuple[str, ...],
+    anchor: bool,
+    fixture_ref: str | None,
     decision_type: str,
     metric_key: str,
     metadata: ExtractionMetadata,
     expectation: MetricExpectation,
-    *,
     threshold: float,
 ) -> CaseOutcome:
     filtered, _ = apply_confidence_filter({metric_key: metadata}, threshold=threshold)
     survives = filtered[metric_key] is not None
     actual_source = metadata.source if metadata.value is not None else None
-    correct = survives == expectation.survives
-    if (
-        correct
-        and expectation.source_decision_critical
-        and survives
+    source_mismatch = (
+        survives
         and expectation.expected_source is not None
-    ):
-        correct = actual_source == expectation.expected_source
+        and actual_source != expectation.expected_source
+    )
+    correct = survives == expectation.survives
     if correct and expectation.value is not None and survives:
         correct = (
             abs((metadata.value or 0.0) - expectation.value) <= expectation.tolerance
         )
+    if correct and expectation.source_strictness == "critical" and source_mismatch:
+        correct = False
 
     expected_outcome = (
         f"survive:{expectation.expected_source}"
-        if expectation.survives and expectation.source_decision_critical
+        if expectation.survives and expectation.expected_source is not None
         else ("survive" if expectation.survives else "absent")
     )
     outcome = (
@@ -405,13 +814,24 @@ def _evaluate_threshold_expectation(
         else "absent"
     )
     return CaseOutcome(
+        outcome_id=outcome_id,
         case_id=case_id,
+        suite_id=suite_id,
+        suite_tier=suite_tier,
+        metric_key=metric_key,
+        decision_surface=decision_surface,
+        risk_tags=risk_tags,
+        anchor=anchor,
+        fixture_ref=fixture_ref,
         decision_type=decision_type,
         correct=correct,
         outcome=outcome,
         expected_outcome=expected_outcome,
         confidence=metadata.confidence,
         source=actual_source,
+        source_strictness=expectation.source_strictness,
+        expected_source=expectation.expected_source,
+        source_mismatch=source_mismatch,
         survived=survives,
         false_accept=(not expectation.survives and survives),
         false_reject=(expectation.survives and not survives),
@@ -427,11 +847,18 @@ def _evaluate_candidate_threshold_case(
         confidence_policy=runtime.confidence_policy,
     )
     return _evaluate_threshold_expectation(
-        case.case_id,
-        "threshold",
-        case.metric_key,
-        metadata,
-        case.expected,
+        outcome_id=case.case_id,
+        case_id=case.case_id,
+        suite_id=case.suite_id,
+        suite_tier=case.suite_tier,
+        decision_surface=case.decision_surface,
+        risk_tags=case.risk_tags,
+        anchor=case.anchor,
+        fixture_ref=case.fixture_ref,
+        decision_type="threshold",
+        metric_key=case.metric_key,
+        metadata=metadata,
+        expectation=case.expected,
         threshold=runtime.threshold,
     )
 
@@ -439,21 +866,37 @@ def _evaluate_candidate_threshold_case(
 def _evaluate_parse_case(
     case: ParseCase,
     runtime: EvaluationRuntime,
-) -> CaseOutcome:
-    trace = build_extractor_trace(case.tables, case.text)
+    *,
+    fixture_manifest_path: Path | str,
+) -> list[CaseOutcome]:
+    tables, text = _prepare_parse_inputs(
+        case,
+        fixture_manifest_path=fixture_manifest_path,
+    )
+    trace = build_extractor_trace(tables, text)
     metadata, _ = build_metadata_from_trace(
         trace,
         confidence_policy=runtime.confidence_policy,
         include_decision_logs=True,
     )
-    return _evaluate_threshold_expectation(
-        case.case_id,
-        "winner",
-        case.metric_key,
-        metadata[case.metric_key],
-        case.expected,
-        threshold=runtime.threshold,
-    )
+    return [
+        _evaluate_threshold_expectation(
+            outcome_id=f"{case.case_id}::{metric_key}",
+            case_id=case.case_id,
+            suite_id=case.suite_id,
+            suite_tier=case.suite_tier,
+            decision_surface=case.decision_surface,
+            risk_tags=case.risk_tags,
+            anchor=case.anchor,
+            fixture_ref=case.fixture_ref,
+            decision_type="winner",
+            metric_key=metric_key,
+            metadata=metadata[metric_key],
+            expectation=expectation,
+            threshold=runtime.threshold,
+        )
+        for metric_key, expectation in sorted(case.expectations.items())
+    ]
 
 
 def _evaluate_merge_case(
@@ -483,7 +926,15 @@ def _evaluate_merge_case(
     confidence = selected.confidence if selected is not None else 0.0
     source = selected.source if selected is not None else None
     return CaseOutcome(
+        outcome_id=case.case_id,
         case_id=case.case_id,
+        suite_id=case.suite_id,
+        suite_tier=case.suite_tier,
+        metric_key=case.metric_key,
+        decision_surface=case.decision_surface,
+        risk_tags=case.risk_tags,
+        anchor=case.anchor,
+        fixture_ref=case.fixture_ref,
         decision_type="merge",
         correct=actual_winner == case.expected_winner,
         outcome=actual_winner,
@@ -528,7 +979,11 @@ def _build_reliability_bins(outcomes: list[CaseOutcome]) -> tuple[ReliabilityBin
     return tuple(bins)
 
 
-def _build_summary(outcomes: list[CaseOutcome]) -> EvaluationSummary:
+def _build_summary(
+    outcomes: list[CaseOutcome],
+    *,
+    threshold: float,
+) -> EvaluationSummary:
     total_cases = len(outcomes)
     correct_cases = sum(1 for outcome in outcomes if outcome.correct)
     false_accept_count = sum(1 for outcome in outcomes if outcome.false_accept)
@@ -541,7 +996,7 @@ def _build_summary(outcomes: list[CaseOutcome]) -> EvaluationSummary:
         survivor_count / len(threshold_outcomes) if threshold_outcomes else 0.0
     )
     boundary_density = (
-        sum(1 for outcome in outcomes if abs(outcome.confidence - 0.5) <= 0.05)
+        sum(1 for outcome in outcomes if abs(outcome.confidence - threshold) <= 0.05)
         / total_cases
         if total_cases
         else 0.0
@@ -566,12 +1021,10 @@ def _build_summary(outcomes: list[CaseOutcome]) -> EvaluationSummary:
             ece += (bucket.count / total_cases) * abs(
                 bucket.accuracy - bucket.mean_confidence
             )
+
+    surface_counter = Counter(outcome.decision_surface for outcome in outcomes)
     decision_surface_counts = {
-        "threshold": sum(
-            1 for outcome in outcomes if outcome.decision_type == "threshold"
-        ),
-        "winner": sum(1 for outcome in outcomes if outcome.decision_type == "winner"),
-        "merge": sum(1 for outcome in outcomes if outcome.decision_type == "merge"),
+        surface: surface_counter.get(surface, 0) for surface in DECISION_SURFACES
     }
 
     return EvaluationSummary(
@@ -591,11 +1044,29 @@ def _build_summary(outcomes: list[CaseOutcome]) -> EvaluationSummary:
     )
 
 
+def _build_source_mismatch_audit(outcomes: list[CaseOutcome]) -> SourceMismatchAudit:
+    advisory = sorted(
+        outcome.outcome_id
+        for outcome in outcomes
+        if outcome.source_mismatch and outcome.source_strictness == "advisory"
+    )
+    critical = sorted(
+        outcome.outcome_id
+        for outcome in outcomes
+        if outcome.source_mismatch and outcome.source_strictness == "critical"
+    )
+    return SourceMismatchAudit(
+        advisory_mismatches=tuple(advisory),
+        critical_mismatches=tuple(critical),
+    )
+
+
 def _build_threshold_sweep(
     manifest: CalibrationManifest,
     *,
     policy: ConfidencePolicy,
     strong_direct_threshold: float | None,
+    fixture_manifest_path: Path | str,
 ) -> tuple[ThresholdSweepPoint, ...]:
     thresholds = sorted(
         {
@@ -611,7 +1082,11 @@ def _build_threshold_sweep(
             threshold=threshold,
             strong_direct_threshold=strong_direct_threshold,
         )
-        summary = evaluate_runtime(manifest, runtime).summary
+        summary = evaluate_runtime(
+            manifest,
+            runtime,
+            fixture_manifest_path=fixture_manifest_path,
+        ).summary
         sweep_points.append(
             ThresholdSweepPoint(
                 threshold=threshold,
@@ -750,30 +1225,101 @@ def _build_policy_diffs(
                     candidate=candidate_value,
                 )
             )
-
     return tuple(diffs)
+
+
+def _build_coverage_audit(manifest: CalibrationManifest) -> CoverageAudit:
+    suite_case_map = {suite_id: [] for suite_id in SUITE_TIERS}
+    suite_case_map.update(
+        {suite.suite_id: list(suite.cases) for suite in manifest.suites}
+    )
+    suite_case_map["all"] = list(manifest.cases)
+
+    present_surfaces: dict[str, tuple[str, ...]] = {}
+    missing_required_surfaces: dict[str, tuple[str, ...]] = {}
+    anchor_surfaces: dict[str, tuple[str, ...]] = {}
+    real_fixture_anchor_surfaces: dict[str, tuple[str, ...]] = {}
+    underanchored_required_surfaces: dict[str, tuple[str, ...]] = {}
+    risk_tag_counts: dict[str, dict[str, int]] = {}
+
+    for scope, scoped_cases in suite_case_map.items():
+        surfaces = sorted({case.decision_surface for case in scoped_cases})
+        anchored = sorted(
+            {case.decision_surface for case in scoped_cases if case.anchor}
+        )
+        real_fixture_anchored = sorted(
+            {
+                case.decision_surface
+                for case in scoped_cases
+                if case.anchor and case.fixture_ref is not None
+            }
+        )
+        missing = sorted(set(REQUIRED_DECISION_SURFACES) - set(surfaces))
+        if scope in {"gated", "all"}:
+            underanchored = sorted(
+                set(REQUIRED_DECISION_SURFACES) - set(real_fixture_anchored)
+            )
+        else:
+            underanchored = []
+
+        tag_counter = Counter(tag for case in scoped_cases for tag in case.risk_tags)
+        present_surfaces[scope] = tuple(surfaces)
+        missing_required_surfaces[scope] = tuple(missing)
+        anchor_surfaces[scope] = tuple(anchored)
+        real_fixture_anchor_surfaces[scope] = tuple(real_fixture_anchored)
+        underanchored_required_surfaces[scope] = tuple(underanchored)
+        risk_tag_counts[scope] = dict(sorted(tag_counter.items()))
+
+    return CoverageAudit(
+        required_surfaces=REQUIRED_DECISION_SURFACES,
+        expansion_priority_surfaces=EXPANSION_PRIORITY_SURFACES,
+        present_surfaces=present_surfaces,
+        missing_required_surfaces=missing_required_surfaces,
+        anchor_surfaces=anchor_surfaces,
+        real_fixture_anchor_surfaces=real_fixture_anchor_surfaces,
+        underanchored_required_surfaces=underanchored_required_surfaces,
+        risk_tag_counts=risk_tag_counts,
+    )
 
 
 def evaluate_runtime(
     manifest: CalibrationManifest,
     runtime: EvaluationRuntime,
+    *,
+    fixture_manifest_path: Path | str = DEFAULT_FIXTURE_MANIFEST_PATH,
 ) -> PolicyEvaluationReport:
     outcomes: list[CaseOutcome] = []
 
-    for case in manifest.threshold_cases:
-        if isinstance(case, CandidateThresholdCase):
-            outcomes.append(_evaluate_candidate_threshold_case(case, runtime))
-        else:
-            outcomes.append(_evaluate_parse_case(case, runtime))
+    for suite in manifest.suites:
+        for case in suite.cases:
+            if isinstance(case, CandidateThresholdCase):
+                outcomes.append(_evaluate_candidate_threshold_case(case, runtime))
+            elif isinstance(case, ParseCase):
+                outcomes.extend(
+                    _evaluate_parse_case(
+                        case,
+                        runtime,
+                        fixture_manifest_path=fixture_manifest_path,
+                    )
+                )
+            else:
+                outcomes.append(_evaluate_merge_case(case, runtime))
 
-    for case in manifest.merge_cases:
-        outcomes.append(_evaluate_merge_case(case, runtime))
-
-    case_outcomes = {outcome.case_id: outcome for outcome in outcomes}
+    outcomes.sort(key=lambda outcome: outcome.outcome_id)
+    case_outcomes = {outcome.outcome_id: outcome for outcome in outcomes}
+    suite_summaries = {
+        suite.suite_id: _build_summary(
+            [outcome for outcome in outcomes if outcome.suite_id == suite.suite_id],
+            threshold=runtime.threshold,
+        )
+        for suite in manifest.suites
+    }
     return PolicyEvaluationReport(
         runtime=runtime,
-        summary=_build_summary(outcomes),
+        aggregate_summary=_build_summary(outcomes, threshold=runtime.threshold),
+        suite_summaries=suite_summaries,
         case_outcomes=case_outcomes,
+        source_mismatch_audit=_build_source_mismatch_audit(outcomes),
     )
 
 
@@ -783,6 +1329,7 @@ def compare_policies(
     baseline_policy: ConfidencePolicy,
     candidate_policy: ConfidencePolicy,
     shadow_policies: tuple[ShadowConsumerPolicy, ...] = (),
+    fixture_manifest_path: Path | str = DEFAULT_FIXTURE_MANIFEST_PATH,
 ) -> PolicyComparisonReport:
     baseline_runtime = EvaluationRuntime(
         name=baseline_policy.name,
@@ -796,8 +1343,16 @@ def compare_policies(
         threshold=manifest.threshold,
         strong_direct_threshold=candidate_policy.strong_direct_threshold,
     )
-    baseline = evaluate_runtime(manifest, baseline_runtime)
-    candidate = evaluate_runtime(manifest, candidate_runtime)
+    baseline = evaluate_runtime(
+        manifest,
+        baseline_runtime,
+        fixture_manifest_path=fixture_manifest_path,
+    )
+    candidate = evaluate_runtime(
+        manifest,
+        candidate_runtime,
+        fixture_manifest_path=fixture_manifest_path,
+    )
 
     shadow_reports = {
         shadow.name: evaluate_runtime(
@@ -808,29 +1363,42 @@ def compare_policies(
                 threshold=shadow.threshold,
                 strong_direct_threshold=shadow.strong_direct_threshold,
             ),
+            fixture_manifest_path=fixture_manifest_path,
         )
         for shadow in shadow_policies
     }
 
     case_diffs = {
-        case_id: CaseDiff(
-            case_id=case_id,
-            decision_type=candidate.case_outcomes[case_id].decision_type,
-            baseline=baseline.case_outcomes[case_id],
-            candidate=candidate.case_outcomes[case_id],
+        outcome_id: CaseDiff(
+            outcome_id=outcome_id,
+            decision_type=candidate.case_outcomes[outcome_id].decision_type,
+            suite_id=candidate.case_outcomes[outcome_id].suite_id,
+            baseline=baseline.case_outcomes[outcome_id],
+            candidate=candidate.case_outcomes[outcome_id],
         )
-        for case_id in manifest.all_case_ids
+        for outcome_id in manifest.all_outcome_ids
     }
+
+    suite_case_diffs: dict[str, dict[str, CaseDiff]] = defaultdict(dict)
+    for outcome_id, case_diff in case_diffs.items():
+        if (
+            case_diff.baseline.outcome != case_diff.candidate.outcome
+            or case_diff.baseline.correct != case_diff.candidate.correct
+        ):
+            suite_case_diffs[case_diff.suite_id][outcome_id] = case_diff
+
     threshold_sweep = {
         baseline_runtime.name: _build_threshold_sweep(
             manifest,
             policy=baseline_policy,
             strong_direct_threshold=baseline_runtime.strong_direct_threshold,
+            fixture_manifest_path=fixture_manifest_path,
         ),
         candidate_runtime.name: _build_threshold_sweep(
             manifest,
             policy=candidate_policy,
             strong_direct_threshold=candidate_runtime.strong_direct_threshold,
+            fixture_manifest_path=fixture_manifest_path,
         ),
     }
 
@@ -843,28 +1411,27 @@ def compare_policies(
         threshold_sweep=threshold_sweep,
         invariant_checks=_build_invariant_checks(baseline_policy, candidate_policy),
         policy_diffs=_build_policy_diffs(baseline_policy, candidate_policy),
+        suite_case_diffs={
+            suite_id: dict(sorted(case_diffs.items()))
+            for suite_id, case_diffs in sorted(suite_case_diffs.items())
+        },
+        coverage_audit=_build_coverage_audit(manifest),
     )
 
 
 def render_calibration_report(report: PolicyComparisonReport) -> str:
     baseline = report.baseline.summary
     candidate = report.candidate.summary
-    coverage_shift = candidate.survivor_count - baseline.survivor_count
+    coverage_audit = report.coverage_audit or _build_coverage_audit(report.manifest)
     lines = [
         "# Extractor Confidence Calibration Evidence Pack",
         "",
         f"- Baseline policy: `{report.baseline.runtime.name}`",
         f"- Candidate policy: `{report.candidate.runtime.name}`",
-        f"- Total decisions: `{candidate.total_cases}`",
+        f"- Suites: `{', '.join(report.manifest.suite_ids)}`",
         f"- Reviewed threshold: `{report.manifest.threshold:.2f}`",
-        (
-            "- Decision surface counts: "
-            f"`threshold={candidate.decision_surface_counts['threshold']}`, "
-            f"`winner={candidate.decision_surface_counts['winner']}`, "
-            f"`merge={candidate.decision_surface_counts['merge']}`"
-        ),
         "",
-        "## Operational Metrics",
+        "## Aggregate Operational Metrics",
         "",
         "| Policy | Accuracy | False Accepts | False Rejects | Survivors | Boundary Density | ECE | Brier |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -881,17 +1448,46 @@ def render_calibration_report(report: PolicyComparisonReport) -> str:
             f"{candidate.ece:.3f} | {candidate.brier_score:.3f} |"
         ),
         "",
-        "## Decision Quality Guardrails",
+        "## Per-Suite Summary",
         "",
-        f"- Survivor count shift: `{coverage_shift:+d}`",
-        f"- Acceptance rate shift: `{candidate.acceptance_rate - baseline.acceptance_rate:+.3f}`",
-        f"- Mean confidence shift: `{candidate.mean_confidence - baseline.mean_confidence:+.3f}`",
-        f"- Boundary density shift: `{candidate.boundary_density - baseline.boundary_density:+.3f}`",
-        "",
-        "## Policy Diffs",
-        "",
+        "| Suite | Baseline Accuracy | Candidate Accuracy | Baseline Survivors | Candidate Survivors |",
+        "| --- | ---: | ---: | ---: | ---: |",
     ]
+    for suite_id in report.manifest.suite_ids:
+        baseline_suite = report.baseline.suite_summaries[suite_id]
+        candidate_suite = report.candidate.suite_summaries[suite_id]
+        lines.append(
+            f"| {suite_id} | {baseline_suite.operational_accuracy:.3f} | "
+            f"{candidate_suite.operational_accuracy:.3f} | "
+            f"{baseline_suite.survivor_count} | {candidate_suite.survivor_count} |"
+        )
 
+    lines.extend(["", "## Coverage Audit", ""])
+    for scope in (*report.manifest.suite_ids, "all"):
+        lines.append(
+            f"- `{scope}` missing required surfaces: "
+            f"{', '.join(coverage_audit.missing_required_surfaces[scope]) or 'none'}"
+        )
+        lines.append(
+            f"- `{scope}` under-anchored required surfaces: "
+            f"{', '.join(coverage_audit.underanchored_required_surfaces[scope]) or 'none'}"
+        )
+
+    lines.extend(["", "## Source Mismatch Audit", ""])
+    lines.append(
+        f"- Baseline advisory mismatches: {', '.join(report.baseline.source_mismatch_audit.advisory_mismatches) or 'none'}"
+    )
+    lines.append(
+        f"- Baseline critical mismatches: {', '.join(report.baseline.source_mismatch_audit.critical_mismatches) or 'none'}"
+    )
+    lines.append(
+        f"- Candidate advisory mismatches: {', '.join(report.candidate.source_mismatch_audit.advisory_mismatches) or 'none'}"
+    )
+    lines.append(
+        f"- Candidate critical mismatches: {', '.join(report.candidate.source_mismatch_audit.critical_mismatches) or 'none'}"
+    )
+
+    lines.extend(["", "## Policy Diffs", ""])
     if not report.policy_diffs:
         lines.append("- No runtime calibration deltas were detected.")
     else:
@@ -922,24 +1518,22 @@ def render_calibration_report(report: PolicyComparisonReport) -> str:
         lines.append("")
 
     lines.extend(["## Notable Case Diffs", ""])
-    flipped_cases = [
-        case_diff
-        for case_diff in report.case_diffs.values()
-        if case_diff.baseline.outcome != case_diff.candidate.outcome
-        or case_diff.baseline.correct != case_diff.candidate.correct
-    ]
-    if not flipped_cases:
+    if not report.suite_case_diffs:
         lines.append("- No decision flips between baseline and candidate policies.")
     else:
-        for case_diff in flipped_cases:
-            lines.append(
-                f"- `{case_diff.case_id}` ({case_diff.decision_type}): "
-                f"`{case_diff.baseline.outcome}` -> `{case_diff.candidate.outcome}` "
-                f"(correct `{case_diff.baseline.correct}` -> `{case_diff.candidate.correct}`)"
-            )
+        for suite_id, suite_diffs in report.suite_case_diffs.items():
+            lines.append(f"### `{suite_id}`")
+            lines.append("")
+            for outcome_id, case_diff in suite_diffs.items():
+                lines.append(
+                    f"- `{outcome_id}` ({case_diff.decision_type}): "
+                    f"`{case_diff.baseline.outcome}` -> `{case_diff.candidate.outcome}` "
+                    f"(correct `{case_diff.baseline.correct}` -> `{case_diff.candidate.correct}`)"
+                )
+            lines.append("")
 
     if report.shadow_policies:
-        lines.extend(["", "## Shadow Consumer Diffs", ""])
+        lines.extend(["## Shadow Consumer Diffs", ""])
         for name, shadow_report in report.shadow_policies.items():
             lines.append(
                 f"- `{name}` accuracy={shadow_report.summary.operational_accuracy:.3f}, "
@@ -978,45 +1572,112 @@ def report_to_dict(report: PolicyComparisonReport) -> dict[str, Any]:
             ],
         }
 
+    def _source_mismatch_audit_to_dict(
+        audit: SourceMismatchAudit,
+    ) -> dict[str, list[str]]:
+        return {
+            "advisory_mismatches": list(audit.advisory_mismatches),
+            "critical_mismatches": list(audit.critical_mismatches),
+        }
+
     def _outcome_to_dict(outcome: CaseOutcome) -> dict[str, Any]:
         return {
+            "case_id": outcome.case_id,
+            "suite_id": outcome.suite_id,
+            "suite_tier": outcome.suite_tier,
+            "metric_key": outcome.metric_key,
+            "decision_surface": outcome.decision_surface,
+            "risk_tags": list(outcome.risk_tags),
+            "anchor": outcome.anchor,
+            "fixture_ref": outcome.fixture_ref,
             "decision_type": outcome.decision_type,
             "correct": outcome.correct,
             "outcome": outcome.outcome,
             "expected_outcome": outcome.expected_outcome,
             "confidence": round(outcome.confidence, 6),
             "source": outcome.source,
+            "source_strictness": outcome.source_strictness,
+            "expected_source": outcome.expected_source,
+            "source_mismatch": outcome.source_mismatch,
             "survived": outcome.survived,
             "false_accept": outcome.false_accept,
             "false_reject": outcome.false_reject,
         }
 
+    def _evaluation_report_to_dict(
+        report_obj: PolicyEvaluationReport,
+    ) -> dict[str, Any]:
+        return {
+            "runtime": report_obj.runtime.name,
+            "aggregate": {
+                "summary": _summary_to_dict(report_obj.aggregate_summary),
+            },
+            "suites": {
+                suite_id: {
+                    "summary": _summary_to_dict(summary),
+                }
+                for suite_id, summary in sorted(report_obj.suite_summaries.items())
+            },
+            "source_mismatch_audit": _source_mismatch_audit_to_dict(
+                report_obj.source_mismatch_audit
+            ),
+            "case_outcomes": {
+                outcome_id: _outcome_to_dict(report_obj.case_outcomes[outcome_id])
+                for outcome_id in sorted(report_obj.case_outcomes)
+            },
+        }
+
+    coverage_audit = report.coverage_audit or _build_coverage_audit(report.manifest)
     return {
-        "baseline": {
-            "runtime": report.baseline.runtime.name,
-            "summary": _summary_to_dict(report.baseline.summary),
-            "case_outcomes": {
-                key: _outcome_to_dict(value)
-                for key, value in report.baseline.case_outcomes.items()
+        "manifest": {
+            "version": report.manifest.version,
+            "threshold": report.manifest.threshold,
+            "suite_ids": list(report.manifest.suite_ids),
+        },
+        "coverage_audit": {
+            "required_surfaces": list(coverage_audit.required_surfaces),
+            "expansion_priority_surfaces": list(
+                coverage_audit.expansion_priority_surfaces
+            ),
+            "present_surfaces": {
+                scope: list(surfaces)
+                for scope, surfaces in sorted(coverage_audit.present_surfaces.items())
+            },
+            "missing_required_surfaces": {
+                scope: list(surfaces)
+                for scope, surfaces in sorted(
+                    coverage_audit.missing_required_surfaces.items()
+                )
+            },
+            "anchor_surfaces": {
+                scope: list(surfaces)
+                for scope, surfaces in sorted(coverage_audit.anchor_surfaces.items())
+            },
+            "real_fixture_anchor_surfaces": {
+                scope: list(surfaces)
+                for scope, surfaces in sorted(
+                    coverage_audit.real_fixture_anchor_surfaces.items()
+                )
+            },
+            "underanchored_required_surfaces": {
+                scope: list(surfaces)
+                for scope, surfaces in sorted(
+                    coverage_audit.underanchored_required_surfaces.items()
+                )
+            },
+            "risk_tag_counts": {
+                scope: dict(sorted(tag_counts.items()))
+                for scope, tag_counts in sorted(coverage_audit.risk_tag_counts.items())
             },
         },
-        "candidate": {
-            "runtime": report.candidate.runtime.name,
-            "summary": _summary_to_dict(report.candidate.summary),
-            "case_outcomes": {
-                key: _outcome_to_dict(value)
-                for key, value in report.candidate.case_outcomes.items()
-            },
-        },
+        "baseline": _evaluation_report_to_dict(report.baseline),
+        "candidate": _evaluation_report_to_dict(report.candidate),
         "shadow_policies": {
-            name: {
-                "runtime": value.runtime.name,
-                "summary": _summary_to_dict(value.summary),
-            }
-            for name, value in report.shadow_policies.items()
+            name: _evaluation_report_to_dict(shadow_report)
+            for name, shadow_report in sorted(report.shadow_policies.items())
         },
         "threshold_sweep": {
-            name: [
+            runtime_name: [
                 {
                     "threshold": point.threshold,
                     "operational_accuracy": round(point.operational_accuracy, 6),
@@ -1027,7 +1688,7 @@ def report_to_dict(report: PolicyComparisonReport) -> dict[str, Any]:
                 }
                 for point in sweep_points
             ]
-            for name, sweep_points in report.threshold_sweep.items()
+            for runtime_name, sweep_points in sorted(report.threshold_sweep.items())
         },
         "invariant_checks": [
             {
@@ -1046,37 +1707,60 @@ def report_to_dict(report: PolicyComparisonReport) -> dict[str, Any]:
             for diff in report.policy_diffs
         ],
         "case_diffs": {
-            case_id: {
+            outcome_id: {
                 "decision_type": case_diff.decision_type,
+                "suite_id": case_diff.suite_id,
                 "baseline": _outcome_to_dict(case_diff.baseline),
                 "candidate": _outcome_to_dict(case_diff.candidate),
             }
-            for case_id, case_diff in report.case_diffs.items()
+            for outcome_id, case_diff in sorted(report.case_diffs.items())
             if case_diff.baseline.outcome != case_diff.candidate.outcome
             or case_diff.baseline.correct != case_diff.candidate.correct
+        },
+        "suite_case_diffs": {
+            suite_id: {
+                outcome_id: {
+                    "decision_type": case_diff.decision_type,
+                    "baseline": _outcome_to_dict(case_diff.baseline),
+                    "candidate": _outcome_to_dict(case_diff.candidate),
+                }
+                for outcome_id, case_diff in sorted(case_diffs.items())
+            }
+            for suite_id, case_diffs in sorted(report.suite_case_diffs.items())
         },
     }
 
 
 __all__ = [
     "CalibrationManifest",
+    "CalibrationSuite",
     "CandidateDescriptor",
     "CandidateThresholdCase",
+    "CaseDiff",
+    "CaseOutcome",
+    "CoverageAudit",
+    "DEFAULT_FIXTURE_MANIFEST_PATH",
     "DEFAULT_MANIFEST_PATH",
     "DEFAULT_SHADOW_POLICIES",
+    "DECISION_SURFACES",
+    "EXPANSION_PRIORITY_SURFACES",
     "EvaluationRuntime",
+    "InvariantCheck",
     "MergeCase",
     "MetricExpectation",
     "ParseCase",
-    "PolicySettingDiff",
     "PolicyComparisonReport",
     "PolicyEvaluationReport",
+    "PolicySettingDiff",
+    "REQUIRED_DECISION_SURFACES",
+    "RISK_TAG_VOCABULARY",
+    "ResolvedFixture",
     "ShadowConsumerPolicy",
     "ThresholdSweepPoint",
-    "InvariantCheck",
     "compare_policies",
     "evaluate_runtime",
     "load_calibration_manifest",
     "render_calibration_report",
     "report_to_dict",
+    "resolve_fixture_ref",
 ]

@@ -24,7 +24,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--manifest",
         type=Path,
         default=calibration.DEFAULT_MANIFEST_PATH,
-        help="Path to the frozen calibration manifest.",
+        help="Path to the suite-aware calibration manifest root or a single suite file.",
+    )
+    parser.add_argument(
+        "--suite",
+        choices=("fast", "gated", "all"),
+        default="fast",
+        help="Suite selector for the calibration harness.",
     )
     parser.add_argument(
         "--format",
@@ -45,7 +51,7 @@ def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
 
-    manifest = calibration.load_calibration_manifest(args.manifest)
+    manifest = calibration.load_calibration_manifest(args.manifest, suite=args.suite)
     report = calibration.compare_policies(
         manifest,
         baseline_policy=BASELINE_RUNTIME_CONFIDENCE_POLICY,

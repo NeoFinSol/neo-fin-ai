@@ -1,158 +1,704 @@
 {
-  "baseline": {
-    "runtime": "baseline_runtime_v2",
-    "summary": {
-      "total_cases": 9,
-      "correct_cases": 6,
-      "operational_accuracy": 0.666667,
-      "false_accept_count": 2,
-      "false_reject_count": 0,
-      "survivor_count": 5,
-      "acceptance_rate": 0.714286,
-      "boundary_density": 0.333333,
-      "mean_confidence": 0.563333,
-      "brier_score": 0.314567,
-      "ece": 0.316667,
-      "decision_surface_counts": {
-        "threshold": 5,
-        "winner": 2,
-        "merge": 2
-      },
-      "reliability_bins": [
-        {
-          "lower": 0.0,
-          "upper": 0.2,
-          "count": 1,
-          "mean_confidence": 0.0,
-          "accuracy": 1.0
-        },
-        {
-          "lower": 0.2,
-          "upper": 0.4,
-          "count": 1,
-          "mean_confidence": 0.2,
-          "accuracy": 1.0
-        },
-        {
-          "lower": 0.4,
-          "upper": 0.6,
-          "count": 3,
-          "mean_confidence": 0.513333,
-          "accuracy": 0.333333
-        },
-        {
-          "lower": 0.6,
-          "upper": 0.8,
-          "count": 2,
-          "mean_confidence": 0.71,
-          "accuracy": 0.5
-        },
-        {
-          "lower": 0.8,
-          "upper": 1.0,
-          "count": 2,
-          "mean_confidence": 0.955,
-          "accuracy": 1.0
-        }
+  "manifest": {
+    "version": 2,
+    "threshold": 0.5,
+    "suite_ids": [
+      "fast",
+      "gated"
+    ]
+  },
+  "coverage_audit": {
+    "required_surfaces": [
+      "threshold_boundary",
+      "winner_selection",
+      "merge_replacement",
+      "expected_absent"
+    ],
+    "expansion_priority_surfaces": [
+      "threshold_survival",
+      "authoritative_override",
+      "approximation_separation"
+    ],
+    "present_surfaces": {
+      "all": [
+        "approximation_separation",
+        "authoritative_override",
+        "expected_absent",
+        "merge_replacement",
+        "threshold_boundary",
+        "threshold_survival",
+        "winner_selection"
+      ],
+      "fast": [
+        "approximation_separation",
+        "authoritative_override",
+        "expected_absent",
+        "merge_replacement",
+        "threshold_boundary",
+        "threshold_survival",
+        "winner_selection"
+      ],
+      "gated": [
+        "approximation_separation",
+        "authoritative_override",
+        "expected_absent",
+        "merge_replacement",
+        "threshold_boundary",
+        "threshold_survival",
+        "winner_selection"
       ]
     },
+    "missing_required_surfaces": {
+      "all": [],
+      "fast": [],
+      "gated": []
+    },
+    "anchor_surfaces": {
+      "all": [
+        "expected_absent",
+        "merge_replacement",
+        "threshold_boundary",
+        "winner_selection"
+      ],
+      "fast": [],
+      "gated": [
+        "expected_absent",
+        "merge_replacement",
+        "threshold_boundary",
+        "winner_selection"
+      ]
+    },
+    "real_fixture_anchor_surfaces": {
+      "all": [
+        "expected_absent",
+        "merge_replacement",
+        "threshold_boundary",
+        "winner_selection"
+      ],
+      "fast": [],
+      "gated": [
+        "expected_absent",
+        "merge_replacement",
+        "threshold_boundary",
+        "winner_selection"
+      ]
+    },
+    "underanchored_required_surfaces": {
+      "all": [],
+      "fast": [],
+      "gated": []
+    },
+    "risk_tag_counts": {
+      "all": {
+        "boundary_near_0_5": 2,
+        "false_positive_trap": 2,
+        "historically_flaky": 2,
+        "low_confidence": 4,
+        "replacement_path": 4,
+        "source_sensitive": 6,
+        "weak_keyword": 1,
+        "weak_ocr_direct": 1
+      },
+      "fast": {
+        "boundary_near_0_5": 1,
+        "false_positive_trap": 1,
+        "low_confidence": 2,
+        "replacement_path": 2,
+        "source_sensitive": 3,
+        "weak_keyword": 1
+      },
+      "gated": {
+        "boundary_near_0_5": 1,
+        "false_positive_trap": 1,
+        "historically_flaky": 2,
+        "low_confidence": 2,
+        "replacement_path": 2,
+        "source_sensitive": 3,
+        "weak_ocr_direct": 1
+      }
+    }
+  },
+  "baseline": {
+    "runtime": "baseline_runtime_v2",
+    "aggregate": {
+      "summary": {
+        "total_cases": 16,
+        "correct_cases": 12,
+        "operational_accuracy": 0.75,
+        "false_accept_count": 2,
+        "false_reject_count": 0,
+        "survivor_count": 10,
+        "acceptance_rate": 0.833333,
+        "boundary_density": 0.4375,
+        "mean_confidence": 0.601875,
+        "brier_score": 0.228006,
+        "ece": 0.148125,
+        "decision_surface_counts": {
+          "threshold_boundary": 2,
+          "winner_selection": 4,
+          "merge_replacement": 2,
+          "expected_absent": 2,
+          "threshold_survival": 2,
+          "authoritative_override": 2,
+          "approximation_separation": 2
+        },
+        "reliability_bins": [
+          {
+            "lower": 0.0,
+            "upper": 0.2,
+            "count": 0,
+            "mean_confidence": 0.0,
+            "accuracy": 0.0
+          },
+          {
+            "lower": 0.2,
+            "upper": 0.4,
+            "count": 2,
+            "mean_confidence": 0.2,
+            "accuracy": 1.0
+          },
+          {
+            "lower": 0.4,
+            "upper": 0.6,
+            "count": 7,
+            "mean_confidence": 0.511429,
+            "accuracy": 0.571429
+          },
+          {
+            "lower": 0.6,
+            "upper": 0.8,
+            "count": 4,
+            "mean_confidence": 0.6975,
+            "accuracy": 0.75
+          },
+          {
+            "lower": 0.8,
+            "upper": 1.0,
+            "count": 3,
+            "mean_confidence": 0.953333,
+            "accuracy": 1.0
+          }
+        ]
+      }
+    },
+    "suites": {
+      "fast": {
+        "summary": {
+          "total_cases": 8,
+          "correct_cases": 6,
+          "operational_accuracy": 0.75,
+          "false_accept_count": 1,
+          "false_reject_count": 0,
+          "survivor_count": 5,
+          "acceptance_rate": 0.833333,
+          "boundary_density": 0.5,
+          "mean_confidence": 0.62,
+          "brier_score": 0.202525,
+          "ece": 0.15,
+          "decision_surface_counts": {
+            "threshold_boundary": 1,
+            "winner_selection": 2,
+            "merge_replacement": 1,
+            "expected_absent": 1,
+            "threshold_survival": 1,
+            "authoritative_override": 1,
+            "approximation_separation": 1
+          },
+          "reliability_bins": [
+            {
+              "lower": 0.0,
+              "upper": 0.2,
+              "count": 0,
+              "mean_confidence": 0.0,
+              "accuracy": 0.0
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.4,
+              "count": 1,
+              "mean_confidence": 0.2,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.6,
+              "count": 4,
+              "mean_confidence": 0.52,
+              "accuracy": 0.5
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.8,
+              "count": 1,
+              "mean_confidence": 0.77,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.8,
+              "upper": 1.0,
+              "count": 2,
+              "mean_confidence": 0.955,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      },
+      "gated": {
+        "summary": {
+          "total_cases": 8,
+          "correct_cases": 6,
+          "operational_accuracy": 0.75,
+          "false_accept_count": 1,
+          "false_reject_count": 0,
+          "survivor_count": 5,
+          "acceptance_rate": 0.833333,
+          "boundary_density": 0.375,
+          "mean_confidence": 0.58375,
+          "brier_score": 0.253488,
+          "ece": 0.17125,
+          "decision_surface_counts": {
+            "threshold_boundary": 1,
+            "winner_selection": 2,
+            "merge_replacement": 1,
+            "expected_absent": 1,
+            "threshold_survival": 1,
+            "authoritative_override": 1,
+            "approximation_separation": 1
+          },
+          "reliability_bins": [
+            {
+              "lower": 0.0,
+              "upper": 0.2,
+              "count": 0,
+              "mean_confidence": 0.0,
+              "accuracy": 0.0
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.4,
+              "count": 1,
+              "mean_confidence": 0.2,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.6,
+              "count": 3,
+              "mean_confidence": 0.5,
+              "accuracy": 0.666667
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.8,
+              "count": 3,
+              "mean_confidence": 0.673333,
+              "accuracy": 0.666667
+            },
+            {
+              "lower": 0.8,
+              "upper": 1.0,
+              "count": 1,
+              "mean_confidence": 0.95,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "source_mismatch_audit": {
+      "advisory_mismatches": [],
+      "critical_mismatches": []
+    },
     "case_outcomes": {
-      "table_exact_high_quality_survives": {
-        "decision_type": "threshold",
-        "correct": true,
-        "outcome": "survive:table",
-        "expected_outcome": "survive:table",
-        "confidence": 0.96,
-        "source": "table",
-        "survived": true,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "weak_text_keyword_should_not_survive": {
-        "decision_type": "threshold",
-        "correct": false,
-        "outcome": "survive:text",
-        "expected_outcome": "absent",
-        "confidence": 0.5,
-        "source": "text",
-        "survived": true,
-        "false_accept": true,
-        "false_reject": false
-      },
-      "weak_ocr_exact_should_not_survive": {
-        "decision_type": "threshold",
-        "correct": false,
-        "outcome": "survive:ocr",
-        "expected_outcome": "absent",
-        "confidence": 0.65,
-        "source": "ocr",
-        "survived": true,
-        "false_accept": true,
-        "false_reject": false
-      },
-      "text_code_medium_quality_survives": {
-        "decision_type": "threshold",
-        "correct": true,
-        "outcome": "survive:text",
-        "expected_outcome": "survive:text",
-        "confidence": 0.77,
-        "source": "text",
-        "survived": true,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "gross_profit_approximation_stays_filtered": {
+      "fast_approximation_guard": {
+        "case_id": "fast_approximation_guard",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "ebitda",
+        "decision_surface": "approximation_separation",
+        "risk_tags": [
+          "low_confidence"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
         "decision_type": "threshold",
         "correct": true,
         "outcome": "absent",
         "expected_outcome": "absent",
         "confidence": 0.2,
         "source": "table",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
         "survived": false,
         "false_accept": false,
         "false_reject": false
       },
-      "parse_table_exact_source_is_decision_critical": {
-        "decision_type": "winner",
-        "correct": true,
-        "outcome": "survive:table",
-        "expected_outcome": "survive:table",
-        "confidence": 0.54,
-        "source": "table",
-        "survived": true,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "parse_ifrs_approximation_remains_absent": {
-        "decision_type": "winner",
-        "correct": true,
-        "outcome": "absent",
-        "expected_outcome": "absent",
-        "confidence": 0.0,
-        "source": null,
-        "survived": false,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "llm_replaces_weak_text_keyword_fallback": {
-        "decision_type": "merge",
-        "correct": false,
-        "outcome": "fallback",
-        "expected_outcome": "llm",
-        "confidence": 0.5,
-        "source": "text",
-        "survived": null,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "llm_keeps_authoritative_override": {
+      "fast_authoritative_override": {
+        "case_id": "fast_authoritative_override",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "ebitda",
+        "decision_surface": "authoritative_override",
+        "risk_tags": [
+          "replacement_path",
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
         "decision_type": "merge",
         "correct": true,
         "outcome": "fallback",
         "expected_outcome": "fallback",
         "confidence": 0.95,
         "source": "issuer_fallback",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
         "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_boundary_text_code": {
+        "case_id": "fast_boundary_text_code",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "threshold_boundary",
+        "risk_tags": [
+          "boundary_near_0_5",
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.77,
+        "source": "text",
+        "source_strictness": "critical",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_inline_winner_pair::net_profit": {
+        "case_id": "fast_inline_winner_pair",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "net_profit",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive:table",
+        "confidence": 0.54,
+        "source": "table",
+        "source_strictness": "advisory",
+        "expected_source": "table",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_inline_winner_pair::revenue": {
+        "case_id": "fast_inline_winner_pair",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive:table",
+        "confidence": 0.54,
+        "source": "table",
+        "source_strictness": "critical",
+        "expected_source": "table",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_llm_replacement": {
+        "case_id": "fast_llm_replacement",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "merge_replacement",
+        "risk_tags": [
+          "replacement_path"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "merge",
+        "correct": false,
+        "outcome": "fallback",
+        "expected_outcome": "llm",
+        "confidence": 0.5,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_table_exact_survival": {
+        "case_id": "fast_table_exact_survival",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "threshold_survival",
+        "risk_tags": [],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive",
+        "confidence": 0.96,
+        "source": "table",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_weak_text_keyword_absent": {
+        "case_id": "fast_weak_text_keyword_absent",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "expected_absent",
+        "risk_tags": [
+          "false_positive_trap",
+          "low_confidence",
+          "weak_keyword"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "threshold",
+        "correct": false,
+        "outcome": "survive:text",
+        "expected_outcome": "absent",
+        "confidence": 0.5,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": true,
+        "false_reject": false
+      },
+      "gated_cloudflare_approximation_guard": {
+        "case_id": "gated_cloudflare_approximation_guard",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "ebitda",
+        "decision_surface": "approximation_separation",
+        "risk_tags": [
+          "low_confidence"
+        ],
+        "anchor": false,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.2,
+        "source": "table",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_cloudflare_expected_absent_anchor": {
+        "case_id": "gated_cloudflare_expected_absent_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "total_assets",
+        "decision_surface": "expected_absent",
+        "risk_tags": [
+          "false_positive_trap",
+          "low_confidence",
+          "weak_ocr_direct"
+        ],
+        "anchor": true,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "threshold",
+        "correct": false,
+        "outcome": "survive:ocr",
+        "expected_outcome": "absent",
+        "confidence": 0.65,
+        "source": "ocr",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": true,
+        "false_reject": false
+      },
+      "gated_cloudflare_merge_anchor": {
+        "case_id": "gated_cloudflare_merge_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "merge_replacement",
+        "risk_tags": [
+          "replacement_path"
+        ],
+        "anchor": true,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "merge",
+        "correct": false,
+        "outcome": "fallback",
+        "expected_outcome": "llm",
+        "confidence": 0.5,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_cloudflare_threshold_survival::cash_and_equivalents": {
+        "case_id": "gated_cloudflare_threshold_survival",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "cash_and_equivalents",
+        "decision_surface": "threshold_survival",
+        "risk_tags": [
+          "historically_flaky"
+        ],
+        "anchor": false,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.5,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_corvel_authoritative_override": {
+        "case_id": "gated_corvel_authoritative_override",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "ebitda",
+        "decision_surface": "authoritative_override",
+        "risk_tags": [
+          "replacement_path",
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "fallback",
+        "expected_outcome": "fallback",
+        "confidence": 0.95,
+        "source": "issuer_fallback",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_corvel_boundary_anchor": {
+        "case_id": "gated_corvel_boundary_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "threshold_boundary",
+        "risk_tags": [
+          "boundary_near_0_5",
+          "source_sensitive"
+        ],
+        "anchor": true,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.77,
+        "source": "text",
+        "source_strictness": "critical",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_corvel_parse_anchor::current_assets": {
+        "case_id": "gated_corvel_parse_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "current_assets",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "historically_flaky",
+          "source_sensitive"
+        ],
+        "anchor": true,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.6,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_corvel_parse_anchor::revenue": {
+        "case_id": "gated_corvel_parse_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "historically_flaky",
+          "source_sensitive"
+        ],
+        "anchor": true,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.5,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
         "false_accept": false,
         "false_reject": false
       }
@@ -160,220 +706,1175 @@
   },
   "candidate": {
     "runtime": "calibrated_runtime_v2_2026_04",
-    "summary": {
-      "total_cases": 9,
-      "correct_cases": 9,
-      "operational_accuracy": 1.0,
-      "false_accept_count": 0,
-      "false_reject_count": 0,
-      "survivor_count": 3,
-      "acceptance_rate": 0.428571,
-      "boundary_density": 0.333333,
-      "mean_confidence": 0.585556,
-      "brier_score": 0.278433,
-      "ece": 0.414444,
-      "decision_surface_counts": {
-        "threshold": 5,
-        "winner": 2,
-        "merge": 2
-      },
-      "reliability_bins": [
-        {
-          "lower": 0.0,
-          "upper": 0.2,
-          "count": 1,
-          "mean_confidence": 0.0,
-          "accuracy": 1.0
-        },
-        {
-          "lower": 0.2,
-          "upper": 0.4,
-          "count": 1,
-          "mean_confidence": 0.2,
-          "accuracy": 1.0
-        },
-        {
-          "lower": 0.4,
-          "upper": 0.6,
-          "count": 3,
-          "mean_confidence": 0.48,
-          "accuracy": 1.0
-        },
-        {
-          "lower": 0.6,
-          "upper": 0.8,
-          "count": 1,
-          "mean_confidence": 0.79,
-          "accuracy": 1.0
-        },
-        {
-          "lower": 0.8,
-          "upper": 1.0,
-          "count": 3,
-          "mean_confidence": 0.946667,
-          "accuracy": 1.0
-        }
-      ]
-    },
-    "case_outcomes": {
-      "table_exact_high_quality_survives": {
-        "decision_type": "threshold",
-        "correct": true,
-        "outcome": "survive:table",
-        "expected_outcome": "survive:table",
-        "confidence": 0.97,
-        "source": "table",
-        "survived": true,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "weak_text_keyword_should_not_survive": {
-        "decision_type": "threshold",
-        "correct": true,
-        "outcome": "absent",
-        "expected_outcome": "absent",
-        "confidence": 0.46,
-        "source": "text",
-        "survived": false,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "weak_ocr_exact_should_not_survive": {
-        "decision_type": "threshold",
-        "correct": true,
-        "outcome": "absent",
-        "expected_outcome": "absent",
-        "confidence": 0.48,
-        "source": "ocr",
-        "survived": false,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "text_code_medium_quality_survives": {
-        "decision_type": "threshold",
-        "correct": true,
-        "outcome": "survive:text",
-        "expected_outcome": "survive:text",
-        "confidence": 0.79,
-        "source": "text",
-        "survived": true,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "gross_profit_approximation_stays_filtered": {
-        "decision_type": "threshold",
-        "correct": true,
-        "outcome": "absent",
-        "expected_outcome": "absent",
-        "confidence": 0.2,
-        "source": "table",
-        "survived": false,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "parse_table_exact_source_is_decision_critical": {
-        "decision_type": "winner",
-        "correct": true,
-        "outcome": "survive:table",
-        "expected_outcome": "survive:table",
-        "confidence": 0.5,
-        "source": "table",
-        "survived": true,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "parse_ifrs_approximation_remains_absent": {
-        "decision_type": "winner",
-        "correct": true,
-        "outcome": "absent",
-        "expected_outcome": "absent",
-        "confidence": 0.0,
-        "source": null,
-        "survived": false,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "llm_replaces_weak_text_keyword_fallback": {
-        "decision_type": "merge",
-        "correct": true,
-        "outcome": "llm",
-        "expected_outcome": "llm",
-        "confidence": 0.92,
-        "source": "text",
-        "survived": null,
-        "false_accept": false,
-        "false_reject": false
-      },
-      "llm_keeps_authoritative_override": {
-        "decision_type": "merge",
-        "correct": true,
-        "outcome": "fallback",
-        "expected_outcome": "fallback",
-        "confidence": 0.95,
-        "source": "issuer_fallback",
-        "survived": null,
-        "false_accept": false,
-        "false_reject": false
-      }
-    }
-  },
-  "shadow_policies": {
-    "shadow_relaxed_consumer": {
-      "runtime": "shadow_relaxed_consumer",
+    "aggregate": {
       "summary": {
-        "total_cases": 9,
-        "correct_cases": 9,
-        "operational_accuracy": 1.0,
+        "total_cases": 16,
+        "correct_cases": 14,
+        "operational_accuracy": 0.875,
         "false_accept_count": 0,
-        "false_reject_count": 0,
-        "survivor_count": 3,
-        "acceptance_rate": 0.428571,
-        "boundary_density": 0.333333,
-        "mean_confidence": 0.585556,
-        "brier_score": 0.278433,
-        "ece": 0.414444,
+        "false_reject_count": 2,
+        "survivor_count": 6,
+        "acceptance_rate": 0.5,
+        "boundary_density": 0.375,
+        "mean_confidence": 0.63375,
+        "brier_score": 0.190013,
+        "ece": 0.24125,
         "decision_surface_counts": {
-          "threshold": 5,
-          "winner": 2,
-          "merge": 2
+          "threshold_boundary": 2,
+          "winner_selection": 4,
+          "merge_replacement": 2,
+          "expected_absent": 2,
+          "threshold_survival": 2,
+          "authoritative_override": 2,
+          "approximation_separation": 2
         },
         "reliability_bins": [
           {
             "lower": 0.0,
             "upper": 0.2,
-            "count": 1,
+            "count": 0,
             "mean_confidence": 0.0,
-            "accuracy": 1.0
+            "accuracy": 0.0
           },
           {
             "lower": 0.2,
             "upper": 0.4,
-            "count": 1,
+            "count": 2,
             "mean_confidence": 0.2,
             "accuracy": 1.0
           },
           {
             "lower": 0.4,
             "upper": 0.6,
-            "count": 3,
-            "mean_confidence": 0.48,
-            "accuracy": 1.0
+            "count": 7,
+            "mean_confidence": 0.492857,
+            "accuracy": 0.714286
           },
           {
             "lower": 0.6,
             "upper": 0.8,
-            "count": 1,
+            "count": 2,
             "mean_confidence": 0.79,
             "accuracy": 1.0
           },
           {
             "lower": 0.8,
             "upper": 1.0,
-            "count": 3,
-            "mean_confidence": 0.946667,
+            "count": 5,
+            "mean_confidence": 0.942,
             "accuracy": 1.0
           }
         ]
+      }
+    },
+    "suites": {
+      "fast": {
+        "summary": {
+          "total_cases": 8,
+          "correct_cases": 8,
+          "operational_accuracy": 1.0,
+          "false_accept_count": 0,
+          "false_reject_count": 0,
+          "survivor_count": 4,
+          "acceptance_rate": 0.666667,
+          "boundary_density": 0.375,
+          "mean_confidence": 0.66125,
+          "brier_score": 0.185688,
+          "ece": 0.33875,
+          "decision_surface_counts": {
+            "threshold_boundary": 1,
+            "winner_selection": 2,
+            "merge_replacement": 1,
+            "expected_absent": 1,
+            "threshold_survival": 1,
+            "authoritative_override": 1,
+            "approximation_separation": 1
+          },
+          "reliability_bins": [
+            {
+              "lower": 0.0,
+              "upper": 0.2,
+              "count": 0,
+              "mean_confidence": 0.0,
+              "accuracy": 0.0
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.4,
+              "count": 1,
+              "mean_confidence": 0.2,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.6,
+              "count": 3,
+              "mean_confidence": 0.486667,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.8,
+              "count": 1,
+              "mean_confidence": 0.79,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.8,
+              "upper": 1.0,
+              "count": 3,
+              "mean_confidence": 0.946667,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      },
+      "gated": {
+        "summary": {
+          "total_cases": 8,
+          "correct_cases": 6,
+          "operational_accuracy": 0.75,
+          "false_accept_count": 0,
+          "false_reject_count": 2,
+          "survivor_count": 2,
+          "acceptance_rate": 0.333333,
+          "boundary_density": 0.375,
+          "mean_confidence": 0.60625,
+          "brier_score": 0.194338,
+          "ece": 0.14375,
+          "decision_surface_counts": {
+            "threshold_boundary": 1,
+            "winner_selection": 2,
+            "merge_replacement": 1,
+            "expected_absent": 1,
+            "threshold_survival": 1,
+            "authoritative_override": 1,
+            "approximation_separation": 1
+          },
+          "reliability_bins": [
+            {
+              "lower": 0.0,
+              "upper": 0.2,
+              "count": 0,
+              "mean_confidence": 0.0,
+              "accuracy": 0.0
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.4,
+              "count": 1,
+              "mean_confidence": 0.2,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.6,
+              "count": 4,
+              "mean_confidence": 0.4975,
+              "accuracy": 0.5
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.8,
+              "count": 1,
+              "mean_confidence": 0.79,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.8,
+              "upper": 1.0,
+              "count": 2,
+              "mean_confidence": 0.935,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      }
+    },
+    "source_mismatch_audit": {
+      "advisory_mismatches": [],
+      "critical_mismatches": []
+    },
+    "case_outcomes": {
+      "fast_approximation_guard": {
+        "case_id": "fast_approximation_guard",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "ebitda",
+        "decision_surface": "approximation_separation",
+        "risk_tags": [
+          "low_confidence"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.2,
+        "source": "table",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_authoritative_override": {
+        "case_id": "fast_authoritative_override",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "ebitda",
+        "decision_surface": "authoritative_override",
+        "risk_tags": [
+          "replacement_path",
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "fallback",
+        "expected_outcome": "fallback",
+        "confidence": 0.95,
+        "source": "issuer_fallback",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_boundary_text_code": {
+        "case_id": "fast_boundary_text_code",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "threshold_boundary",
+        "risk_tags": [
+          "boundary_near_0_5",
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.79,
+        "source": "text",
+        "source_strictness": "critical",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_inline_winner_pair::net_profit": {
+        "case_id": "fast_inline_winner_pair",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "net_profit",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive:table",
+        "confidence": 0.5,
+        "source": "table",
+        "source_strictness": "advisory",
+        "expected_source": "table",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_inline_winner_pair::revenue": {
+        "case_id": "fast_inline_winner_pair",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive:table",
+        "confidence": 0.5,
+        "source": "table",
+        "source_strictness": "critical",
+        "expected_source": "table",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_llm_replacement": {
+        "case_id": "fast_llm_replacement",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "merge_replacement",
+        "risk_tags": [
+          "replacement_path"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "llm",
+        "expected_outcome": "llm",
+        "confidence": 0.92,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_table_exact_survival": {
+        "case_id": "fast_table_exact_survival",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "threshold_survival",
+        "risk_tags": [],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:table",
+        "expected_outcome": "survive",
+        "confidence": 0.97,
+        "source": "table",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "fast_weak_text_keyword_absent": {
+        "case_id": "fast_weak_text_keyword_absent",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "expected_absent",
+        "risk_tags": [
+          "false_positive_trap",
+          "low_confidence",
+          "weak_keyword"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.46,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_cloudflare_approximation_guard": {
+        "case_id": "gated_cloudflare_approximation_guard",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "ebitda",
+        "decision_surface": "approximation_separation",
+        "risk_tags": [
+          "low_confidence"
+        ],
+        "anchor": false,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.2,
+        "source": "table",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_cloudflare_expected_absent_anchor": {
+        "case_id": "gated_cloudflare_expected_absent_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "total_assets",
+        "decision_surface": "expected_absent",
+        "risk_tags": [
+          "false_positive_trap",
+          "low_confidence",
+          "weak_ocr_direct"
+        ],
+        "anchor": true,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.48,
+        "source": "ocr",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_cloudflare_merge_anchor": {
+        "case_id": "gated_cloudflare_merge_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "merge_replacement",
+        "risk_tags": [
+          "replacement_path"
+        ],
+        "anchor": true,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "llm",
+        "expected_outcome": "llm",
+        "confidence": 0.92,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_cloudflare_threshold_survival::cash_and_equivalents": {
+        "case_id": "gated_cloudflare_threshold_survival",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "cash_and_equivalents",
+        "decision_surface": "threshold_survival",
+        "risk_tags": [
+          "historically_flaky"
+        ],
+        "anchor": false,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "winner",
+        "correct": false,
+        "outcome": "absent",
+        "expected_outcome": "survive:text",
+        "confidence": 0.46,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": true
+      },
+      "gated_corvel_authoritative_override": {
+        "case_id": "gated_corvel_authoritative_override",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "ebitda",
+        "decision_surface": "authoritative_override",
+        "risk_tags": [
+          "replacement_path",
+          "source_sensitive"
+        ],
+        "anchor": false,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "fallback",
+        "expected_outcome": "fallback",
+        "confidence": 0.95,
+        "source": "issuer_fallback",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_corvel_boundary_anchor": {
+        "case_id": "gated_corvel_boundary_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "threshold_boundary",
+        "risk_tags": [
+          "boundary_near_0_5",
+          "source_sensitive"
+        ],
+        "anchor": true,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.79,
+        "source": "text",
+        "source_strictness": "critical",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_corvel_parse_anchor::current_assets": {
+        "case_id": "gated_corvel_parse_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "current_assets",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "historically_flaky",
+          "source_sensitive"
+        ],
+        "anchor": true,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.59,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "gated_corvel_parse_anchor::revenue": {
+        "case_id": "gated_corvel_parse_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "historically_flaky",
+          "source_sensitive"
+        ],
+        "anchor": true,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "winner",
+        "correct": false,
+        "outcome": "absent",
+        "expected_outcome": "survive:text",
+        "confidence": 0.46,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": true
+      }
+    }
+  },
+  "shadow_policies": {
+    "shadow_relaxed_consumer": {
+      "runtime": "shadow_relaxed_consumer",
+      "aggregate": {
+        "summary": {
+          "total_cases": 16,
+          "correct_cases": 14,
+          "operational_accuracy": 0.875,
+          "false_accept_count": 0,
+          "false_reject_count": 2,
+          "survivor_count": 6,
+          "acceptance_rate": 0.5,
+          "boundary_density": 0.375,
+          "mean_confidence": 0.63375,
+          "brier_score": 0.190013,
+          "ece": 0.24125,
+          "decision_surface_counts": {
+            "threshold_boundary": 2,
+            "winner_selection": 4,
+            "merge_replacement": 2,
+            "expected_absent": 2,
+            "threshold_survival": 2,
+            "authoritative_override": 2,
+            "approximation_separation": 2
+          },
+          "reliability_bins": [
+            {
+              "lower": 0.0,
+              "upper": 0.2,
+              "count": 0,
+              "mean_confidence": 0.0,
+              "accuracy": 0.0
+            },
+            {
+              "lower": 0.2,
+              "upper": 0.4,
+              "count": 2,
+              "mean_confidence": 0.2,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.4,
+              "upper": 0.6,
+              "count": 7,
+              "mean_confidence": 0.492857,
+              "accuracy": 0.714286
+            },
+            {
+              "lower": 0.6,
+              "upper": 0.8,
+              "count": 2,
+              "mean_confidence": 0.79,
+              "accuracy": 1.0
+            },
+            {
+              "lower": 0.8,
+              "upper": 1.0,
+              "count": 5,
+              "mean_confidence": 0.942,
+              "accuracy": 1.0
+            }
+          ]
+        }
+      },
+      "suites": {
+        "fast": {
+          "summary": {
+            "total_cases": 8,
+            "correct_cases": 8,
+            "operational_accuracy": 1.0,
+            "false_accept_count": 0,
+            "false_reject_count": 0,
+            "survivor_count": 4,
+            "acceptance_rate": 0.666667,
+            "boundary_density": 0.375,
+            "mean_confidence": 0.66125,
+            "brier_score": 0.185688,
+            "ece": 0.33875,
+            "decision_surface_counts": {
+              "threshold_boundary": 1,
+              "winner_selection": 2,
+              "merge_replacement": 1,
+              "expected_absent": 1,
+              "threshold_survival": 1,
+              "authoritative_override": 1,
+              "approximation_separation": 1
+            },
+            "reliability_bins": [
+              {
+                "lower": 0.0,
+                "upper": 0.2,
+                "count": 0,
+                "mean_confidence": 0.0,
+                "accuracy": 0.0
+              },
+              {
+                "lower": 0.2,
+                "upper": 0.4,
+                "count": 1,
+                "mean_confidence": 0.2,
+                "accuracy": 1.0
+              },
+              {
+                "lower": 0.4,
+                "upper": 0.6,
+                "count": 3,
+                "mean_confidence": 0.486667,
+                "accuracy": 1.0
+              },
+              {
+                "lower": 0.6,
+                "upper": 0.8,
+                "count": 1,
+                "mean_confidence": 0.79,
+                "accuracy": 1.0
+              },
+              {
+                "lower": 0.8,
+                "upper": 1.0,
+                "count": 3,
+                "mean_confidence": 0.946667,
+                "accuracy": 1.0
+              }
+            ]
+          }
+        },
+        "gated": {
+          "summary": {
+            "total_cases": 8,
+            "correct_cases": 6,
+            "operational_accuracy": 0.75,
+            "false_accept_count": 0,
+            "false_reject_count": 2,
+            "survivor_count": 2,
+            "acceptance_rate": 0.333333,
+            "boundary_density": 0.375,
+            "mean_confidence": 0.60625,
+            "brier_score": 0.194338,
+            "ece": 0.14375,
+            "decision_surface_counts": {
+              "threshold_boundary": 1,
+              "winner_selection": 2,
+              "merge_replacement": 1,
+              "expected_absent": 1,
+              "threshold_survival": 1,
+              "authoritative_override": 1,
+              "approximation_separation": 1
+            },
+            "reliability_bins": [
+              {
+                "lower": 0.0,
+                "upper": 0.2,
+                "count": 0,
+                "mean_confidence": 0.0,
+                "accuracy": 0.0
+              },
+              {
+                "lower": 0.2,
+                "upper": 0.4,
+                "count": 1,
+                "mean_confidence": 0.2,
+                "accuracy": 1.0
+              },
+              {
+                "lower": 0.4,
+                "upper": 0.6,
+                "count": 4,
+                "mean_confidence": 0.4975,
+                "accuracy": 0.5
+              },
+              {
+                "lower": 0.6,
+                "upper": 0.8,
+                "count": 1,
+                "mean_confidence": 0.79,
+                "accuracy": 1.0
+              },
+              {
+                "lower": 0.8,
+                "upper": 1.0,
+                "count": 2,
+                "mean_confidence": 0.935,
+                "accuracy": 1.0
+              }
+            ]
+          }
+        }
+      },
+      "source_mismatch_audit": {
+        "advisory_mismatches": [],
+        "critical_mismatches": []
+      },
+      "case_outcomes": {
+        "fast_approximation_guard": {
+          "case_id": "fast_approximation_guard",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "ebitda",
+          "decision_surface": "approximation_separation",
+          "risk_tags": [
+            "low_confidence"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "threshold",
+          "correct": true,
+          "outcome": "absent",
+          "expected_outcome": "absent",
+          "confidence": 0.2,
+          "source": "table",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "fast_authoritative_override": {
+          "case_id": "fast_authoritative_override",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "ebitda",
+          "decision_surface": "authoritative_override",
+          "risk_tags": [
+            "replacement_path",
+            "source_sensitive"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "merge",
+          "correct": true,
+          "outcome": "fallback",
+          "expected_outcome": "fallback",
+          "confidence": 0.95,
+          "source": "issuer_fallback",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": null,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "fast_boundary_text_code": {
+          "case_id": "fast_boundary_text_code",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "revenue",
+          "decision_surface": "threshold_boundary",
+          "risk_tags": [
+            "boundary_near_0_5",
+            "source_sensitive"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "threshold",
+          "correct": true,
+          "outcome": "survive:text",
+          "expected_outcome": "survive:text",
+          "confidence": 0.79,
+          "source": "text",
+          "source_strictness": "critical",
+          "expected_source": "text",
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "fast_inline_winner_pair::net_profit": {
+          "case_id": "fast_inline_winner_pair",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "net_profit",
+          "decision_surface": "winner_selection",
+          "risk_tags": [
+            "source_sensitive"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "winner",
+          "correct": true,
+          "outcome": "survive:table",
+          "expected_outcome": "survive:table",
+          "confidence": 0.5,
+          "source": "table",
+          "source_strictness": "advisory",
+          "expected_source": "table",
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "fast_inline_winner_pair::revenue": {
+          "case_id": "fast_inline_winner_pair",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "revenue",
+          "decision_surface": "winner_selection",
+          "risk_tags": [
+            "source_sensitive"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "winner",
+          "correct": true,
+          "outcome": "survive:table",
+          "expected_outcome": "survive:table",
+          "confidence": 0.5,
+          "source": "table",
+          "source_strictness": "critical",
+          "expected_source": "table",
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "fast_llm_replacement": {
+          "case_id": "fast_llm_replacement",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "revenue",
+          "decision_surface": "merge_replacement",
+          "risk_tags": [
+            "replacement_path"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "merge",
+          "correct": true,
+          "outcome": "llm",
+          "expected_outcome": "llm",
+          "confidence": 0.92,
+          "source": "text",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": null,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "fast_table_exact_survival": {
+          "case_id": "fast_table_exact_survival",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "revenue",
+          "decision_surface": "threshold_survival",
+          "risk_tags": [],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "threshold",
+          "correct": true,
+          "outcome": "survive:table",
+          "expected_outcome": "survive",
+          "confidence": 0.97,
+          "source": "table",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "fast_weak_text_keyword_absent": {
+          "case_id": "fast_weak_text_keyword_absent",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "revenue",
+          "decision_surface": "expected_absent",
+          "risk_tags": [
+            "false_positive_trap",
+            "low_confidence",
+            "weak_keyword"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "threshold",
+          "correct": true,
+          "outcome": "absent",
+          "expected_outcome": "absent",
+          "confidence": 0.46,
+          "source": "text",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "gated_cloudflare_approximation_guard": {
+          "case_id": "gated_cloudflare_approximation_guard",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "ebitda",
+          "decision_surface": "approximation_separation",
+          "risk_tags": [
+            "low_confidence"
+          ],
+          "anchor": false,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "threshold",
+          "correct": true,
+          "outcome": "absent",
+          "expected_outcome": "absent",
+          "confidence": 0.2,
+          "source": "table",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "gated_cloudflare_expected_absent_anchor": {
+          "case_id": "gated_cloudflare_expected_absent_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "total_assets",
+          "decision_surface": "expected_absent",
+          "risk_tags": [
+            "false_positive_trap",
+            "low_confidence",
+            "weak_ocr_direct"
+          ],
+          "anchor": true,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "threshold",
+          "correct": true,
+          "outcome": "absent",
+          "expected_outcome": "absent",
+          "confidence": 0.48,
+          "source": "ocr",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "gated_cloudflare_merge_anchor": {
+          "case_id": "gated_cloudflare_merge_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "revenue",
+          "decision_surface": "merge_replacement",
+          "risk_tags": [
+            "replacement_path"
+          ],
+          "anchor": true,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "merge",
+          "correct": true,
+          "outcome": "llm",
+          "expected_outcome": "llm",
+          "confidence": 0.92,
+          "source": "text",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": null,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "gated_cloudflare_threshold_survival::cash_and_equivalents": {
+          "case_id": "gated_cloudflare_threshold_survival",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "cash_and_equivalents",
+          "decision_surface": "threshold_survival",
+          "risk_tags": [
+            "historically_flaky"
+          ],
+          "anchor": false,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "winner",
+          "correct": false,
+          "outcome": "absent",
+          "expected_outcome": "survive:text",
+          "confidence": 0.46,
+          "source": "text",
+          "source_strictness": "advisory",
+          "expected_source": "text",
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": true
+        },
+        "gated_corvel_authoritative_override": {
+          "case_id": "gated_corvel_authoritative_override",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "ebitda",
+          "decision_surface": "authoritative_override",
+          "risk_tags": [
+            "replacement_path",
+            "source_sensitive"
+          ],
+          "anchor": false,
+          "fixture_ref": "corvel_2023_balance_sheet_smoke",
+          "decision_type": "merge",
+          "correct": true,
+          "outcome": "fallback",
+          "expected_outcome": "fallback",
+          "confidence": 0.95,
+          "source": "issuer_fallback",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": null,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "gated_corvel_boundary_anchor": {
+          "case_id": "gated_corvel_boundary_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "revenue",
+          "decision_surface": "threshold_boundary",
+          "risk_tags": [
+            "boundary_near_0_5",
+            "source_sensitive"
+          ],
+          "anchor": true,
+          "fixture_ref": "corvel_2023_balance_sheet_smoke",
+          "decision_type": "threshold",
+          "correct": true,
+          "outcome": "survive:text",
+          "expected_outcome": "survive:text",
+          "confidence": 0.79,
+          "source": "text",
+          "source_strictness": "critical",
+          "expected_source": "text",
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "gated_corvel_parse_anchor::current_assets": {
+          "case_id": "gated_corvel_parse_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "current_assets",
+          "decision_surface": "winner_selection",
+          "risk_tags": [
+            "historically_flaky",
+            "source_sensitive"
+          ],
+          "anchor": true,
+          "fixture_ref": "corvel_2023_balance_sheet_smoke",
+          "decision_type": "winner",
+          "correct": true,
+          "outcome": "survive:text",
+          "expected_outcome": "survive:text",
+          "confidence": 0.59,
+          "source": "text",
+          "source_strictness": "advisory",
+          "expected_source": "text",
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "gated_corvel_parse_anchor::revenue": {
+          "case_id": "gated_corvel_parse_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "revenue",
+          "decision_surface": "winner_selection",
+          "risk_tags": [
+            "historically_flaky",
+            "source_sensitive"
+          ],
+          "anchor": true,
+          "fixture_ref": "corvel_2023_balance_sheet_smoke",
+          "decision_type": "winner",
+          "correct": false,
+          "outcome": "absent",
+          "expected_outcome": "survive:text",
+          "confidence": 0.46,
+          "source": "text",
+          "source_strictness": "advisory",
+          "expected_source": "text",
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": true
+        }
       }
     }
   },
@@ -381,85 +1882,85 @@
     "baseline_runtime_v2": [
       {
         "threshold": 0.4,
-        "operational_accuracy": 0.666667,
+        "operational_accuracy": 0.75,
         "false_accept_count": 2,
         "false_reject_count": 0,
-        "survivor_count": 5,
-        "acceptance_rate": 0.714286
+        "survivor_count": 10,
+        "acceptance_rate": 0.833333
       },
       {
         "threshold": 0.45,
-        "operational_accuracy": 0.666667,
+        "operational_accuracy": 0.75,
         "false_accept_count": 2,
         "false_reject_count": 0,
-        "survivor_count": 5,
-        "acceptance_rate": 0.714286
+        "survivor_count": 10,
+        "acceptance_rate": 0.833333
       },
       {
         "threshold": 0.5,
-        "operational_accuracy": 0.666667,
+        "operational_accuracy": 0.75,
         "false_accept_count": 2,
         "false_reject_count": 0,
-        "survivor_count": 5,
-        "acceptance_rate": 0.714286
+        "survivor_count": 10,
+        "acceptance_rate": 0.833333
       },
       {
         "threshold": 0.55,
-        "operational_accuracy": 0.777778,
+        "operational_accuracy": 0.6875,
         "false_accept_count": 1,
-        "false_reject_count": 1,
-        "survivor_count": 3,
-        "acceptance_rate": 0.428571
+        "false_reject_count": 4,
+        "survivor_count": 5,
+        "acceptance_rate": 0.416667
       },
       {
         "threshold": 0.6,
-        "operational_accuracy": 0.777778,
+        "operational_accuracy": 0.6875,
         "false_accept_count": 1,
-        "false_reject_count": 1,
-        "survivor_count": 3,
-        "acceptance_rate": 0.428571
+        "false_reject_count": 4,
+        "survivor_count": 5,
+        "acceptance_rate": 0.416667
       }
     ],
     "calibrated_runtime_v2_2026_04": [
       {
         "threshold": 0.4,
-        "operational_accuracy": 0.666667,
+        "operational_accuracy": 0.75,
         "false_accept_count": 2,
         "false_reject_count": 0,
-        "survivor_count": 5,
-        "acceptance_rate": 0.714286
+        "survivor_count": 10,
+        "acceptance_rate": 0.833333
       },
       {
         "threshold": 0.45,
-        "operational_accuracy": 0.666667,
+        "operational_accuracy": 0.75,
         "false_accept_count": 2,
         "false_reject_count": 0,
-        "survivor_count": 5,
-        "acceptance_rate": 0.714286
+        "survivor_count": 10,
+        "acceptance_rate": 0.833333
       },
       {
         "threshold": 0.5,
-        "operational_accuracy": 1.0,
+        "operational_accuracy": 0.875,
         "false_accept_count": 0,
-        "false_reject_count": 0,
-        "survivor_count": 3,
-        "acceptance_rate": 0.428571
+        "false_reject_count": 2,
+        "survivor_count": 6,
+        "acceptance_rate": 0.5
       },
       {
         "threshold": 0.55,
-        "operational_accuracy": 0.888889,
+        "operational_accuracy": 0.75,
         "false_accept_count": 0,
-        "false_reject_count": 1,
-        "survivor_count": 2,
-        "acceptance_rate": 0.285714
+        "false_reject_count": 4,
+        "survivor_count": 4,
+        "acceptance_rate": 0.333333
       },
       {
         "threshold": 0.6,
-        "operational_accuracy": 0.888889,
+        "operational_accuracy": 0.6875,
         "false_accept_count": 0,
-        "false_reject_count": 1,
-        "survivor_count": 2,
-        "acceptance_rate": 0.285714
+        "false_reject_count": 5,
+        "survivor_count": 3,
+        "acceptance_rate": 0.25
       }
     ]
   },
@@ -608,79 +2109,648 @@
     }
   ],
   "case_diffs": {
-    "weak_text_keyword_should_not_survive": {
-      "decision_type": "threshold",
-      "baseline": {
-        "decision_type": "threshold",
-        "correct": false,
-        "outcome": "survive:text",
-        "expected_outcome": "absent",
-        "confidence": 0.5,
-        "source": "text",
-        "survived": true,
-        "false_accept": true,
-        "false_reject": false
-      },
-      "candidate": {
-        "decision_type": "threshold",
-        "correct": true,
-        "outcome": "absent",
-        "expected_outcome": "absent",
-        "confidence": 0.46,
-        "source": "text",
-        "survived": false,
-        "false_accept": false,
-        "false_reject": false
-      }
-    },
-    "weak_ocr_exact_should_not_survive": {
-      "decision_type": "threshold",
-      "baseline": {
-        "decision_type": "threshold",
-        "correct": false,
-        "outcome": "survive:ocr",
-        "expected_outcome": "absent",
-        "confidence": 0.65,
-        "source": "ocr",
-        "survived": true,
-        "false_accept": true,
-        "false_reject": false
-      },
-      "candidate": {
-        "decision_type": "threshold",
-        "correct": true,
-        "outcome": "absent",
-        "expected_outcome": "absent",
-        "confidence": 0.48,
-        "source": "ocr",
-        "survived": false,
-        "false_accept": false,
-        "false_reject": false
-      }
-    },
-    "llm_replaces_weak_text_keyword_fallback": {
+    "fast_llm_replacement": {
       "decision_type": "merge",
+      "suite_id": "fast",
       "baseline": {
+        "case_id": "fast_llm_replacement",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "merge_replacement",
+        "risk_tags": [
+          "replacement_path"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
         "decision_type": "merge",
         "correct": false,
         "outcome": "fallback",
         "expected_outcome": "llm",
         "confidence": 0.5,
         "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
         "survived": null,
         "false_accept": false,
         "false_reject": false
       },
       "candidate": {
+        "case_id": "fast_llm_replacement",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "merge_replacement",
+        "risk_tags": [
+          "replacement_path"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
         "decision_type": "merge",
         "correct": true,
         "outcome": "llm",
         "expected_outcome": "llm",
         "confidence": 0.92,
         "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
         "survived": null,
         "false_accept": false,
         "false_reject": false
+      }
+    },
+    "fast_weak_text_keyword_absent": {
+      "decision_type": "threshold",
+      "suite_id": "fast",
+      "baseline": {
+        "case_id": "fast_weak_text_keyword_absent",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "expected_absent",
+        "risk_tags": [
+          "false_positive_trap",
+          "low_confidence",
+          "weak_keyword"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "threshold",
+        "correct": false,
+        "outcome": "survive:text",
+        "expected_outcome": "absent",
+        "confidence": 0.5,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": true,
+        "false_reject": false
+      },
+      "candidate": {
+        "case_id": "fast_weak_text_keyword_absent",
+        "suite_id": "fast",
+        "suite_tier": "fast",
+        "metric_key": "revenue",
+        "decision_surface": "expected_absent",
+        "risk_tags": [
+          "false_positive_trap",
+          "low_confidence",
+          "weak_keyword"
+        ],
+        "anchor": false,
+        "fixture_ref": null,
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.46,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      }
+    },
+    "gated_cloudflare_expected_absent_anchor": {
+      "decision_type": "threshold",
+      "suite_id": "gated",
+      "baseline": {
+        "case_id": "gated_cloudflare_expected_absent_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "total_assets",
+        "decision_surface": "expected_absent",
+        "risk_tags": [
+          "false_positive_trap",
+          "low_confidence",
+          "weak_ocr_direct"
+        ],
+        "anchor": true,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "threshold",
+        "correct": false,
+        "outcome": "survive:ocr",
+        "expected_outcome": "absent",
+        "confidence": 0.65,
+        "source": "ocr",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": true,
+        "false_reject": false
+      },
+      "candidate": {
+        "case_id": "gated_cloudflare_expected_absent_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "total_assets",
+        "decision_surface": "expected_absent",
+        "risk_tags": [
+          "false_positive_trap",
+          "low_confidence",
+          "weak_ocr_direct"
+        ],
+        "anchor": true,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "threshold",
+        "correct": true,
+        "outcome": "absent",
+        "expected_outcome": "absent",
+        "confidence": 0.48,
+        "source": "ocr",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": false
+      }
+    },
+    "gated_cloudflare_merge_anchor": {
+      "decision_type": "merge",
+      "suite_id": "gated",
+      "baseline": {
+        "case_id": "gated_cloudflare_merge_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "merge_replacement",
+        "risk_tags": [
+          "replacement_path"
+        ],
+        "anchor": true,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "merge",
+        "correct": false,
+        "outcome": "fallback",
+        "expected_outcome": "llm",
+        "confidence": 0.5,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "candidate": {
+        "case_id": "gated_cloudflare_merge_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "merge_replacement",
+        "risk_tags": [
+          "replacement_path"
+        ],
+        "anchor": true,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "merge",
+        "correct": true,
+        "outcome": "llm",
+        "expected_outcome": "llm",
+        "confidence": 0.92,
+        "source": "text",
+        "source_strictness": "unspecified",
+        "expected_source": null,
+        "source_mismatch": false,
+        "survived": null,
+        "false_accept": false,
+        "false_reject": false
+      }
+    },
+    "gated_cloudflare_threshold_survival::cash_and_equivalents": {
+      "decision_type": "winner",
+      "suite_id": "gated",
+      "baseline": {
+        "case_id": "gated_cloudflare_threshold_survival",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "cash_and_equivalents",
+        "decision_surface": "threshold_survival",
+        "risk_tags": [
+          "historically_flaky"
+        ],
+        "anchor": false,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.5,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "candidate": {
+        "case_id": "gated_cloudflare_threshold_survival",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "cash_and_equivalents",
+        "decision_surface": "threshold_survival",
+        "risk_tags": [
+          "historically_flaky"
+        ],
+        "anchor": false,
+        "fixture_ref": "cloudflare_2023_cash_smoke",
+        "decision_type": "winner",
+        "correct": false,
+        "outcome": "absent",
+        "expected_outcome": "survive:text",
+        "confidence": 0.46,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": true
+      }
+    },
+    "gated_corvel_parse_anchor::revenue": {
+      "decision_type": "winner",
+      "suite_id": "gated",
+      "baseline": {
+        "case_id": "gated_corvel_parse_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "historically_flaky",
+          "source_sensitive"
+        ],
+        "anchor": true,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "winner",
+        "correct": true,
+        "outcome": "survive:text",
+        "expected_outcome": "survive:text",
+        "confidence": 0.5,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": true,
+        "false_accept": false,
+        "false_reject": false
+      },
+      "candidate": {
+        "case_id": "gated_corvel_parse_anchor",
+        "suite_id": "gated",
+        "suite_tier": "gated",
+        "metric_key": "revenue",
+        "decision_surface": "winner_selection",
+        "risk_tags": [
+          "historically_flaky",
+          "source_sensitive"
+        ],
+        "anchor": true,
+        "fixture_ref": "corvel_2023_balance_sheet_smoke",
+        "decision_type": "winner",
+        "correct": false,
+        "outcome": "absent",
+        "expected_outcome": "survive:text",
+        "confidence": 0.46,
+        "source": "text",
+        "source_strictness": "advisory",
+        "expected_source": "text",
+        "source_mismatch": false,
+        "survived": false,
+        "false_accept": false,
+        "false_reject": true
+      }
+    }
+  },
+  "suite_case_diffs": {
+    "fast": {
+      "fast_llm_replacement": {
+        "decision_type": "merge",
+        "baseline": {
+          "case_id": "fast_llm_replacement",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "revenue",
+          "decision_surface": "merge_replacement",
+          "risk_tags": [
+            "replacement_path"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "merge",
+          "correct": false,
+          "outcome": "fallback",
+          "expected_outcome": "llm",
+          "confidence": 0.5,
+          "source": "text",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": null,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "candidate": {
+          "case_id": "fast_llm_replacement",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "revenue",
+          "decision_surface": "merge_replacement",
+          "risk_tags": [
+            "replacement_path"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "merge",
+          "correct": true,
+          "outcome": "llm",
+          "expected_outcome": "llm",
+          "confidence": 0.92,
+          "source": "text",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": null,
+          "false_accept": false,
+          "false_reject": false
+        }
+      },
+      "fast_weak_text_keyword_absent": {
+        "decision_type": "threshold",
+        "baseline": {
+          "case_id": "fast_weak_text_keyword_absent",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "revenue",
+          "decision_surface": "expected_absent",
+          "risk_tags": [
+            "false_positive_trap",
+            "low_confidence",
+            "weak_keyword"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "threshold",
+          "correct": false,
+          "outcome": "survive:text",
+          "expected_outcome": "absent",
+          "confidence": 0.5,
+          "source": "text",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": true,
+          "false_reject": false
+        },
+        "candidate": {
+          "case_id": "fast_weak_text_keyword_absent",
+          "suite_id": "fast",
+          "suite_tier": "fast",
+          "metric_key": "revenue",
+          "decision_surface": "expected_absent",
+          "risk_tags": [
+            "false_positive_trap",
+            "low_confidence",
+            "weak_keyword"
+          ],
+          "anchor": false,
+          "fixture_ref": null,
+          "decision_type": "threshold",
+          "correct": true,
+          "outcome": "absent",
+          "expected_outcome": "absent",
+          "confidence": 0.46,
+          "source": "text",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": false
+        }
+      }
+    },
+    "gated": {
+      "gated_cloudflare_expected_absent_anchor": {
+        "decision_type": "threshold",
+        "baseline": {
+          "case_id": "gated_cloudflare_expected_absent_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "total_assets",
+          "decision_surface": "expected_absent",
+          "risk_tags": [
+            "false_positive_trap",
+            "low_confidence",
+            "weak_ocr_direct"
+          ],
+          "anchor": true,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "threshold",
+          "correct": false,
+          "outcome": "survive:ocr",
+          "expected_outcome": "absent",
+          "confidence": 0.65,
+          "source": "ocr",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": true,
+          "false_reject": false
+        },
+        "candidate": {
+          "case_id": "gated_cloudflare_expected_absent_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "total_assets",
+          "decision_surface": "expected_absent",
+          "risk_tags": [
+            "false_positive_trap",
+            "low_confidence",
+            "weak_ocr_direct"
+          ],
+          "anchor": true,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "threshold",
+          "correct": true,
+          "outcome": "absent",
+          "expected_outcome": "absent",
+          "confidence": 0.48,
+          "source": "ocr",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": false
+        }
+      },
+      "gated_cloudflare_merge_anchor": {
+        "decision_type": "merge",
+        "baseline": {
+          "case_id": "gated_cloudflare_merge_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "revenue",
+          "decision_surface": "merge_replacement",
+          "risk_tags": [
+            "replacement_path"
+          ],
+          "anchor": true,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "merge",
+          "correct": false,
+          "outcome": "fallback",
+          "expected_outcome": "llm",
+          "confidence": 0.5,
+          "source": "text",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": null,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "candidate": {
+          "case_id": "gated_cloudflare_merge_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "revenue",
+          "decision_surface": "merge_replacement",
+          "risk_tags": [
+            "replacement_path"
+          ],
+          "anchor": true,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "merge",
+          "correct": true,
+          "outcome": "llm",
+          "expected_outcome": "llm",
+          "confidence": 0.92,
+          "source": "text",
+          "source_strictness": "unspecified",
+          "expected_source": null,
+          "source_mismatch": false,
+          "survived": null,
+          "false_accept": false,
+          "false_reject": false
+        }
+      },
+      "gated_cloudflare_threshold_survival::cash_and_equivalents": {
+        "decision_type": "winner",
+        "baseline": {
+          "case_id": "gated_cloudflare_threshold_survival",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "cash_and_equivalents",
+          "decision_surface": "threshold_survival",
+          "risk_tags": [
+            "historically_flaky"
+          ],
+          "anchor": false,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "winner",
+          "correct": true,
+          "outcome": "survive:text",
+          "expected_outcome": "survive:text",
+          "confidence": 0.5,
+          "source": "text",
+          "source_strictness": "advisory",
+          "expected_source": "text",
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "candidate": {
+          "case_id": "gated_cloudflare_threshold_survival",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "cash_and_equivalents",
+          "decision_surface": "threshold_survival",
+          "risk_tags": [
+            "historically_flaky"
+          ],
+          "anchor": false,
+          "fixture_ref": "cloudflare_2023_cash_smoke",
+          "decision_type": "winner",
+          "correct": false,
+          "outcome": "absent",
+          "expected_outcome": "survive:text",
+          "confidence": 0.46,
+          "source": "text",
+          "source_strictness": "advisory",
+          "expected_source": "text",
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": true
+        }
+      },
+      "gated_corvel_parse_anchor::revenue": {
+        "decision_type": "winner",
+        "baseline": {
+          "case_id": "gated_corvel_parse_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "revenue",
+          "decision_surface": "winner_selection",
+          "risk_tags": [
+            "historically_flaky",
+            "source_sensitive"
+          ],
+          "anchor": true,
+          "fixture_ref": "corvel_2023_balance_sheet_smoke",
+          "decision_type": "winner",
+          "correct": true,
+          "outcome": "survive:text",
+          "expected_outcome": "survive:text",
+          "confidence": 0.5,
+          "source": "text",
+          "source_strictness": "advisory",
+          "expected_source": "text",
+          "source_mismatch": false,
+          "survived": true,
+          "false_accept": false,
+          "false_reject": false
+        },
+        "candidate": {
+          "case_id": "gated_corvel_parse_anchor",
+          "suite_id": "gated",
+          "suite_tier": "gated",
+          "metric_key": "revenue",
+          "decision_surface": "winner_selection",
+          "risk_tags": [
+            "historically_flaky",
+            "source_sensitive"
+          ],
+          "anchor": true,
+          "fixture_ref": "corvel_2023_balance_sheet_smoke",
+          "decision_type": "winner",
+          "correct": false,
+          "outcome": "absent",
+          "expected_outcome": "survive:text",
+          "confidence": 0.46,
+          "source": "text",
+          "source_strictness": "advisory",
+          "expected_source": "text",
+          "source_mismatch": false,
+          "survived": false,
+          "false_accept": false,
+          "false_reject": true
+        }
       }
     }
   }

@@ -2,23 +2,38 @@
 
 - Baseline policy: `baseline_runtime_v2`
 - Candidate policy: `calibrated_runtime_v2_2026_04`
-- Total decisions: `9`
+- Suites: `fast, gated`
 - Reviewed threshold: `0.50`
-- Decision surface counts: `threshold=5`, `winner=2`, `merge=2`
 
-## Operational Metrics
+## Aggregate Operational Metrics
 
 | Policy | Accuracy | False Accepts | False Rejects | Survivors | Boundary Density | ECE | Brier |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| baseline_runtime_v2 | 0.667 | 2 | 0 | 5 | 0.333 | 0.317 | 0.315 |
-| calibrated_runtime_v2_2026_04 | 1.000 | 0 | 0 | 3 | 0.333 | 0.414 | 0.278 |
+| baseline_runtime_v2 | 0.750 | 2 | 0 | 10 | 0.438 | 0.148 | 0.228 |
+| calibrated_runtime_v2_2026_04 | 0.875 | 0 | 2 | 6 | 0.375 | 0.241 | 0.190 |
 
-## Decision Quality Guardrails
+## Per-Suite Summary
 
-- Survivor count shift: `-2`
-- Acceptance rate shift: `-0.286`
-- Mean confidence shift: `+0.022`
-- Boundary density shift: `+0.000`
+| Suite | Baseline Accuracy | Candidate Accuracy | Baseline Survivors | Candidate Survivors |
+| --- | ---: | ---: | ---: | ---: |
+| fast | 0.750 | 1.000 | 5 | 4 |
+| gated | 0.750 | 0.750 | 5 | 2 |
+
+## Coverage Audit
+
+- `fast` missing required surfaces: none
+- `fast` under-anchored required surfaces: none
+- `gated` missing required surfaces: none
+- `gated` under-anchored required surfaces: none
+- `all` missing required surfaces: none
+- `all` under-anchored required surfaces: none
+
+## Source Mismatch Audit
+
+- Baseline advisory mismatches: none
+- Baseline critical mismatches: none
+- Candidate advisory mismatches: none
+- Candidate critical mismatches: none
 
 ## Policy Diffs
 
@@ -60,28 +75,36 @@
 
 | Threshold | Accuracy | False Accepts | False Rejects | Survivors | Acceptance Rate |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.40 | 0.667 | 2 | 0 | 5 | 0.714 |
-| 0.45 | 0.667 | 2 | 0 | 5 | 0.714 |
-| 0.50 | 0.667 | 2 | 0 | 5 | 0.714 |
-| 0.55 | 0.778 | 1 | 1 | 3 | 0.429 |
-| 0.60 | 0.778 | 1 | 1 | 3 | 0.429 |
+| 0.40 | 0.750 | 2 | 0 | 10 | 0.833 |
+| 0.45 | 0.750 | 2 | 0 | 10 | 0.833 |
+| 0.50 | 0.750 | 2 | 0 | 10 | 0.833 |
+| 0.55 | 0.688 | 1 | 4 | 5 | 0.417 |
+| 0.60 | 0.688 | 1 | 4 | 5 | 0.417 |
 
 ### `calibrated_runtime_v2_2026_04`
 
 | Threshold | Accuracy | False Accepts | False Rejects | Survivors | Acceptance Rate |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.40 | 0.667 | 2 | 0 | 5 | 0.714 |
-| 0.45 | 0.667 | 2 | 0 | 5 | 0.714 |
-| 0.50 | 1.000 | 0 | 0 | 3 | 0.429 |
-| 0.55 | 0.889 | 0 | 1 | 2 | 0.286 |
-| 0.60 | 0.889 | 0 | 1 | 2 | 0.286 |
+| 0.40 | 0.750 | 2 | 0 | 10 | 0.833 |
+| 0.45 | 0.750 | 2 | 0 | 10 | 0.833 |
+| 0.50 | 0.875 | 0 | 2 | 6 | 0.500 |
+| 0.55 | 0.750 | 0 | 4 | 4 | 0.333 |
+| 0.60 | 0.688 | 0 | 5 | 3 | 0.250 |
 
 ## Notable Case Diffs
 
-- `weak_text_keyword_should_not_survive` (threshold): `survive:text` -> `absent` (correct `False` -> `True`)
-- `weak_ocr_exact_should_not_survive` (threshold): `survive:ocr` -> `absent` (correct `False` -> `True`)
-- `llm_replaces_weak_text_keyword_fallback` (merge): `fallback` -> `llm` (correct `False` -> `True`)
+### `fast`
+
+- `fast_llm_replacement` (merge): `fallback` -> `llm` (correct `False` -> `True`)
+- `fast_weak_text_keyword_absent` (threshold): `survive:text` -> `absent` (correct `False` -> `True`)
+
+### `gated`
+
+- `gated_cloudflare_expected_absent_anchor` (threshold): `survive:ocr` -> `absent` (correct `False` -> `True`)
+- `gated_cloudflare_merge_anchor` (merge): `fallback` -> `llm` (correct `False` -> `True`)
+- `gated_cloudflare_threshold_survival::cash_and_equivalents` (winner): `survive:text` -> `absent` (correct `True` -> `False`)
+- `gated_corvel_parse_anchor::revenue` (winner): `survive:text` -> `absent` (correct `True` -> `False`)
 
 ## Shadow Consumer Diffs
 
-- `shadow_relaxed_consumer` accuracy=1.000, survivors=3, false_accepts=0, false_rejects=0
+- `shadow_relaxed_consumer` accuracy=0.875, survivors=6, false_accepts=0, false_rejects=2
