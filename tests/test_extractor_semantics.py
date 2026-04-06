@@ -133,3 +133,9 @@ def test_semantics_decision_log_captures_guardrail_and_override_state() -> None:
     assert decision.postprocess_state == "none"
     assert decision.authoritative_override is True
     assert decision.reason_code == semantics.REASON_ISSUER_REPO_OVERRIDE
+
+
+def test_semantics_all_exports_resolve_to_module_symbols() -> None:
+    missing = [name for name in semantics.__all__ if not hasattr(semantics, name)]
+
+    assert missing == []
