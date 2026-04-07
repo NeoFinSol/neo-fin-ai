@@ -65,6 +65,10 @@ export default function DetailedMetricsCard({
                                             metricKey={row.metricKey}
                                             confidence={metadata.confidence}
                                             source={metadata.source}
+                                            matchSemantics={metadata.match_semantics}
+                                            inferenceMode={metadata.inference_mode}
+                                            reasonCode={metadata.reason_code}
+                                            authoritativeOverride={metadata.authoritative_override}
                                         />
                                     ) : '—'}
                                 </Table.Td>

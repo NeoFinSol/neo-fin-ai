@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+from src.analysis.extractor import semantics
 from src.analysis.pdf_extractor import (
     _METRIC_KEYWORDS,
     ExtractionMetadata,
@@ -418,7 +419,15 @@ def parse_llm_extraction_response_detailed(
         result[metric_key] = ExtractionMetadata(
             value=value,
             confidence=confidence,
-            source="llm",  # type: ignore[arg-type]
+            source=semantics.SOURCE_TEXT,
+            evidence_version=semantics.V2,
+            match_semantics=semantics.MATCH_KEYWORD,
+            inference_mode=semantics.MODE_DIRECT,
+            postprocess_state=semantics.POSTPROCESS_NONE,
+            reason_code=semantics.REASON_LLM_EXTRACTION,
+            signal_flags=[],
+            candidate_quality=None,
+            authoritative_override=False,
         )
 
     non_null = sum(1 for meta in result.values() if meta.value is not None)
@@ -447,9 +456,21 @@ def _strip_markdown(text: str) -> str:
 
 
 def _build_empty_result() -> dict[str, ExtractionMetadata]:
-    """Return a dict with all metric keys set to (None, 0.0, 'derived')."""
+    """Return a dict with all metric keys set to empty derived V2 metadata."""
     return {
-        key: ExtractionMetadata(value=None, confidence=0.0, source="derived")  # type: ignore[arg-type]
+        key: ExtractionMetadata(
+            value=None,
+            confidence=0.0,
+            source=semantics.SOURCE_DERIVED,
+            evidence_version=semantics.V2,
+            match_semantics=semantics.MATCH_NA,
+            inference_mode=semantics.MODE_DERIVED,
+            postprocess_state=semantics.POSTPROCESS_NONE,
+            reason_code=None,
+            signal_flags=[],
+            candidate_quality=None,
+            authoritative_override=False,
+        )
         for key in _METRIC_KEYWORDS
     }
 

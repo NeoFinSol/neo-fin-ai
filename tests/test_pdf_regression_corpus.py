@@ -23,7 +23,9 @@ def _load_corpus() -> list[dict]:
 
 
 def _load_real_fixture_manifest() -> list[dict]:
-    manifest_path = Path(__file__).parent / "data" / "pdf_real_fixtures" / "manifest.json"
+    manifest_path = (
+        Path(__file__).parent / "data" / "pdf_real_fixtures" / "manifest.json"
+    )
     with manifest_path.open(encoding="utf-8") as fh:
         return json.load(fh)
 
@@ -37,8 +39,18 @@ def _load_local_demo_cases() -> list[dict]:
 
 CORPUS_CASES = _load_corpus()
 
+_LEGACY_SOURCE_TO_V2 = {
+    "table_exact": "table",
+    "table_partial": "table",
+    "text_regex": "text",
+    "derived": "derived",
+    "issuer_fallback": "issuer_fallback",
+}
 
-@pytest.mark.parametrize("case", CORPUS_CASES, ids=[case["name"] for case in CORPUS_CASES])
+
+@pytest.mark.parametrize(
+    "case", CORPUS_CASES, ids=[case["name"] for case in CORPUS_CASES]
+)
 def test_pdf_regression_corpus(case: dict) -> None:
     metadata = pdf_extractor.parse_financial_statements_with_metadata(
         case.get("tables", []),
@@ -46,14 +58,15 @@ def test_pdf_regression_corpus(case: dict) -> None:
     )
 
     for key, expected_value in case.get("expected_values", {}).items():
-        assert metadata[key].value == expected_value, (
-            f"{case['name']}: expected {key}={expected_value}, got {metadata[key].value}"
-        )
+        assert (
+            metadata[key].value == expected_value
+        ), f"{case['name']}: expected {key}={expected_value}, got {metadata[key].value}"
 
     for key, expected_source in case.get("expected_sources", {}).items():
-        assert metadata[key].source == expected_source, (
-            f"{case['name']}: expected source {key}={expected_source}, got {metadata[key].source}"
-        )
+        normalized_expected = _LEGACY_SOURCE_TO_V2.get(expected_source, expected_source)
+        assert (
+            metadata[key].source == normalized_expected
+        ), f"{case['name']}: expected source {key}={normalized_expected}, got {metadata[key].source}"
 
 
 def test_extract_first_numeric_cell_skips_year_markers() -> None:

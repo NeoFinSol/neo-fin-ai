@@ -60,5 +60,86 @@
       "cash_and_equivalents": ["text_regex"]
     },
     "notes": "This fixture intentionally validates a narrow, manually verified liquidity signal instead of the full metrics dict."
+  },
+  {
+    "id": "magnit_2025_q1_scanned",
+    "filename": "magnit_2025_q1_rsbu_scanned.pdf",
+    "kind": "calibration_anchor",
+    "pipeline": "force_ocr",
+    "report_type": "RSBU_quarterly_statement",
+    "layout_tags": ["russian", "rsbu", "quarterly", "scanned", "form_like_balance"],
+    "provenance_url": "https://www.magnit.com/en/disclosure/financial-statements/",
+    "sha256": "78803c8fe5620852a8d918dd5c5e22e48abbdb89a68a632bf775f7482f92ec29",
+    "size_bytes": 513460,
+    "expected_scanned": true,
+    "expected_values": {
+      "current_assets": 174989150000.0,
+      "short_term_liabilities": 192460146000.0,
+      "accounts_receivable": 26998240000.0,
+      "inventory": 2142153000.0
+    },
+    "expected_sources": {
+      "current_assets": ["text"],
+      "short_term_liabilities": ["text"],
+      "accounts_receivable": ["text"],
+      "inventory": ["text"]
+    },
+    "notes": "Committed calibration anchor only. This scanned RSBU fixture is promoted for gated OCR boundary coverage and stays out of the default smoke tier."
+  },
+  {
+    "id": "magnit_2023_ifrs",
+    "filename": "magnit_2023_ifrs_annual_report.pdf",
+    "kind": "calibration_anchor",
+    "pipeline": "tables+text",
+    "report_type": "IFRS_annual_report",
+    "layout_tags": ["russian", "ifrs", "annual_report", "digitally_born", "table_keyword_heavy"],
+    "provenance_url": "https://www.magnit.com/upload/iblock/489/1z3x8fvor41plhelyuwf9e8kdbam1f2x/MAGNIT_AR_2023_RUS.pdf",
+    "sha256": "67f7de3ffafee2b635eb60d79922f80744abfa7273e86a0aedfb6c18e09a22fa",
+    "size_bytes": 1834229,
+    "expected_scanned": false,
+    "expected_values": {
+      "revenue": 2544688774000.0,
+      "net_profit": 58677601000.0,
+      "total_assets": 1429543267000.0,
+      "equity": 158467332000.0,
+      "current_assets": 544425405000.0
+    },
+    "expected_sources": {
+      "revenue": ["table"],
+      "net_profit": ["table"],
+      "total_assets": ["table"],
+      "equity": ["table"],
+      "current_assets": ["table"]
+    },
+    "notes": "Committed calibration anchor only. This annual IFRS fixture is promoted for gated Russian table-boundary and winner-selection coverage."
+  },
+  {
+    "id": "magnit_2025_h1_ifrs",
+    "filename": "magnit_2025_h1_ifrs_report.pdf",
+    "kind": "calibration_anchor",
+    "pipeline": "tables+text",
+    "report_type": "IFRS_half_year_report",
+    "layout_tags": ["russian", "ifrs", "half_year", "digitally_born", "issuer_override_sensitive"],
+    "provenance_url": "https://www.magnit.com/en/shareholders-and-investors/results-and-reports/",
+    "sha256": "71f9f41bc984b6bfc4a6e6198a64ff1e4b6a576126f841eddb85faccb3408596",
+    "size_bytes": 1819190,
+    "expected_scanned": false,
+    "expected_values": {
+      "ebitda": 85628000000.0,
+      "interest_expense": 29095000000.0,
+      "short_term_borrowings": 220921813000.0,
+      "long_term_borrowings": 281923796000.0,
+      "short_term_lease_liabilities": 60914519000.0,
+      "long_term_lease_liabilities": 501014759000.0
+    },
+    "expected_sources": {
+      "ebitda": ["issuer_fallback"],
+      "interest_expense": ["issuer_fallback"],
+      "short_term_borrowings": ["table"],
+      "long_term_borrowings": ["table"],
+      "short_term_lease_liabilities": ["table"],
+      "long_term_lease_liabilities": ["table"]
+    },
+    "notes": "Committed calibration anchor only. This half-year IFRS fixture is promoted for gated authoritative-override and debt-component coverage without expanding smoke cardinality."
   }
 ]

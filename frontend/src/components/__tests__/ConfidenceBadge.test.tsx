@@ -140,6 +140,31 @@ describe('ConfidenceBadge', () => {
                 expect(screen.getByText(/Уверенность:/i)).toBeInTheDocument();
             });
         });
+
+        it('renders v2 explainability fields for policy override metadata', async () => {
+            render(
+                <ConfidenceBadge
+                    metricKey="ebitda"
+                    confidence={0.95}
+                    source="issuer_fallback"
+                    matchSemantics="not_applicable"
+                    inferenceMode="policy_override"
+                    reasonCode="issuer_repo_override"
+                    authoritativeOverride
+                />,
+                { wrapper }
+            );
+
+            const badge = screen.getByText('0.95').closest('span');
+            if (badge) {
+                await userEvent.hover(badge);
+            }
+
+            await waitFor(() => {
+                expect(screen.getByText(/Режим:/i)).toBeInTheDocument();
+                expect(screen.getByText(/Причина:/i)).toBeInTheDocument();
+            });
+        });
     });
 
     describe('Edge cases', () => {

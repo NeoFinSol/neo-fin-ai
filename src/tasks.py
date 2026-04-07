@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass
 
 from src.analysis import pdf_extractor
+from src.analysis.extractor import semantics as extractor_semantics
+from src.analysis.extractor.runtime_decisions import should_prefer_llm_metric
 from src.analysis.issuer_fallback import apply_issuer_metric_overrides
 from src.analysis.nlp_analysis import analyze_narrative_with_runtime
 from src.analysis.pdf_extractor import (
@@ -97,21 +99,7 @@ async def request_multi_session_cancellation(session_id: str):
     return record
 
 
-_RAW_THRESHOLD = os.getenv("CONFIDENCE_THRESHOLD", "0.5")
-try:
-    CONFIDENCE_THRESHOLD: float = float(_RAW_THRESHOLD)
-    if not (0.0 <= CONFIDENCE_THRESHOLD <= 1.0):
-        logger.warning(
-            "CONFIDENCE_THRESHOLD=%s out of [0.0, 1.0], using default 0.5",
-            _RAW_THRESHOLD,
-        )
-        CONFIDENCE_THRESHOLD = 0.5
-except ValueError:
-    logger.warning(
-        "CONFIDENCE_THRESHOLD=%r is not a valid float, using default 0.5",
-        _RAW_THRESHOLD,
-    )
-    CONFIDENCE_THRESHOLD = 0.5
+CONFIDENCE_THRESHOLD: float = app_settings.confidence_threshold
 
 
 async def _ensure_analysis_exists(task_id: str) -> bool:
@@ -361,38 +349,16 @@ async def _try_llm_extraction(
     # Count non-null metrics
     non_null = sum(1 for m in llm_result.values() if m.value is not None)
 
-    def _prefer_llm_metric(llm_meta, fallback_meta) -> bool:
-        if llm_meta is None or llm_meta.value is None:
-            return False
-        if fallback_meta is None or fallback_meta.value is None:
-            return True
-        if getattr(fallback_meta, "source", "derived") == "derived":
-            return True
-
-        fallback_confidence = float(getattr(fallback_meta, "confidence", 0.0) or 0.0)
-        llm_confidence = float(getattr(llm_meta, "confidence", 0.0) or 0.0)
-        if fallback_confidence > 0.3:
-            return False
-
-        fallback_value = float(fallback_meta.value)
-        llm_value = float(llm_meta.value)
-        if fallback_value == 0.0 or llm_value == 0.0:
-            return False
-        if fallback_value * llm_value < 0:
-            return False
-
-        ratio = max(abs(fallback_value), abs(llm_value)) / max(
-            min(abs(fallback_value), abs(llm_value)),
-            1e-9,
-        )
-        return llm_confidence >= 0.8 and ratio < 10.0
-
     result = {}
     llm_contributed: list[str] = []
     llm_rejected: list[str] = []
     for key, fallback_meta in fallback.items():
         llm_meta = llm_result.get(key)
-        if _prefer_llm_metric(llm_meta, fallback_meta):
+        if should_prefer_llm_metric(
+            llm_meta,
+            fallback_meta,
+            threshold=CONFIDENCE_THRESHOLD,
+        ):
             result[key] = llm_meta
             llm_contributed.append(key)
             continue

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 import src.routers.pdf_tasks as pdf_tasks
+from src.analysis.extractor import semantics
 
 
 class FakeAnalysis:
@@ -76,7 +77,9 @@ def test_upload_forwards_requested_ai_provider(client, monkeypatch, tmp_path):
     async def fake_get(task_id: str):
         return store.get(task_id)
 
-    async def fake_process(task_id: str, file_path: str, ai_provider: str | None = None):
+    async def fake_process(
+        task_id: str, file_path: str, ai_provider: str | None = None
+    ):
         captured["provider"] = ai_provider
         analysis = store.get(task_id)
         if analysis:
@@ -156,6 +159,64 @@ def test_result_returns_score_methodology(client, monkeypatch):
     assert payload["data"]["score"]["methodology"]["period_basis"] == "reported"
     assert payload["data"]["score"]["methodology"]["leverage_basis"] == "debt_only"
     assert payload["data"]["score"]["methodology"]["ifrs16_adjusted"] is True
-    assert "leverage_debt_only" in payload["data"]["score"]["methodology"]["adjustments"]
+    assert (
+        "leverage_debt_only" in payload["data"]["score"]["methodology"]["adjustments"]
+    )
     assert payload["data"]["ai_runtime"]["effective_provider"] == "ollama"
     assert payload["data"]["ai_runtime"]["status"] == "succeeded"
+
+
+def test_result_returns_v2_extraction_metadata_shape(client, monkeypatch):
+    analysis = FakeAnalysis(
+        status="completed",
+        result={
+            "filename": "report.pdf",
+            "data": {
+                "ratios": {},
+                "score": {"score": 0},
+                "extraction_metadata": {
+                    "revenue": {
+                        "evidence_version": "v2",
+                        "confidence": 0.92,
+                        "source": "table",
+                        "match_semantics": "exact",
+                        "inference_mode": "direct",
+                        "postprocess_state": "none",
+                        "reason_code": None,
+                        "signal_flags": ["ev:line_code"],
+                        "candidate_quality": 120,
+                        "authoritative_override": False,
+                    },
+                    "ebitda": {
+                        "evidence_version": "v2",
+                        "confidence": 0.95,
+                        "source": "issuer_fallback",
+                        "match_semantics": "not_applicable",
+                        "inference_mode": "policy_override",
+                        "postprocess_state": "none",
+                        "reason_code": semantics.REASON_ISSUER_REPO_OVERRIDE,
+                        "signal_flags": [],
+                        "candidate_quality": None,
+                        "authoritative_override": True,
+                    },
+                },
+            },
+        },
+    )
+
+    async def fake_get(_task_id: str):
+        return analysis
+
+    monkeypatch.setattr(pdf_tasks, "get_analysis", fake_get)
+    response = client.get("/result/task-with-v2-metadata")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"]["extraction_metadata"]["revenue"]["source"] == "table"
+    assert (
+        payload["data"]["extraction_metadata"]["revenue"]["match_semantics"] == "exact"
+    )
+    assert (
+        payload["data"]["extraction_metadata"]["ebitda"]["authoritative_override"]
+        is True
+    )
