@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from .confidence_policy import ConfidencePolicy
 from . import semantics
+from .confidence_policy import ConfidencePolicy
 from .types import (
     ExtractionMetadata,
     ExtractionSource,
