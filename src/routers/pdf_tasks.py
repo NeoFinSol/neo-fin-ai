@@ -80,6 +80,7 @@ async def upload_pdf(
     file: UploadFile,
     background_tasks: BackgroundTasks,
     ai_provider: Annotated[str | None, Form()] = None,
+    debug_trace: Annotated[str, Form()] = "false",
     api_key: str = Depends(get_api_key),
     request: Request = None,  # keyword-only, not used directly (rate limiting via middleware)
 ):
@@ -187,12 +188,14 @@ async def upload_pdf(
         raise HTTPException(status_code=500, detail="Failed to create analysis record")
 
     try:
+        _debug_trace_bool = debug_trace.strip().lower() == "true"
         await dispatch_pdf_task(
             background_tasks,
             task_id=task_id,
             file_path=tmp_path,
             background_callable=process_pdf,
             ai_provider=requested_provider,
+            debug_trace=_debug_trace_bool,
         )
     except TaskRuntimeError:
         await _cleanup_temp_file(tmp_path)

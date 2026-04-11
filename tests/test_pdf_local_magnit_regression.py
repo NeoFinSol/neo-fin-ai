@@ -103,29 +103,29 @@ def test_local_magnit_regression(
 
     text, tables = cached_payload
     metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
-    metadata = apply_issuer_metric_overrides(
+    metadata, _overrides = apply_issuer_metric_overrides(
         metadata,
         filename=case["filename"],
         text=text,
     )
 
     for key, expected_value in case["expected"].items():
-        assert (
-            metadata[key].value == expected_value
-        ), f"{case['id']}: expected {key}={expected_value}, got {metadata[key].value}"
+        assert metadata[key].value == expected_value, (
+            f"{case['id']}: expected {key}={expected_value}, got {metadata[key].value}"
+        )
 
     for key in case.get("expected_none", []):
-        assert (
-            metadata[key].value is None
-        ), f"{case['id']}: expected {key}=None, got {metadata[key].value}"
+        assert metadata[key].value is None, (
+            f"{case['id']}: expected {key}=None, got {metadata[key].value}"
+        )
 
     expected_long_term = case.get("expected_long_term_liabilities")
     if expected_long_term is not None:
         liabilities = metadata["liabilities"].value
         short_term = metadata["short_term_liabilities"].value
-        assert (
-            liabilities is not None and short_term is not None
-        ), f"{case['id']}: expected liabilities/short_term_liabilities for long-term check"
+        assert liabilities is not None and short_term is not None, (
+            f"{case['id']}: expected liabilities/short_term_liabilities for long-term check"
+        )
         assert liabilities - short_term == expected_long_term, (
             f"{case['id']}: expected long_term_liabilities={expected_long_term}, "
             f"got {liabilities - short_term}"
@@ -138,9 +138,9 @@ def test_local_magnit_regression(
         current_assets = metrics_values.get("current_assets")
         inventory = metrics_values.get("inventory")
 
-        assert (
-            quick_ratio is None or quick_ratio >= 0
-        ), f"{case['id']}: quick_ratio must be non-negative or None, got {quick_ratio}"
+        assert quick_ratio is None or quick_ratio >= 0, (
+            f"{case['id']}: quick_ratio must be non-negative or None, got {quick_ratio}"
+        )
         assert (
             current_assets is None or inventory is None or current_assets >= inventory
         ), (
@@ -163,9 +163,9 @@ def test_local_magnit_regression(
         score_payload = scoring_result["score_payload"]
         methodology = score_payload["methodology"]
 
-        assert (
-            score_payload["score"] == expected_scoring["score"]
-        ), f"{case['id']}: expected score={expected_scoring['score']}, got {score_payload['score']}"
+        assert score_payload["score"] == expected_scoring["score"], (
+            f"{case['id']}: expected score={expected_scoring['score']}, got {score_payload['score']}"
+        )
         assert score_payload["risk_level"] == expected_scoring["risk_level"], (
             f"{case['id']}: expected risk_level={expected_scoring['risk_level']}, "
             f"got {score_payload['risk_level']}"
@@ -193,10 +193,10 @@ def test_local_magnit_regression(
                 f"got {methodology['leverage_basis']}"
             )
         for guardrail in expected_scoring.get("guardrails", []):
-            assert (
-                guardrail in methodology["guardrails"]
-            ), f"{case['id']}: expected guardrail {guardrail}, got {methodology['guardrails']}"
+            assert guardrail in methodology["guardrails"], (
+                f"{case['id']}: expected guardrail {guardrail}, got {methodology['guardrails']}"
+            )
         for adjustment in expected_scoring.get("adjustments", []):
-            assert (
-                adjustment in methodology["adjustments"]
-            ), f"{case['id']}: expected adjustment {adjustment}, got {methodology['adjustments']}"
+            assert adjustment in methodology["adjustments"], (
+                f"{case['id']}: expected adjustment {adjustment}, got {methodology['adjustments']}"
+            )

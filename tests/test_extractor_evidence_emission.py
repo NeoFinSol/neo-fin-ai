@@ -116,7 +116,7 @@ def test_issuer_fallback_emits_policy_override_metadata() -> None:
         )
     }
 
-    updated = apply_issuer_metric_overrides(
+    updated, overrides = apply_issuer_metric_overrides(
         metadata,
         filename="magnit_h1_2025_report.pdf",
         text="Magnit H1 2025 six months 30 June 2025",
