@@ -635,3 +635,247 @@ def test_metric_summary_uses_profile_key_not_source() -> None:
     summary = trace.per_metric["revenue"].human_summary
     assert "table" in summary
     assert "exact" in summary
+
+
+def test_reconstruct_winner_from_trace_only() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = [cand]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log()
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    mt = trace.per_metric["revenue"]
+    assert mt.final_state == MetricFinalState.SELECTED
+    winner = next(o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.WINNER)
+    assert winner.candidate.value == 5000.0
+    assert winner.candidate.confidence == 0.92
+
+
+def test_loser_has_explanatory_step() -> None:
+    raw = RawCandidates()
+    c1 = _make_candidate(value=5000.0)
+    c2 = _make_candidate(value=4900.0, source="text", match="keyword_match")
+    raw["revenue"] = [c1, c2]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    c1_id = _build_candidate_id("revenue", c1)
+    dl = _make_decision_log()
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": c1_id},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    mt = trace.per_metric["revenue"]
+    losers = [o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.LOSER]
+    assert len(losers) >= 1
+    for loser in losers:
+        has_reason = loser.outcome_reason_code is not None
+        has_path_step = any(
+            s.reason_code is not None
+            or s.step
+            in {DecisionStepKind.CONFIDENCE_FILTER, DecisionStepKind.GUARDRAIL}
+            for s in mt.reason_path
+        )
+        assert has_reason or has_path_step, (
+            f"loser {loser.candidate.candidate_id} has no explanatory step"
+        )
+
+
+def test_trace_does_not_affect_runtime_outputs() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = [cand]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log()
+
+    original_value = meta["revenue"].value
+    original_confidence = meta["revenue"].confidence
+
+    build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+
+    assert meta["revenue"].value == original_value
+    assert meta["revenue"].confidence == original_confidence
+
+
+def test_is_complete_missing_components() -> None:
+    trace = build_decision_trace(
+        raw_candidates=RawCandidates(),
+        metadata={},
+        decision_logs={},
+        guardrail_events=[],
+        winner_map={},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    assert trace.is_complete is True
+    assert trace.missing_components == []
+
+
+def test_pipeline_override_reflected() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = [cand]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log()
+
+    override = IssuerOverrideTrace(
+        metric_key="revenue",
+        original_value=5000.0,
+        original_source="table",
+        override_value=5500.0,
+        discrepancy_pct=10.0,
+        reason_code="issuer_repo_override",
+    )
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[override],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    assert len(trace.pipeline.issuer_overrides) == 1
+    assert trace.pipeline.issuer_overrides[0].metric_key == "revenue"
+
+
+def test_summary_derivation_independent() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = [cand]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log()
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    summary = trace.per_metric["revenue"].human_summary
+    assert isinstance(summary, str)
+    assert len(summary) > 0
+
+
+def test_decision_trace_json_serializable() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = [cand]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log()
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    d = decision_trace_to_dict(trace)
+    serialized = json.dumps(d)
+    parsed = json.loads(serialized)
+    assert "per_metric" in parsed
+    assert "pipeline" in parsed
+    assert "generated_at" in parsed
+    assert "trace_version" in parsed
+
+
+def test_backward_compatibility_null_handling() -> None:
+    payload = {
+        "filename": "test.pdf",
+        "data": {"scanned": False, "decision_trace": None},
+    }
+    assert payload["data"]["decision_trace"] is None
+
+
+def test_strenum_serializes_as_string() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = [cand]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log()
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    d = decision_trace_to_dict(trace)
+    serialized = json.dumps(d)
+    parsed = json.loads(serialized)
+
+    mt = parsed["per_metric"]["revenue"]
+    for step in mt["reason_path"]:
+        assert isinstance(step["step"], str)
+        assert isinstance(step["action"], str)
+    for outcome in mt["outcomes"]:
+        assert isinstance(outcome["outcome"], str)
+        assert isinstance(outcome["outcome_step"], str)
+    assert isinstance(mt["final_state"], str)
