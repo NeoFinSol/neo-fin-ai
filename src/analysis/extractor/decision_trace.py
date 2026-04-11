@@ -236,7 +236,7 @@ def _build_candidate_trace(
             candidate.inference_mode,
         ),
         value=candidate.value,
-        confidence=candidate.confidence,
+        confidence=0.0,
         quality_delta=0.0,
         structural_bonus=0.0,
         conflict_penalty=0.0,
@@ -301,12 +301,14 @@ def build_decision_trace(
     )
 
     for metric_key in sorted(all_metric_keys):
-        candidates = raw_candidates.get(metric_key, [])
+        candidate = raw_candidates.get(metric_key)
         winner_id = winner_map.get(metric_key)
         outcomes: list[CandidateOutcomeTrace] = []
 
-        for cand in candidates:
-            ct = _build_candidate_trace(metric_key, cand, decision_logs.get(metric_key))
+        if candidate is not None:
+            ct = _build_candidate_trace(
+                metric_key, candidate, decision_logs.get(metric_key)
+            )
             classified = _classify_candidate(
                 metric_key,
                 ct.candidate_id,
@@ -358,6 +360,39 @@ def build_decision_trace(
                         action=mapped_action,
                         reason_code=ev.reason_code,
                         detail=f"guardrail at stage={ev.stage}: {ev.action}",
+                    )
+                )
+        if llm_merge_trace is not None:
+            if metric_key in llm_merge_trace.contributed:
+                reason_path.append(
+                    DecisionStep(
+                        step=DecisionStepKind.LLM_MERGE,
+                        action=DecisionAction.MERGED,
+                        reason_code=None,
+                        detail=f"LLM contributed value for {metric_key}",
+                    )
+                )
+            for rejection in llm_merge_trace.rejected:
+                if rejection.metric_key == metric_key:
+                    reason_path.append(
+                        DecisionStep(
+                            step=DecisionStepKind.LLM_MERGE,
+                            action=DecisionAction.DROPPED,
+                            reason_code=rejection.reason_code,
+                            detail=f"LLM rejected for {metric_key}: {rejection.reason_code}",
+                        )
+                    )
+        for override in issuer_overrides:
+            if override.metric_key == metric_key:
+                reason_path.append(
+                    DecisionStep(
+                        step=DecisionStepKind.ISSUER_OVERRIDE,
+                        action=DecisionAction.OVERRIDDEN,
+                        reason_code=override.reason_code,
+                        detail=(
+                            f"issuer override for {metric_key}: "
+                            f"discrepancy {override.discrepancy_pct}%"
+                        ),
                     )
                 )
         if final_state == MetricFinalState.SELECTED:

@@ -417,7 +417,7 @@ def _make_decision_log(
 def test_build_decision_trace_basic() -> None:
     raw = RawCandidates()
     cand = _make_candidate()
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
@@ -446,24 +446,36 @@ def test_build_decision_trace_basic() -> None:
     assert trace.is_complete is True
 
 
-def test_build_decision_trace_duplicate_profile() -> None:
+def test_build_decision_trace_llm_merge_loser() -> None:
     raw = RawCandidates()
-    c1 = _make_candidate(value=5000.0)
-    c2 = _make_candidate(value=4800.0)
-    raw["revenue"] = [c1, c2]
+    cand = _make_candidate()
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    c1_id = _build_candidate_id("revenue", c1)
+    cid = _build_candidate_id("revenue", cand)
     dl = _make_decision_log()
+
+    llm_trace = LLMMergeTrace(
+        contributed=[],
+        rejected=[
+            RejectionTrace(
+                metric_key="revenue",
+                winner_profile=("table", "exact", "direct"),
+                loser_profile=("llm", "keyword_match", "direct"),
+                reason_code="llm_rejected_strong_direct_fallback",
+                reason_detail=None,
+            )
+        ],
+    )
 
     trace = build_decision_trace(
         raw_candidates=raw,
         metadata=meta,
         decision_logs={"revenue": dl},
         guardrail_events=[],
-        winner_map={"revenue": c1_id},
-        llm_merge_trace=None,
+        winner_map={"revenue": cid},
+        llm_merge_trace=llm_trace,
         issuer_overrides=[],
         confidence_threshold=0.7,
         policy_name="test",
@@ -471,18 +483,23 @@ def test_build_decision_trace_duplicate_profile() -> None:
 
     mt = trace.per_metric["revenue"]
     winners = [o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.WINNER]
-    losers = [o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.LOSER]
     assert len(winners) == 1
-    assert len(losers) == 1
     assert winners[0].candidate.value == 5000.0
-    assert losers[0].candidate.value == 4800.0
-    assert losers[0].outcome_reason_code is not None
+    assert trace.pipeline.llm_merge is not None
+    assert len(trace.pipeline.llm_merge.rejected) == 1
+    assert (
+        trace.pipeline.llm_merge.rejected[0].reason_code
+        == "llm_rejected_strong_direct_fallback"
+    )
+    llm_steps = [s for s in mt.reason_path if s.step == DecisionStepKind.LLM_MERGE]
+    assert len(llm_steps) >= 1
+    assert llm_steps[0].action == DecisionAction.DROPPED
 
 
 def test_build_decision_trace_filtered_out() -> None:
     raw = RawCandidates()
     cand = _make_candidate(value=50.0)
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     dl = _make_decision_log(final=0.15)
 
     trace = build_decision_trace(
@@ -506,7 +523,7 @@ def test_build_decision_trace_filtered_out() -> None:
 def test_build_decision_trace_invalidated_by_guardrail() -> None:
     raw = RawCandidates()
     cand = _make_candidate()
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     meta = {"revenue": ExtractionMetadata(value=None, confidence=0.0, source="table")}
     cid = _build_candidate_id("revenue", cand)
     dl = _make_decision_log(final=0.0)
@@ -570,7 +587,7 @@ def test_build_decision_trace_absent() -> None:
 def test_outcomes_invariant_selected_has_one_winner() -> None:
     raw = RawCandidates()
     cand = _make_candidate(value=100.0)
-    raw["x"] = [cand]
+    raw["x"] = cand
     meta = {"x": ExtractionMetadata(value=100.0, confidence=0.9, source="table")}
     cid = _build_candidate_id("x", cand)
     dl = _make_decision_log(metric_key="x", profile_key=("table", "exact", "direct"))
@@ -614,7 +631,7 @@ def test_build_decision_trace_empty() -> None:
 def test_metric_summary_uses_profile_key_not_source() -> None:
     raw = RawCandidates()
     cand = _make_candidate()
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
@@ -640,7 +657,7 @@ def test_metric_summary_uses_profile_key_not_source() -> None:
 def test_reconstruct_winner_from_trace_only() -> None:
     raw = RawCandidates()
     cand = _make_candidate()
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
@@ -665,48 +682,54 @@ def test_reconstruct_winner_from_trace_only() -> None:
     assert winner.candidate.confidence == 0.92
 
 
-def test_loser_has_explanatory_step() -> None:
+def test_llm_rejection_has_explanatory_reason_path_step() -> None:
     raw = RawCandidates()
-    c1 = _make_candidate(value=5000.0)
-    c2 = _make_candidate(value=4900.0, source="text", match="keyword_match")
-    raw["revenue"] = [c1, c2]
+    cand = _make_candidate()
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    c1_id = _build_candidate_id("revenue", c1)
+    cid = _build_candidate_id("revenue", cand)
     dl = _make_decision_log()
+
+    llm_trace = LLMMergeTrace(
+        contributed=[],
+        rejected=[
+            RejectionTrace(
+                metric_key="revenue",
+                winner_profile=("table", "exact", "direct"),
+                loser_profile=("llm", "keyword_match", "direct"),
+                reason_code="llm_rejected_strong_direct_fallback",
+                reason_detail=None,
+            )
+        ],
+    )
 
     trace = build_decision_trace(
         raw_candidates=raw,
         metadata=meta,
         decision_logs={"revenue": dl},
         guardrail_events=[],
-        winner_map={"revenue": c1_id},
-        llm_merge_trace=None,
+        winner_map={"revenue": cid},
+        llm_merge_trace=llm_trace,
         issuer_overrides=[],
         confidence_threshold=0.7,
         policy_name="test",
     )
     mt = trace.per_metric["revenue"]
-    losers = [o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.LOSER]
-    assert len(losers) >= 1
-    for loser in losers:
-        has_reason = loser.outcome_reason_code is not None
-        has_path_step = any(
-            s.reason_code is not None
-            or s.step
-            in {DecisionStepKind.CONFIDENCE_FILTER, DecisionStepKind.GUARDRAIL}
-            for s in mt.reason_path
-        )
-        assert has_reason or has_path_step, (
-            f"loser {loser.candidate.candidate_id} has no explanatory step"
-        )
+    llm_steps = [s for s in mt.reason_path if s.step == DecisionStepKind.LLM_MERGE]
+    assert len(llm_steps) >= 1
+    for step in llm_steps:
+        assert step.reason_code is not None or step.action in {
+            DecisionAction.DROPPED,
+            DecisionAction.MERGED,
+        }, f"LLM step has no reason: {step}"
 
 
 def test_trace_does_not_affect_runtime_outputs() -> None:
     raw = RawCandidates()
     cand = _make_candidate()
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
@@ -751,7 +774,7 @@ def test_is_complete_missing_components() -> None:
 def test_pipeline_override_reflected() -> None:
     raw = RawCandidates()
     cand = _make_candidate()
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
@@ -780,12 +803,20 @@ def test_pipeline_override_reflected() -> None:
     )
     assert len(trace.pipeline.issuer_overrides) == 1
     assert trace.pipeline.issuer_overrides[0].metric_key == "revenue"
+    issuer_steps = [
+        s
+        for s in trace.per_metric["revenue"].reason_path
+        if s.step == DecisionStepKind.ISSUER_OVERRIDE
+    ]
+    assert len(issuer_steps) == 1
+    assert issuer_steps[0].action == DecisionAction.OVERRIDDEN
+    assert issuer_steps[0].reason_code == "issuer_repo_override"
 
 
 def test_summary_derivation_independent() -> None:
     raw = RawCandidates()
     cand = _make_candidate()
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
@@ -811,7 +842,7 @@ def test_summary_derivation_independent() -> None:
 def test_decision_trace_json_serializable() -> None:
     raw = RawCandidates()
     cand = _make_candidate()
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
@@ -849,7 +880,7 @@ def test_backward_compatibility_null_handling() -> None:
 def test_strenum_serializes_as_string() -> None:
     raw = RawCandidates()
     cand = _make_candidate()
-    raw["revenue"] = [cand]
+    raw["revenue"] = cand
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
@@ -879,3 +910,60 @@ def test_strenum_serializes_as_string() -> None:
         assert isinstance(outcome["outcome"], str)
         assert isinstance(outcome["outcome_step"], str)
     assert isinstance(mt["final_state"], str)
+
+
+def test_candidate_trace_without_decision_log_uses_zero_confidence() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = cand
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    mt = trace.per_metric["revenue"]
+    assert len(mt.outcomes) == 1
+    assert mt.outcomes[0].candidate.confidence == 0.0
+
+
+def test_llm_merge_contributed_in_reason_path() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = cand
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log()
+
+    llm_trace = LLMMergeTrace(
+        contributed=["revenue"],
+        rejected=[],
+    )
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=llm_trace,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    mt = trace.per_metric["revenue"]
+    llm_steps = [s for s in mt.reason_path if s.step == DecisionStepKind.LLM_MERGE]
+    assert len(llm_steps) == 1
+    assert llm_steps[0].action == DecisionAction.MERGED
