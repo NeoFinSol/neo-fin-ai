@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final, Iterable
 
 from .confidence_policy import (
@@ -130,6 +130,7 @@ class ExtractionDebugTrace:
     metadata: dict[str, ExtractionMetadata]
     decision_logs: dict[str, SemanticsDecisionLog]
     guardrail_events: list[GuardrailEvent]
+    winner_map: dict[str, str | None] = field(default_factory=dict)
 
 
 SEMANTIC_SIGNAL_FLAGS: Final[frozenset[str]] = frozenset(
@@ -306,7 +307,7 @@ def quality_delta(candidate_quality: int | None) -> float:
 
 
 def structural_bonus(
-    signal_flags: list[str] | tuple[str, ...] | frozenset[str]
+    signal_flags: list[str] | tuple[str, ...] | frozenset[str],
 ) -> float:
     if any(
         flag in ACTIVE_CONFIDENCE_POLICY.structural_bonus_signals
