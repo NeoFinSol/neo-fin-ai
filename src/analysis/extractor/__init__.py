@@ -3,6 +3,7 @@
 __all__ = [
     "calibration",
     "confidence_policy",
+    "decision_trace",
     "guardrails",
     "legacy_helpers",
     "ocr",
