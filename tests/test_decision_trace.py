@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 
 from src.analysis.extractor.decision_trace import (
     CandidateOutcomeKind,
@@ -17,7 +18,12 @@ from src.analysis.extractor.decision_trace import (
     PipelineDecisionTrace,
     ReasonCode,
     RejectionTrace,
+    _build_candidate_id,
+    _guardrail_action_to_decision_action,
+    _short_value_hash,
+    decision_trace_to_dict,
 )
+from src.analysis.extractor.types import RawMetricCandidate
 
 
 def test_reason_code_is_str_alias() -> None:
@@ -265,3 +271,94 @@ class TestDecisionTraceFields:
         ga_idx = names.index("generated_at")
         ic_idx = names.index("is_complete")
         assert ga_idx < ic_idx
+
+
+def test_short_value_hash_deterministic() -> None:
+    h1 = _short_value_hash(42.5)
+    h2 = _short_value_hash(42.5)
+    assert h1 == h2
+    assert len(h1) == 8
+
+
+def test_short_value_hash_different_values() -> None:
+    h1 = _short_value_hash(1.0)
+    h2 = _short_value_hash(2.0)
+    assert h1 != h2
+
+
+def test_short_value_hash_none() -> None:
+    h = _short_value_hash(None)
+    assert len(h) == 8
+
+
+def test_build_candidate_id_format() -> None:
+    c = RawMetricCandidate(
+        value=100.0,
+        match_type="exact",
+        is_exact=True,
+        source="table_exact",
+        match_semantics="exact",
+        inference_mode="direct",
+    )
+    cid = _build_candidate_id("revenue", c)
+    parts = cid.split("::")
+    assert parts[0] == "revenue"
+    assert parts[1] == "table_exact"
+    assert parts[2] == "exact"
+    assert parts[3] == "direct"
+    assert len(parts[4]) == 8
+
+
+def test_build_candidate_id_deterministic() -> None:
+    c = RawMetricCandidate(
+        value=55.0,
+        match_type="exact",
+        is_exact=True,
+        source="text_regex",
+        match_semantics="keyword_match",
+        inference_mode="derived",
+    )
+    id1 = _build_candidate_id("net_income", c)
+    id2 = _build_candidate_id("net_income", c)
+    assert id1 == id2
+
+
+def test_build_candidate_id_different_values_different_ids() -> None:
+    c1 = RawMetricCandidate(value=10.0, match_type="exact", is_exact=True)
+    c2 = RawMetricCandidate(value=20.0, match_type="exact", is_exact=True)
+    id1 = _build_candidate_id("metric", c1)
+    id2 = _build_candidate_id("metric", c2)
+    assert id1 != id2
+
+
+def test_guardrail_action_mapper_explicit() -> None:
+    assert _guardrail_action_to_decision_action("ANNOTATED") == DecisionAction.SELECTED
+    assert _guardrail_action_to_decision_action("REPLACED") == DecisionAction.REPLACED
+    assert _guardrail_action_to_decision_action("DROPPED") == DecisionAction.DROPPED
+    assert (
+        _guardrail_action_to_decision_action("INVALIDATED")
+        == DecisionAction.INVALIDATED
+    )
+
+
+def test_guardrail_action_mapper_unknown_returns_none() -> None:
+    assert _guardrail_action_to_decision_action("UNKNOWN") is None
+
+
+def test_decision_trace_to_dict_empty() -> None:
+    pipeline = PipelineDecisionTrace(
+        llm_merge=None,
+        issuer_overrides=[],
+        confidence_threshold=0.5,
+        policy_name="default",
+    )
+    trace = DecisionTrace(
+        per_metric={},
+        pipeline=pipeline,
+        generated_at="2025-01-01T00:00:00Z",
+    )
+    result = decision_trace_to_dict(trace)
+    serialized = json.dumps(result)
+    assert "per_metric" in serialized
+    assert "pipeline" in serialized
+    assert "generated_at" in serialized

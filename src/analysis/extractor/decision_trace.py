@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import dataclasses
+import hashlib
+from dataclasses import asdict, dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from src.analysis.extractor.types import RawMetricCandidate
 
 if TYPE_CHECKING:
     from src.analysis.extractor.semantics import GuardrailEvent
@@ -125,3 +129,45 @@ class DecisionTrace:
     is_complete: bool = True
     missing_components: list[str] = field(default_factory=list)
     trace_version: str = "v1"
+
+
+def _short_value_hash(value: float | None) -> str:
+    raw = repr(value).encode("utf-8")
+    return hashlib.blake2s(raw, digest_size=4).hexdigest()
+
+
+def _build_candidate_id(metric_key: str, candidate: RawMetricCandidate) -> str:
+    value_hash = _short_value_hash(candidate.value)
+    return f"{metric_key}::{candidate.source}::{candidate.match_semantics}::{candidate.inference_mode}::{value_hash}"
+
+
+_GUARDRAIL_ACTION_MAP: dict[str, DecisionAction] = {
+    "ANNOTATED": DecisionAction.SELECTED,
+    "REPLACED": DecisionAction.REPLACED,
+    "DROPPED": DecisionAction.DROPPED,
+    "INVALIDATED": DecisionAction.INVALIDATED,
+}
+
+
+def _guardrail_action_to_decision_action(
+    guardrail_action: str,
+) -> DecisionAction | None:
+    return _GUARDRAIL_ACTION_MAP.get(guardrail_action)
+
+
+def _normalize_trace_value(value: Any) -> Any:
+    if isinstance(value, StrEnum):
+        return value.value
+    if isinstance(value, tuple):
+        return [_normalize_trace_value(v) for v in value]
+    if isinstance(value, list):
+        return [_normalize_trace_value(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _normalize_trace_value(v) for k, v in value.items()}
+    if hasattr(value, "__dataclass_fields__"):
+        return _normalize_trace_value(asdict(value))
+    return value
+
+
+def decision_trace_to_dict(trace: DecisionTrace) -> dict:
+    return _normalize_trace_value(asdict(trace))
