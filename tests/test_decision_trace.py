@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+import dataclasses
+
 from src.analysis.extractor.decision_trace import (
     CandidateOutcomeKind,
+    CandidateOutcomeTrace,
     DecisionAction,
+    DecisionStep,
     DecisionStepKind,
+    DecisionTrace,
+    IssuerOverrideTrace,
+    LLMMergeTrace,
+    MetricCandidateTrace,
+    MetricDecisionTrace,
     MetricFinalState,
+    PipelineDecisionTrace,
     ReasonCode,
+    RejectionTrace,
 )
 
 
@@ -111,3 +122,146 @@ class TestCandidateOutcomeKind:
     @staticmethod
     def test_member_count() -> None:
         assert len(CandidateOutcomeKind) == 4
+
+
+class TestMetricCandidateTraceFields:
+    EXPECTED = [
+        "candidate_id",
+        "profile_key",
+        "value",
+        "confidence",
+        "quality_delta",
+        "structural_bonus",
+        "conflict_penalty",
+        "guardrail_penalty",
+        "candidate_quality",
+        "signal_flags",
+        "reason_code",
+    ]
+
+    @staticmethod
+    def test_field_names() -> None:
+        names = [f.name for f in dataclasses.fields(MetricCandidateTrace)]
+        assert names == TestMetricCandidateTraceFields.EXPECTED
+
+
+class TestCandidateOutcomeTraceFields:
+    EXPECTED = [
+        "candidate",
+        "outcome",
+        "outcome_step",
+        "outcome_reason_code",
+    ]
+
+    @staticmethod
+    def test_field_names() -> None:
+        names = [f.name for f in dataclasses.fields(CandidateOutcomeTrace)]
+        assert names == TestCandidateOutcomeTraceFields.EXPECTED
+
+
+class TestDecisionStepFields:
+    EXPECTED = ["step", "action", "reason_code", "detail"]
+
+    @staticmethod
+    def test_field_names() -> None:
+        names = [f.name for f in dataclasses.fields(DecisionStep)]
+        assert names == TestDecisionStepFields.EXPECTED
+
+
+class TestMetricDecisionTraceFields:
+    EXPECTED = [
+        "metric_key",
+        "final_state",
+        "outcomes",
+        "reason_path",
+        "guardrail_events",
+        "human_summary",
+    ]
+
+    @staticmethod
+    def test_field_names() -> None:
+        names = [f.name for f in dataclasses.fields(MetricDecisionTrace)]
+        assert names == TestMetricDecisionTraceFields.EXPECTED
+
+    @staticmethod
+    def test_guardrail_events_default_is_none() -> None:
+        flds = {f.name: f for f in dataclasses.fields(MetricDecisionTrace)}
+        assert flds["guardrail_events"].default is None
+
+
+class TestRejectionTraceFields:
+    EXPECTED = [
+        "metric_key",
+        "winner_profile",
+        "loser_profile",
+        "reason_code",
+        "reason_detail",
+    ]
+
+    @staticmethod
+    def test_field_names() -> None:
+        names = [f.name for f in dataclasses.fields(RejectionTrace)]
+        assert names == TestRejectionTraceFields.EXPECTED
+
+
+class TestLLMMergeTraceFields:
+    EXPECTED = ["contributed", "rejected"]
+
+    @staticmethod
+    def test_field_names() -> None:
+        names = [f.name for f in dataclasses.fields(LLMMergeTrace)]
+        assert names == TestLLMMergeTraceFields.EXPECTED
+
+
+class TestIssuerOverrideTraceFields:
+    EXPECTED = [
+        "metric_key",
+        "original_value",
+        "original_source",
+        "override_value",
+        "discrepancy_pct",
+        "reason_code",
+    ]
+
+    @staticmethod
+    def test_field_names() -> None:
+        names = [f.name for f in dataclasses.fields(IssuerOverrideTrace)]
+        assert names == TestIssuerOverrideTraceFields.EXPECTED
+
+
+class TestPipelineDecisionTraceFields:
+    EXPECTED = [
+        "llm_merge",
+        "issuer_overrides",
+        "confidence_threshold",
+        "policy_name",
+        "human_summary",
+    ]
+
+    @staticmethod
+    def test_field_names() -> None:
+        names = [f.name for f in dataclasses.fields(PipelineDecisionTrace)]
+        assert names == TestPipelineDecisionTraceFields.EXPECTED
+
+
+class TestDecisionTraceFields:
+    EXPECTED = [
+        "per_metric",
+        "pipeline",
+        "generated_at",
+        "is_complete",
+        "missing_components",
+        "trace_version",
+    ]
+
+    @staticmethod
+    def test_field_names() -> None:
+        names = [f.name for f in dataclasses.fields(DecisionTrace)]
+        assert names == TestDecisionTraceFields.EXPECTED
+
+    @staticmethod
+    def test_generated_at_before_is_complete() -> None:
+        names = [f.name for f in dataclasses.fields(DecisionTrace)]
+        ga_idx = names.index("generated_at")
+        ic_idx = names.index("is_complete")
+        assert ga_idx < ic_idx
