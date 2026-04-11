@@ -21,7 +21,17 @@ from src.analysis.extractor.decision_trace import (
     _build_candidate_id,
     _guardrail_action_to_decision_action,
     _short_value_hash,
+    build_decision_trace,
     decision_trace_to_dict,
+)
+from src.analysis.extractor.confidence_policy import (
+    CALIBRATED_RUNTIME_CONFIDENCE_POLICY,
+)
+from src.analysis.extractor.semantics import GuardrailEvent, SemanticsDecisionLog
+from src.analysis.extractor.types import (
+    ExtractionMetadata,
+    RawCandidates,
+    RawMetricCandidate,
 )
 from src.analysis.extractor.types import RawMetricCandidate
 
@@ -362,3 +372,266 @@ def test_decision_trace_to_dict_empty() -> None:
     assert "per_metric" in serialized
     assert "pipeline" in serialized
     assert "generated_at" in serialized
+
+
+def _make_candidate(
+    source: str = "table",
+    match: str = "exact",
+    mode: str = "direct",
+    value: float = 5000.0,
+) -> RawMetricCandidate:
+    return RawMetricCandidate(
+        value=value,
+        match_type=match,
+        is_exact=(match == "exact"),
+        candidate_quality=90,
+        source=source,
+        match_semantics=match,
+        inference_mode=mode,
+    )
+
+
+def _make_decision_log(
+    metric_key: str = "revenue",
+    profile_key: tuple[str, str, str] = ("table", "exact", "direct"),
+    baseline: float = 0.92,
+    final: float = 0.92,
+) -> SemanticsDecisionLog:
+    return SemanticsDecisionLog(
+        metric_key=metric_key,
+        profile_key=profile_key,
+        baseline_confidence=baseline,
+        quality_delta=0.0,
+        structural_bonus=0.0,
+        conflict_penalty=0.0,
+        guardrail_penalty=0.0,
+        final_confidence=final,
+        postprocess_state="none",
+        authoritative_override=False,
+        reason_code=None,
+        signal_flags=[],
+        candidate_quality=None,
+    )
+
+
+def test_build_decision_trace_basic() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = [cand]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log()
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=CALIBRATED_RUNTIME_CONFIDENCE_POLICY.strong_direct_threshold,
+        policy_name=CALIBRATED_RUNTIME_CONFIDENCE_POLICY.name,
+    )
+
+    assert "revenue" in trace.per_metric
+    mt = trace.per_metric["revenue"]
+    assert mt.final_state == MetricFinalState.SELECTED
+    assert len(mt.outcomes) == 1
+    assert mt.outcomes[0].outcome == CandidateOutcomeKind.WINNER
+    assert trace.pipeline.policy_name == CALIBRATED_RUNTIME_CONFIDENCE_POLICY.name
+    assert trace.generated_at != ""
+    assert trace.is_complete is True
+
+
+def test_build_decision_trace_duplicate_profile() -> None:
+    raw = RawCandidates()
+    c1 = _make_candidate(value=5000.0)
+    c2 = _make_candidate(value=4800.0)
+    raw["revenue"] = [c1, c2]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    c1_id = _build_candidate_id("revenue", c1)
+    dl = _make_decision_log()
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": c1_id},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+
+    mt = trace.per_metric["revenue"]
+    winners = [o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.WINNER]
+    losers = [o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.LOSER]
+    assert len(winners) == 1
+    assert len(losers) == 1
+    assert winners[0].candidate.value == 5000.0
+    assert losers[0].candidate.value == 4800.0
+    assert losers[0].outcome_reason_code is not None
+
+
+def test_build_decision_trace_filtered_out() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate(value=50.0)
+    raw["revenue"] = [cand]
+    dl = _make_decision_log(final=0.15)
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata={},
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": None},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+
+    mt = trace.per_metric["revenue"]
+    assert mt.final_state == MetricFinalState.FILTERED_OUT
+    winners = [o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.WINNER]
+    assert len(winners) == 0
+
+
+def test_build_decision_trace_invalidated_by_guardrail() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = [cand]
+    meta = {"revenue": ExtractionMetadata(value=None, confidence=0.0, source="table")}
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log(final=0.0)
+
+    guardrail = GuardrailEvent(
+        metric_key="revenue",
+        stage="result_guardrails",
+        action="INVALIDATED",
+        reason_code="sanity_component_exceeds_total",
+        before_value=5000.0,
+        after_value=None,
+        before_profile_key=("table", "exact", "direct"),
+        after_profile_key=None,
+    )
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[guardrail],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+
+    mt = trace.per_metric["revenue"]
+    assert mt.final_state == MetricFinalState.INVALIDATED
+    invalidated = [
+        o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.INVALIDATED
+    ]
+    assert len(invalidated) >= 1
+    guardrail_steps = [
+        s for s in mt.reason_path if s.step == DecisionStepKind.GUARDRAIL
+    ]
+    assert len(guardrail_steps) >= 1
+    assert guardrail_steps[0].action == DecisionAction.INVALIDATED
+    assert guardrail_steps[0].reason_code == "sanity_component_exceeds_total"
+
+
+def test_build_decision_trace_absent() -> None:
+    trace = build_decision_trace(
+        raw_candidates=RawCandidates(),
+        metadata={},
+        decision_logs={},
+        guardrail_events=[],
+        winner_map={"missing_metric": None},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    if "missing_metric" in trace.per_metric:
+        mt = trace.per_metric["missing_metric"]
+        assert mt.final_state == MetricFinalState.ABSENT
+        winners = [o for o in mt.outcomes if o.outcome == CandidateOutcomeKind.WINNER]
+        assert len(winners) == 0
+
+
+def test_outcomes_invariant_selected_has_one_winner() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate(value=100.0)
+    raw["x"] = [cand]
+    meta = {"x": ExtractionMetadata(value=100.0, confidence=0.9, source="table")}
+    cid = _build_candidate_id("x", cand)
+    dl = _make_decision_log(metric_key="x", profile_key=("table", "exact", "direct"))
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"x": dl},
+        guardrail_events=[],
+        winner_map={"x": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    winners = [
+        o
+        for o in trace.per_metric["x"].outcomes
+        if o.outcome == CandidateOutcomeKind.WINNER
+    ]
+    assert len(winners) == 1
+
+
+def test_build_decision_trace_empty() -> None:
+    trace = build_decision_trace(
+        raw_candidates=RawCandidates(),
+        metadata={},
+        decision_logs={},
+        guardrail_events=[],
+        winner_map={},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    assert trace.per_metric == {}
+    assert trace.pipeline.confidence_threshold == 0.7
+    assert trace.is_complete is True
+
+
+def test_metric_summary_uses_profile_key_not_source() -> None:
+    raw = RawCandidates()
+    cand = _make_candidate()
+    raw["revenue"] = [cand]
+    meta = {
+        "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
+    }
+    cid = _build_candidate_id("revenue", cand)
+    dl = _make_decision_log()
+
+    trace = build_decision_trace(
+        raw_candidates=raw,
+        metadata=meta,
+        decision_logs={"revenue": dl},
+        guardrail_events=[],
+        winner_map={"revenue": cid},
+        llm_merge_trace=None,
+        issuer_overrides=[],
+        confidence_threshold=0.7,
+        policy_name="test",
+    )
+    summary = trace.per_metric["revenue"].human_summary
+    assert "table" in summary
+    assert "exact" in summary
