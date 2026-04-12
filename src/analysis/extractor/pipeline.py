@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 from . import legacy_helpers, semantics
 from .confidence_policy import ConfidencePolicy
+from .decision_trace import build_candidate_id
 from .guardrails import apply_result_guardrails, derive_missing_metrics
 from .ranking import build_metadata_from_candidate, build_metadata_with_decision_log
 from .rules import _METRIC_KEYWORDS
@@ -14,7 +15,6 @@ from .text_extraction import (
     _normalize_metric_text,
     collect_text_candidates,
 )
-from .decision_trace import build_candidate_id
 from .types import DocumentSignals, ExtractionMetadata, ExtractorContext, RawCandidates
 
 _RATIO_KEYS = frozenset(

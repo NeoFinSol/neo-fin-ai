@@ -3,6 +3,9 @@ from __future__ import annotations
 import dataclasses
 import json
 
+from src.analysis.extractor.confidence_policy import (
+    CALIBRATED_RUNTIME_CONFIDENCE_POLICY,
+)
 from src.analysis.extractor.decision_trace import (
     CandidateOutcomeKind,
     CandidateOutcomeTrace,
@@ -23,9 +26,6 @@ from src.analysis.extractor.decision_trace import (
     build_candidate_id,
     build_decision_trace,
     decision_trace_to_dict,
-)
-from src.analysis.extractor.confidence_policy import (
-    CALIBRATED_RUNTIME_CONFIDENCE_POLICY,
 )
 from src.analysis.extractor.semantics import GuardrailEvent, SemanticsDecisionLog
 from src.analysis.extractor.types import (
@@ -1045,6 +1045,7 @@ def test_is_complete_false_when_llm_source_but_no_merge_trace() -> None:
 
 def test_backward_compatibility_through_api_response() -> None:
     from fastapi.testclient import TestClient
+
     from src.app import app
 
     client = TestClient(app)

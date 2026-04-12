@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from src.analysis.extractor.types import RawMetricCandidate
 from src.analysis.extractor.semantics import (
     EVENT_ANNOTATED,
     EVENT_DROPPED,
@@ -15,7 +14,11 @@ from src.analysis.extractor.semantics import (
     GuardrailEvent,
     SemanticsDecisionLog,
 )
-from src.analysis.extractor.types import ExtractionMetadata, RawCandidates
+from src.analysis.extractor.types import (
+    ExtractionMetadata,
+    RawCandidates,
+    RawMetricCandidate,
+)
 
 if TYPE_CHECKING:
     from src.analysis.extractor.types import ExtractionSource, ProfileKey
