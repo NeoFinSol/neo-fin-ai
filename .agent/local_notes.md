@@ -2,6 +2,86 @@
 
 ## Активные проблемы
 
+### Tech debt: confidence penalty factor — magic constant 0.9 в engine
+**Статус**: открыт
+**Дата**: 2026-04-12
+**Проблема**: `_derive_confidence` в `src/analysis/math/engine.py` содержит `0.9` как missing-confidence penalty factor. Это policy decision, живущий не в policies.py. При изменении penalty придётся править engine.
+**Решение**: вынести в `src/analysis/math/policies.py` как `MISSING_CONFIDENCE_PENALTY_FACTOR: Final = 0.9`.
+
+### Tech debt: domain constraints в validators
+**Статус**: открыт
+**Дата**: 2026-04-12
+**Проблема**: `EXPECTED_NON_NEGATIVE_INPUTS` в `src/analysis/math/validators.py` — хардкоженный набор ключей (`cash_and_equivalents`, `equity`, `revenue`, etc.). Это domain/registry knowledge, а не validation concern. Новая метрика с non-negative constraint требует правки validators.
+**Решение**: вынести в registry или отдельный `domain_constraints.py`, либо сделать частью `MetricDefinition`.
+
+### Tech debt: две параллельные map без structural link
+**Статус**: открыт
+**Дата**: 2026-04-12
+**Проблема**: `LEGACY_RATIO_NAME_MAP` (projections.py) и `RATIO_KEY_MAP` (ratios.py) содержат одинаковые 15 metric IDs, но поддерживаются независимо. Drift risk — добавление entry в одну map без другой = тихий regression.
+**Решение**: сделать одну map authoritative, вторую — производной, либо добавить тест `set(LEGACY_RATIO_NAME_MAP.keys()) == set(RATIO_KEY_MAP.values())`.
+
+### Tech debt: precompute.py не должен стать вторым math engine
+**Статус**: открыт
+**Дата**: 2026-04-12
+**Проблема**: `_build_total_debt` — это formula logic, `_route_ebitda_variants` — routing logic. При расширении v2 precompute может разрастись. Допустимо в v1, но следить за ростом.
+**Решение**: при добавлении второй derived-формулы — вынести формулы в registry compute, оставив precompute как чистый input routing layer. При росте EBITDA routing — выделить `ebitda_resolver.py`.
+
+### Для unsupported legacy ratios не хардкодь `None` в `ratios.py` — добавляй `SUPPRESS_UNSAFE` placeholders в math registry и projection map
+**Статус**: ✅ Учтено
+**Дата**: 2026-04-12
+**Проблема**: после ввода `Math Layer v1` safe subset легко оставить inconsistent bridge: часть legacy-exported unsupported метрик может уходить в `None` напрямую из `ratios.py` или в `projection=missing_metric`, хотя продуктовый инвариант требует `DerivedMetric(status=suppressed)` как единственный путь между math и legacy bridge.
+**Как проявлялось**:
+- `quick_ratio`, `ROA/ROE`, leverage, interest coverage и turnover ratios были частично:
+  - hardcoded `None` в `src/analysis/ratios.py`
+  - либо отсутствовали в registry/projection и проваливались в `missing_metric`
+**Решение / workaround**:
+- если legacy payload всё ещё должен содержать unsupported metric key, добавляй:
+  - placeholder `MetricDefinition` в `src/analysis/math/registry.py`
+  - `suppression_policy=SuppressionPolicy.SUPPRESS_UNSAFE`
+  - mapping в `src/analysis/math/projections.py`
+- `src/analysis/ratios.py` должен только читать `legacy_values.get(...)`, а не решать локально, что отдавать `None`
+**Памятка**:
+- `missing_metric` допустим для действительно неэкспортируемых ids, но не для legacy-exported контрактных ключей
+- быстрый regression signal:
+  - `tests/test_math_projection_bridge.py`
+  - `tests/test_ratios.py::test_calculate_ratios_reads_all_legacy_exports_from_projection`
+
+### Generic EBITDA в precompute должен маршрутизироваться fail-closed; без explicit semantics не маппить в `ebitda_reported`
+**Статус**: ✅ Учтено
+**Дата**: 2026-04-12
+**Проблема**: generic `ebitda` из extractor path может нести approximation semantics (`gross_profit_to_ebitda_approximation`), а без explicit routing его легко silently схлопнуть в `ebitda_reported`.
+**Как проявлялось**:
+- `src/analysis/math/precompute.py` делал unconditional `ebitda -> ebitda_reported`
+- из-за этого spec-level separation `reported / approximated / canonical` нарушалась ещё до engine stage
+**Решение / workaround**:
+- fail-closed routing в `precompute.py`:
+  - approximation reason code → `ebitda_approximated`
+  - explicit reported semantics (`source="reported"` или будущий `reported_ebitda`) → `ebitda_reported`
+  - ambiguous generic EBITDA → не маппить ни в один variant
+**Памятка**:
+- если новый extractor path начинает отдавать richer EBITDA semantics, расширяй router явно; не возвращайся к implicit generic mapping
+- быстрый regression signal:
+  - `tests/test_math_engine.py::{test_precompute_routes_approximated_ebitda_to_approximation_variant,test_precompute_routes_explicit_reported_ebitda_to_reported_variant,test_precompute_keeps_ambiguous_ebitda_unmapped}`
+
+### После смены semantics `_normalize_inverse()` нужно синхронно обновлять `tests/test_analysis_scoring.py`, а не только новые math/scoring suites
+**Статус**: ✅ Учтено
+**Дата**: 2026-04-12
+**Проблема**: при `Math Layer v1` `_normalize_inverse()` перестал возвращать `1.0` для `value <= 0` и теперь трактует non-positive inverse ratios как unavailable (`None`). Новый closure set это покрывал, но legacy unit-file `tests/test_analysis_scoring.py` остался на старой семантике и silently drift’овал до отдельного review-pass.
+**Как проявлялось**:
+- `python -m pytest tests/test_analysis_scoring.py -q`
+- падал на:
+  - `TestNormalizeInverse.test_zero_value`
+  - `TestNormalizeInverse.test_negative_value`
+- ожидание было `1.0`, фактическое значение — `None`
+**Решение / workaround**:
+- при изменении scoring helper semantics проверять не только новые targeted suites (`test_math_containment.py`, `test_scoring.py`), но и legacy unit-file `tests/test_analysis_scoring.py`
+- для inverse normalization текущий канон такой:
+  - `value <= 0` → unavailable (`None`)
+  - scoring consumer выше по стеку должен трактовать это через `if score is None: continue`
+**Памятка**:
+- если после math/scoring refactor всё зелёно в новых suites, но остаётся подозрение на старый unit drift, первым делом прогоняй `tests/test_analysis_scoring.py` отдельно
+- это test drift, а не runtime regression, если production path уже делает `if score is None: continue`
+
 ### `background_tasks.add_task()` передаёт args positionally — `**kwargs` в mock-функциях не работает
 **Статус**: ✅ Учтено
 **Дата**: 2026-04-12
