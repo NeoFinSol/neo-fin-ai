@@ -172,12 +172,12 @@ class TestNormalizeInverse:
     """Tests for _normalize_inverse function."""
 
     def test_zero_value(self):
-        """Test zero value returns 1.0 (best score)."""
-        assert _normalize_inverse(0.0, 2.0) == 1.0
+        """Test zero value is treated as unavailable."""
+        assert _normalize_inverse(0.0, 2.0) is None
 
     def test_negative_value(self):
-        """Test negative value returns 1.0."""
-        assert _normalize_inverse(-1.0, 2.0) == 1.0
+        """Test negative value is treated as unavailable."""
+        assert _normalize_inverse(-1.0, 2.0) is None
 
     def test_value_at_max_acceptable(self):
         """Test value at max_acceptable returns 0.0."""

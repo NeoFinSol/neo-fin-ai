@@ -7,9 +7,9 @@ from src.analysis.math.contracts import (
     ValidityState,
 )
 from src.analysis.math.policies import (
+    MISSING_CONFIDENCE_PENALTY_FACTOR,
     AveragingPolicy,
     DenominatorPolicy,
-    MISSING_CONFIDENCE_PENALTY_FACTOR,
     SuppressionPolicy,
 )
 

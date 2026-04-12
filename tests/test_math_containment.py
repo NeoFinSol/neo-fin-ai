@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import math
 
-from src.analysis.scoring import _normalize_inverse
 from src.analysis.math.validators import classify_denominator
+from src.analysis.scoring import _normalize_inverse
 
 
 def test_normalize_inverse_rejects_non_positive_values() -> None:
