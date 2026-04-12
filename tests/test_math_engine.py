@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from src.analysis.math.engine import MathEngine
 from src.analysis.math.precompute import build_precomputed_inputs
 from src.analysis.math.registry import REGISTRY
@@ -107,3 +109,51 @@ def test_precompute_keeps_ebitda_variants_separate() -> None:
     assert values["total_debt"].value == 60.0
     assert values["total_debt"].confidence == 0.7
     assert values["liabilities"].value == 400.0
+
+
+def test_engine_is_deterministic_for_same_inputs() -> None:
+    engine = MathEngine()
+    inputs = normalize_inputs(
+        {
+            "current_assets": {"value": 200.0, "confidence": 0.9},
+            "short_term_liabilities": {"value": 100.0, "confidence": 0.8},
+            "cash_and_equivalents": {"value": 25.0, "confidence": 0.9},
+            "revenue": {"value": 500.0, "confidence": 0.9},
+            "net_profit": {"value": 50.0, "confidence": 0.9},
+            "equity": {"value": 300.0, "confidence": 0.9},
+            "total_assets": {"value": 600.0, "confidence": 0.9},
+        }
+    )
+
+    first = engine.compute(inputs)
+    second = engine.compute(inputs)
+
+    assert json.dumps(
+        first["current_ratio"].model_dump(),
+        sort_keys=True,
+    ) == json.dumps(
+        second["current_ratio"].model_dump(),
+        sort_keys=True,
+    )
+
+
+def test_every_metric_has_stable_trace_status() -> None:
+    engine = MathEngine()
+    result = engine.compute(
+        normalize_inputs(
+            {
+                "current_assets": {"value": 200.0, "confidence": 0.9},
+                "short_term_liabilities": {"value": 100.0, "confidence": 0.8},
+                "cash_and_equivalents": {"value": 25.0, "confidence": 0.9},
+                "revenue": {"value": 500.0, "confidence": 0.9},
+                "net_profit": {"value": 50.0, "confidence": 0.9},
+                "equity": {"value": 300.0, "confidence": 0.9},
+                "total_assets": {"value": 600.0, "confidence": 0.9},
+            }
+        )
+    )
+
+    for metric in result.values():
+        assert metric.trace["status"] in {"valid", "invalid", "suppressed"}
+        assert metric.trace["formula_id"] == metric.formula_id
+        assert metric.trace["formula_version"] == metric.formula_version
