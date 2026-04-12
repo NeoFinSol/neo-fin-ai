@@ -8,13 +8,23 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from src.analysis.extractor.types import RawMetricCandidate
-from src.analysis.extractor.semantics import GuardrailEvent, SemanticsDecisionLog
+from src.analysis.extractor.semantics import (
+    EVENT_ANNOTATED,
+    EVENT_DROPPED,
+    EVENT_INVALIDATED,
+    EVENT_REPLACED,
+    GuardrailEvent,
+    SemanticsDecisionLog,
+)
 from src.analysis.extractor.types import ExtractionMetadata, RawCandidates
 
 if TYPE_CHECKING:
     from src.analysis.extractor.types import ExtractionSource, ProfileKey
 
 ReasonCode = str
+
+REASON_BELOW_CONFIDENCE_THRESHOLD: ReasonCode = "below_confidence_threshold"
+REASON_LOWER_CONFIDENCE: ReasonCode = "lower_confidence"
 
 
 class DecisionStepKind(StrEnum):
@@ -138,16 +148,16 @@ def _short_value_hash(value: float | None) -> str:
     return hashlib.blake2s(raw, digest_size=4).hexdigest()
 
 
-def _build_candidate_id(metric_key: str, candidate: RawMetricCandidate) -> str:
+def build_candidate_id(metric_key: str, candidate: RawMetricCandidate) -> str:
     value_hash = _short_value_hash(candidate.value)
     return f"{metric_key}::{candidate.source}::{candidate.match_semantics}::{candidate.inference_mode}::{value_hash}"
 
 
 _GUARDRAIL_ACTION_MAP: dict[str, DecisionAction] = {
-    "ANNOTATED": DecisionAction.SELECTED,
-    "REPLACED": DecisionAction.REPLACED,
-    "DROPPED": DecisionAction.DROPPED,
-    "INVALIDATED": DecisionAction.INVALIDATED,
+    EVENT_ANNOTATED: DecisionAction.SELECTED,
+    EVENT_REPLACED: DecisionAction.REPLACED,
+    EVENT_DROPPED: DecisionAction.DROPPED,
+    EVENT_INVALIDATED: DecisionAction.INVALIDATED,
 }
 
 
@@ -172,6 +182,10 @@ def _normalize_trace_value(value: Any) -> Any:
 
 
 def decision_trace_to_dict(trace: DecisionTrace) -> dict:
+    """Serialize DecisionTrace to a JSON-compatible dict.
+
+    Recursively normalizes StrEnum values to strings and tuples to lists.
+    """
     return _normalize_trace_value(asdict(trace))
 
 
@@ -209,7 +223,7 @@ def _build_candidate_trace(
     candidate: RawMetricCandidate,
     decision_log: SemanticsDecisionLog | None,
 ) -> MetricCandidateTrace:
-    cid = _build_candidate_id(metric_key, candidate)
+    cid = build_candidate_id(metric_key, candidate)
     if decision_log is not None:
         return MetricCandidateTrace(
             candidate_id=cid,
@@ -247,6 +261,129 @@ def _build_candidate_trace(
     )
 
 
+def _build_metric_outcomes(
+    metric_key: str,
+    candidate: RawMetricCandidate | None,
+    winner_id: str | None,
+    confidence_threshold: float,
+    invalidated_metric_keys: frozenset[str],
+    guardrail_events: list[GuardrailEvent],
+    decision_log: SemanticsDecisionLog | None,
+) -> list[CandidateOutcomeTrace]:
+    if candidate is None:
+        return []
+    ct = _build_candidate_trace(metric_key, candidate, decision_log)
+    classified = _classify_candidate(
+        metric_key,
+        ct.candidate_id,
+        winner_id,
+        ct.confidence,
+        confidence_threshold,
+        invalidated_metric_keys,
+    )
+    outcome_reason: ReasonCode | None = None
+    outcome_step = DecisionStepKind.RANKING
+
+    if classified == CandidateOutcomeKind.INVALIDATED:
+        outcome_step = DecisionStepKind.GUARDRAIL
+        inv_events = [
+            e
+            for e in guardrail_events
+            if e.metric_key == metric_key and e.action == EVENT_INVALIDATED
+        ]
+        outcome_reason = inv_events[0].reason_code if inv_events else None
+    elif classified == CandidateOutcomeKind.FILTERED_OUT:
+        outcome_step = DecisionStepKind.CONFIDENCE_FILTER
+        outcome_reason = REASON_BELOW_CONFIDENCE_THRESHOLD
+    elif classified == CandidateOutcomeKind.LOSER:
+        outcome_reason = REASON_LOWER_CONFIDENCE
+
+    return [
+        CandidateOutcomeTrace(
+            candidate=ct,
+            outcome=classified,
+            outcome_step=outcome_step,
+            outcome_reason_code=outcome_reason,
+        )
+    ]
+
+
+def _build_cross_cutting_steps(
+    metric_key: str,
+    llm_merge_trace: LLMMergeTrace | None,
+    issuer_overrides: list[IssuerOverrideTrace],
+) -> list[DecisionStep]:
+    steps: list[DecisionStep] = []
+    if llm_merge_trace is not None:
+        if metric_key in llm_merge_trace.contributed:
+            steps.append(
+                DecisionStep(
+                    step=DecisionStepKind.LLM_MERGE,
+                    action=DecisionAction.MERGED,
+                    reason_code=None,
+                    detail=f"LLM contributed value for {metric_key}",
+                )
+            )
+        for rejection in llm_merge_trace.rejected:
+            if rejection.metric_key == metric_key:
+                steps.append(
+                    DecisionStep(
+                        step=DecisionStepKind.LLM_MERGE,
+                        action=DecisionAction.DROPPED,
+                        reason_code=rejection.reason_code,
+                        detail=f"LLM rejected for {metric_key}: {rejection.reason_code}",
+                    )
+                )
+    for override in issuer_overrides:
+        if override.metric_key == metric_key:
+            steps.append(
+                DecisionStep(
+                    step=DecisionStepKind.ISSUER_OVERRIDE,
+                    action=DecisionAction.OVERRIDDEN,
+                    reason_code=override.reason_code,
+                    detail=(
+                        f"issuer override for {metric_key}: "
+                        f"discrepancy {override.discrepancy_pct}%"
+                    ),
+                )
+            )
+    return steps
+
+
+def _build_reason_path(
+    metric_key: str,
+    final_state: MetricFinalState,
+    metric_guard_events: list[GuardrailEvent],
+    llm_merge_trace: LLMMergeTrace | None,
+    issuer_overrides: list[IssuerOverrideTrace],
+) -> list[DecisionStep]:
+    reason_path: list[DecisionStep] = []
+    for ev in metric_guard_events:
+        mapped_action = _guardrail_action_to_decision_action(ev.action)
+        if mapped_action is not None:
+            reason_path.append(
+                DecisionStep(
+                    step=DecisionStepKind.GUARDRAIL,
+                    action=mapped_action,
+                    reason_code=ev.reason_code,
+                    detail=f"guardrail at stage={ev.stage}: {ev.action}",
+                )
+            )
+    reason_path.extend(
+        _build_cross_cutting_steps(metric_key, llm_merge_trace, issuer_overrides)
+    )
+    if final_state == MetricFinalState.SELECTED:
+        reason_path.append(
+            DecisionStep(
+                step=DecisionStepKind.RANKING,
+                action=DecisionAction.SELECTED,
+                reason_code=None,
+                detail=f"selected winner for {metric_key}",
+            )
+        )
+    return reason_path
+
+
 def _format_metric_summary(
     metric_key: str,
     final_state: MetricFinalState,
@@ -267,17 +404,79 @@ def _format_metric_summary(
     )
 
 
-def _format_pipeline_summary(pipeline: PipelineDecisionTrace) -> str:
+def _format_pipeline_summary(
+    llm_merge: LLMMergeTrace | None,
+    issuer_overrides: list[IssuerOverrideTrace],
+) -> str:
     parts: list[str] = []
-    if pipeline.llm_merge is not None:
-        n = len(pipeline.llm_merge.contributed)
-        r = len(pipeline.llm_merge.rejected)
+    if llm_merge is not None:
+        n = len(llm_merge.contributed)
+        r = len(llm_merge.rejected)
         parts.append(f"LLM: {n} contributed, {r} rejected")
-    if pipeline.issuer_overrides:
-        parts.append(f"Issuer overrides: {len(pipeline.issuer_overrides)} metrics")
+    if issuer_overrides:
+        parts.append(f"Issuer overrides: {len(issuer_overrides)} metrics")
     if not parts:
         return "No cross-cutting pipeline overrides applied"
     return "; ".join(parts)
+
+
+def _build_pipeline_trace(
+    llm_merge_trace: LLMMergeTrace | None,
+    issuer_overrides: list[IssuerOverrideTrace],
+    confidence_threshold: float,
+    policy_name: str,
+) -> PipelineDecisionTrace:
+    return PipelineDecisionTrace(
+        llm_merge=llm_merge_trace,
+        issuer_overrides=list(issuer_overrides),
+        confidence_threshold=confidence_threshold,
+        policy_name=policy_name,
+        human_summary=_format_pipeline_summary(llm_merge_trace, issuer_overrides),
+    )
+
+
+def _build_metric_decision_trace(
+    metric_key: str,
+    candidate: RawMetricCandidate | None,
+    winner_id: str | None,
+    confidence_threshold: float,
+    invalidated_metric_keys: frozenset[str],
+    guardrail_events: list[GuardrailEvent],
+    decision_log: SemanticsDecisionLog | None,
+    llm_merge_trace: LLMMergeTrace | None,
+    issuer_overrides: list[IssuerOverrideTrace],
+) -> MetricDecisionTrace:
+    outcomes = _build_metric_outcomes(
+        metric_key,
+        candidate,
+        winner_id,
+        confidence_threshold,
+        invalidated_metric_keys,
+        guardrail_events,
+        decision_log,
+    )
+
+    metric_guard_events = [ev for ev in guardrail_events if ev.metric_key == metric_key]
+    guards_ref = metric_guard_events if metric_guard_events else None
+    final_state = _derive_final_state(outcomes)
+
+    reason_path = _build_reason_path(
+        metric_key,
+        final_state,
+        metric_guard_events,
+        llm_merge_trace,
+        issuer_overrides,
+    )
+
+    summary = _format_metric_summary(metric_key, final_state, outcomes)
+    return MetricDecisionTrace(
+        metric_key=metric_key,
+        final_state=final_state,
+        outcomes=outcomes,
+        reason_path=reason_path,
+        guardrail_events=guards_ref,
+        human_summary=summary,
+    )
 
 
 def build_decision_trace(
@@ -291,8 +490,14 @@ def build_decision_trace(
     confidence_threshold: float,
     policy_name: str,
 ) -> DecisionTrace:
+    """Build a DecisionTrace from extraction pipeline artifacts.
+
+    Produces a derived, read-only view of why each metric was selected,
+    filtered, invalidated, or marked absent.  Does not affect runtime
+    decisions or modify any input data.
+    """
     invalidated_metric_keys: frozenset[str] = frozenset(
-        ev.metric_key for ev in guardrail_events if ev.action == "INVALIDATED"
+        ev.metric_key for ev in guardrail_events if ev.action == EVENT_INVALIDATED
     )
 
     per_metric: dict[str, MetricDecisionTrace] = {}
@@ -301,133 +506,23 @@ def build_decision_trace(
     )
 
     for metric_key in sorted(all_metric_keys):
-        candidate = raw_candidates.get(metric_key)
-        winner_id = winner_map.get(metric_key)
-        outcomes: list[CandidateOutcomeTrace] = []
-
-        if candidate is not None:
-            ct = _build_candidate_trace(
-                metric_key, candidate, decision_logs.get(metric_key)
-            )
-            classified = _classify_candidate(
-                metric_key,
-                ct.candidate_id,
-                winner_id,
-                ct.confidence,
-                confidence_threshold,
-                invalidated_metric_keys,
-            )
-            outcome_reason: ReasonCode | None = None
-            outcome_step = DecisionStepKind.RANKING
-
-            if classified == CandidateOutcomeKind.WINNER:
-                outcome_reason = None
-            elif classified == CandidateOutcomeKind.INVALIDATED:
-                outcome_step = DecisionStepKind.GUARDRAIL
-                inv_events = [
-                    e
-                    for e in guardrail_events
-                    if e.metric_key == metric_key and e.action == "INVALIDATED"
-                ]
-                outcome_reason = inv_events[0].reason_code if inv_events else None
-            elif classified == CandidateOutcomeKind.FILTERED_OUT:
-                outcome_step = DecisionStepKind.CONFIDENCE_FILTER
-                outcome_reason = "below_confidence_threshold"
-            else:
-                outcome_reason = "lower_confidence"
-
-            outcomes.append(
-                CandidateOutcomeTrace(
-                    candidate=ct,
-                    outcome=classified,
-                    outcome_step=outcome_step,
-                    outcome_reason_code=outcome_reason,
-                )
-            )
-
-        metric_guards = [ev for ev in guardrail_events if ev.metric_key == metric_key]
-        guards_ref = metric_guards if metric_guards else None
-
-        final_state = _derive_final_state(outcomes)
-
-        reason_path: list[DecisionStep] = []
-        for ev in metric_guards:
-            mapped_action = _guardrail_action_to_decision_action(ev.action)
-            if mapped_action is not None:
-                reason_path.append(
-                    DecisionStep(
-                        step=DecisionStepKind.GUARDRAIL,
-                        action=mapped_action,
-                        reason_code=ev.reason_code,
-                        detail=f"guardrail at stage={ev.stage}: {ev.action}",
-                    )
-                )
-        if llm_merge_trace is not None:
-            if metric_key in llm_merge_trace.contributed:
-                reason_path.append(
-                    DecisionStep(
-                        step=DecisionStepKind.LLM_MERGE,
-                        action=DecisionAction.MERGED,
-                        reason_code=None,
-                        detail=f"LLM contributed value for {metric_key}",
-                    )
-                )
-            for rejection in llm_merge_trace.rejected:
-                if rejection.metric_key == metric_key:
-                    reason_path.append(
-                        DecisionStep(
-                            step=DecisionStepKind.LLM_MERGE,
-                            action=DecisionAction.DROPPED,
-                            reason_code=rejection.reason_code,
-                            detail=f"LLM rejected for {metric_key}: {rejection.reason_code}",
-                        )
-                    )
-        for override in issuer_overrides:
-            if override.metric_key == metric_key:
-                reason_path.append(
-                    DecisionStep(
-                        step=DecisionStepKind.ISSUER_OVERRIDE,
-                        action=DecisionAction.OVERRIDDEN,
-                        reason_code=override.reason_code,
-                        detail=(
-                            f"issuer override for {metric_key}: "
-                            f"discrepancy {override.discrepancy_pct}%"
-                        ),
-                    )
-                )
-        if final_state == MetricFinalState.SELECTED:
-            reason_path.append(
-                DecisionStep(
-                    step=DecisionStepKind.RANKING,
-                    action=DecisionAction.SELECTED,
-                    reason_code=None,
-                    detail=f"selected winner for {metric_key}",
-                )
-            )
-
-        summary = _format_metric_summary(metric_key, final_state, outcomes)
-        per_metric[metric_key] = MetricDecisionTrace(
-            metric_key=metric_key,
-            final_state=final_state,
-            outcomes=outcomes,
-            reason_path=reason_path,
-            guardrail_events=guards_ref,
-            human_summary=summary,
+        per_metric[metric_key] = _build_metric_decision_trace(
+            metric_key,
+            raw_candidates.get(metric_key),
+            winner_map.get(metric_key),
+            confidence_threshold,
+            invalidated_metric_keys,
+            guardrail_events,
+            decision_logs.get(metric_key),
+            llm_merge_trace,
+            issuer_overrides,
         )
 
-    pipeline = PipelineDecisionTrace(
-        llm_merge=llm_merge_trace,
-        issuer_overrides=list(issuer_overrides),
-        confidence_threshold=confidence_threshold,
-        policy_name=policy_name,
-        human_summary="",
-    )
-    pipeline = PipelineDecisionTrace(
-        llm_merge=pipeline.llm_merge,
-        issuer_overrides=pipeline.issuer_overrides,
-        confidence_threshold=pipeline.confidence_threshold,
-        policy_name=pipeline.policy_name,
-        human_summary=_format_pipeline_summary(pipeline),
+    pipeline = _build_pipeline_trace(
+        llm_merge_trace,
+        issuer_overrides,
+        confidence_threshold,
+        policy_name,
     )
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

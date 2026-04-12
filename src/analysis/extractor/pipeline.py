@@ -14,7 +14,7 @@ from .text_extraction import (
     _normalize_metric_text,
     collect_text_candidates,
 )
-from .decision_trace import _build_candidate_id
+from .decision_trace import build_candidate_id
 from .types import DocumentSignals, ExtractionMetadata, ExtractorContext, RawCandidates
 
 _RATIO_KEYS = frozenset(
@@ -164,7 +164,7 @@ def _build_metadata_result(
         for key in _METRIC_KEYWORDS:
             candidate = raw.get(key)
             if candidate is not None and result[key].value is not None:
-                winner_map[key] = _build_candidate_id(key, candidate)
+                winner_map[key] = build_candidate_id(key, candidate)
             else:
                 winner_map[key] = None
 

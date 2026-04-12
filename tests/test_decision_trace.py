@@ -17,10 +17,12 @@ from src.analysis.extractor.decision_trace import (
     MetricFinalState,
     PipelineDecisionTrace,
     ReasonCode,
+    REASON_BELOW_CONFIDENCE_THRESHOLD,
+    REASON_LOWER_CONFIDENCE,
     RejectionTrace,
-    _build_candidate_id,
     _guardrail_action_to_decision_action,
     _short_value_hash,
+    build_candidate_id,
     build_decision_trace,
     decision_trace_to_dict,
 )
@@ -33,7 +35,6 @@ from src.analysis.extractor.types import (
     RawCandidates,
     RawMetricCandidate,
 )
-from src.analysis.extractor.types import RawMetricCandidate
 
 
 def test_reason_code_is_str_alias() -> None:
@@ -310,7 +311,7 @@ def test_build_candidate_id_format() -> None:
         match_semantics="exact",
         inference_mode="direct",
     )
-    cid = _build_candidate_id("revenue", c)
+    cid = build_candidate_id("revenue", c)
     parts = cid.split("::")
     assert parts[0] == "revenue"
     assert parts[1] == "table_exact"
@@ -328,16 +329,16 @@ def test_build_candidate_id_deterministic() -> None:
         match_semantics="keyword_match",
         inference_mode="derived",
     )
-    id1 = _build_candidate_id("net_income", c)
-    id2 = _build_candidate_id("net_income", c)
+    id1 = build_candidate_id("net_income", c)
+    id2 = build_candidate_id("net_income", c)
     assert id1 == id2
 
 
 def test_build_candidate_id_different_values_different_ids() -> None:
     c1 = RawMetricCandidate(value=10.0, match_type="exact", is_exact=True)
     c2 = RawMetricCandidate(value=20.0, match_type="exact", is_exact=True)
-    id1 = _build_candidate_id("metric", c1)
-    id2 = _build_candidate_id("metric", c2)
+    id1 = build_candidate_id("metric", c1)
+    id2 = build_candidate_id("metric", c2)
     assert id1 != id2
 
 
@@ -421,7 +422,7 @@ def test_build_decision_trace_basic() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     trace = build_decision_trace(
@@ -453,7 +454,7 @@ def test_build_decision_trace_llm_merge_loser() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     llm_trace = LLMMergeTrace(
@@ -525,7 +526,7 @@ def test_build_decision_trace_invalidated_by_guardrail() -> None:
     cand = _make_candidate()
     raw["revenue"] = cand
     meta = {"revenue": ExtractionMetadata(value=None, confidence=0.0, source="table")}
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log(final=0.0)
 
     guardrail = GuardrailEvent(
@@ -589,7 +590,7 @@ def test_outcomes_invariant_selected_has_one_winner() -> None:
     cand = _make_candidate(value=100.0)
     raw["x"] = cand
     meta = {"x": ExtractionMetadata(value=100.0, confidence=0.9, source="table")}
-    cid = _build_candidate_id("x", cand)
+    cid = build_candidate_id("x", cand)
     dl = _make_decision_log(metric_key="x", profile_key=("table", "exact", "direct"))
 
     trace = build_decision_trace(
@@ -635,7 +636,7 @@ def test_metric_summary_uses_profile_key_not_source() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     trace = build_decision_trace(
@@ -661,7 +662,7 @@ def test_reconstruct_winner_from_trace_only() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     trace = build_decision_trace(
@@ -689,7 +690,7 @@ def test_llm_rejection_has_explanatory_reason_path_step() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     llm_trace = LLMMergeTrace(
@@ -733,7 +734,7 @@ def test_trace_does_not_affect_runtime_outputs() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     original_value = meta["revenue"].value
@@ -778,7 +779,7 @@ def test_pipeline_override_reflected() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     override = IssuerOverrideTrace(
@@ -820,7 +821,7 @@ def test_summary_derivation_independent() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     trace = build_decision_trace(
@@ -846,7 +847,7 @@ def test_decision_trace_json_serializable() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     trace = build_decision_trace(
@@ -884,7 +885,7 @@ def test_strenum_serializes_as_string() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     trace = build_decision_trace(
@@ -919,7 +920,7 @@ def test_candidate_trace_without_decision_log_uses_zero_confidence() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
 
     trace = build_decision_trace(
         raw_candidates=raw,
@@ -944,7 +945,7 @@ def test_llm_merge_contributed_in_reason_path() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     llm_trace = LLMMergeTrace(
@@ -976,7 +977,7 @@ def test_derive_final_state_precedence() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     guardrail = GuardrailEvent(
@@ -1025,7 +1026,7 @@ def test_is_complete_false_when_llm_source_but_no_merge_trace() -> None:
             source="llm",
         )
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     trace = build_decision_trace(
@@ -1062,7 +1063,7 @@ def test_profile_key_serializes_as_list() -> None:
     meta = {
         "revenue": ExtractionMetadata(value=5000.0, confidence=0.92, source="table")
     }
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log()
 
     trace = build_decision_trace(
@@ -1095,7 +1096,7 @@ def test_classify_candidate_boundary_confidence_equals_threshold() -> None:
     cand = _make_candidate()
     raw["revenue"] = cand
     meta = {"revenue": ExtractionMetadata(value=5000.0, confidence=0.7, source="table")}
-    cid = _build_candidate_id("revenue", cand)
+    cid = build_candidate_id("revenue", cand)
     dl = _make_decision_log(final=0.7)
 
     trace = build_decision_trace(
