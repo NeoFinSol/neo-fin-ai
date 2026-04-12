@@ -5,7 +5,7 @@ from typing import Any
 
 from src.analysis.math.contracts import MetricInputRef, TypedInputs
 
-DENOMINATOR_EPSILON = 1e-9
+DENOMINATOR_EPSILON = 1e-9  # Threshold below which denominator is treated as near-zero to avoid instability
 EXPECTED_NON_NEGATIVE_INPUTS = {
     "cash_and_equivalents",
     "current_assets",
@@ -33,8 +33,7 @@ def validate_input_semantics(key: str, raw_value: Any) -> MetricInputRef:
 
 def normalize_inputs(raw_inputs: dict[str, object]) -> TypedInputs:
     return {
-        key: validate_input_semantics(key, value)
-        for key, value in raw_inputs.items()
+        key: validate_input_semantics(key, value) for key, value in raw_inputs.items()
     }
 
 
@@ -60,10 +59,14 @@ def _coerce_input_ref(key: str, raw_value: Any) -> MetricInputRef:
     if raw_value is None:
         return MetricInputRef(metric_key=key, value=None)
     if isinstance(raw_value, bool):
-        return MetricInputRef(metric_key=key, value=None, reason_codes=["input_not_numeric"])
+        return MetricInputRef(
+            metric_key=key, value=None, reason_codes=["input_not_numeric"]
+        )
     if isinstance(raw_value, (int, float)):
         return MetricInputRef(metric_key=key, value=float(raw_value))
-    return MetricInputRef(metric_key=key, value=None, reason_codes=["input_not_numeric"])
+    return MetricInputRef(
+        metric_key=key, value=None, reason_codes=["input_not_numeric"]
+    )
 
 
 def _invalidate_input(candidate: MetricInputRef, reason_code: str) -> MetricInputRef:

@@ -1,22 +1,30 @@
 from __future__ import annotations
 
-from copy import deepcopy
-
 from src.analysis.math.contracts import DerivedMetric, ValidityState
 
 LEGACY_RATIO_NAME_MAP = {
     "current_ratio": "Коэффициент текущей ликвидности",
+    "quick_ratio": "Коэффициент быстрой ликвидности",
     "absolute_liquidity_ratio": "Коэффициент абсолютной ликвидности",
+    "roa": "Рентабельность активов (ROA)",
+    "roe": "Рентабельность собственного капитала (ROE)",
     "ros": "Рентабельность продаж (ROS)",
     "equity_ratio": "Коэффициент автономии",
+    "financial_leverage": "Финансовый рычаг",
+    "financial_leverage_total": "Финансовый рычаг (обязательства/капитал)",
     "ebitda_margin": "EBITDA маржа",
     "financial_leverage_debt_only": "Финансовый рычаг (долг/капитал)",
+    "interest_coverage": "Покрытие процентов",
+    "asset_turnover": "Оборачиваемость активов",
+    "inventory_turnover": "Оборачиваемость запасов",
+    "receivables_turnover": "Оборачиваемость дебиторской задолженности",
 }
 
 
 def project_metric_value(
     metric: DerivedMetric | None,
 ) -> tuple[float | None, dict[str, str]]:
+    """Project DerivedMetric into legacy float representation."""
     if metric is None:
         return None, {"projection": "missing_metric"}
     if metric.validity_state in {
@@ -36,5 +44,5 @@ def project_legacy_ratios(
     for metric_id, label in LEGACY_RATIO_NAME_MAP.items():
         value, trace = project_metric_value(metrics.get(metric_id))
         projected_values[label] = value
-        projection_trace[label] = deepcopy(trace)
+        projection_trace[label] = trace
     return projected_values, projection_trace

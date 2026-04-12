@@ -20,6 +20,7 @@ from src.analysis.math.validators import classify_denominator
 
 class MathEngine:
     def compute(self, inputs: TypedInputs) -> dict[str, DerivedMetric]:
+        """Compute all registered metrics from validated typed inputs."""
         _assert_typed_inputs(inputs)
         prepared_inputs = build_precomputed_inputs(inputs)
         return {

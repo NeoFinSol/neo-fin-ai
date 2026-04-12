@@ -16,6 +16,7 @@ class MetricUnit(str, Enum):
 
 class ValidityState(str, Enum):
     VALID = "valid"
+    # PARTIAL reserved for future partial-computation semantics
     PARTIAL = "partial"
     INVALID = "invalid"
     NOT_APPLICABLE = "not_applicable"
