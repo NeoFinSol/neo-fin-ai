@@ -54,6 +54,11 @@
 - combined closure slice:
   - `python -m pytest tests/test_math_contracts.py tests/test_math_engine.py tests/test_math_projection_bridge.py tests/test_math_containment.py tests/test_ratios.py tests/test_scoring.py tests/test_tasks.py -k "not TestProcessPdf and not TestTryLlmExtraction and not TestTaskQueueDispatch" -q`
   - `46 passed, 20 deselected`
+- full changed-surface closure:
+  - `python -m pytest tests/test_tasks.py tests/test_api.py -q`
+  - `32 passed, 5 skipped`
+  - `python -m pytest tests/test_math_contracts.py tests/test_math_engine.py tests/test_math_projection_bridge.py tests/test_math_containment.py tests/test_ratios.py tests/test_scoring.py tests/test_tasks.py tests/test_api.py -q`
+  - `66 passed, 5 skipped`
 
 **Коммиты:**
 - `fix(math): contain unsafe inverse and denominator handling`
@@ -61,8 +66,8 @@
 - `refactor(ratios): route legacy ratios through math bridge`
 
 **Следующий шаг:**
-- решить, нужен ли отдельный follow-up pass по более широкому `tasks.py`/API verification
-- затем определить стратегию интеграции worktree-ветки обратно в основную ветку без потери уже созданного blueprint/doc context
+- определить стратегию интеграции worktree-ветки обратно в основную ветку без потери уже созданного blueprint/doc context
+- отдельно решить, нужна ли следующая волна по расширению safe metric scope beyond `current_ratio`, `absolute_liquidity_ratio`, `ros`, `equity_ratio`
 
 ## 2026-04-12 — feat(trace): Decision Transparency Wave (Волна 7) — полная реализация
 
