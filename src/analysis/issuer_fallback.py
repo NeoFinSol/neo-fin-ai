@@ -4,6 +4,7 @@ import logging
 from copy import deepcopy
 
 from src.analysis.extractor import semantics
+from src.analysis.extractor.decision_trace import IssuerOverrideTrace
 from src.analysis.pdf_extractor import ExtractionMetadata
 
 logger = logging.getLogger(__name__)
@@ -39,13 +40,14 @@ def apply_issuer_metric_overrides(
     *,
     filename: str | None = None,
     text: str | None = None,
-) -> dict[str, ExtractionMetadata]:
+) -> tuple[dict[str, ExtractionMetadata], list[IssuerOverrideTrace]]:
     """Apply repo-versioned issuer overrides for known document/context pairs."""
     if not _is_magnit_h1_2025(filename=filename, text=text):
-        return metadata
+        return metadata, []
 
     logger.info("Using issuer fallback for Magnit H1 2025")
     updated = deepcopy(metadata)
+    override_traces: list[IssuerOverrideTrace] = []
 
     for metric_key, issuer_value in _MAGNIT_H1_2025_OVERRIDES.items():
         current = updated.get(metric_key)
@@ -53,13 +55,25 @@ def apply_issuer_metric_overrides(
             continue
 
         current_value = current.value if current is not None else None
+        current_source = current.source if current is not None else "derived"
         discrepancy = _calculate_discrepancy(current_value, issuer_value)
+        discrepancy_pct = discrepancy * 100.0 if discrepancy is not None else None
         logger.info(
             "Issuer override applied: %s pdf=%s issuer=%s discrepancy=%s",
             metric_key,
             current_value,
             issuer_value,
             discrepancy,
+        )
+        override_traces.append(
+            IssuerOverrideTrace(
+                metric_key=metric_key,
+                original_value=current_value,
+                original_source=current_source,
+                override_value=issuer_value,
+                discrepancy_pct=discrepancy_pct,
+                reason_code=semantics.REASON_ISSUER_REPO_OVERRIDE,
+            )
         )
         updated[metric_key] = ExtractionMetadata(
             value=issuer_value,
@@ -75,7 +89,7 @@ def apply_issuer_metric_overrides(
             authoritative_override=True,
         )
 
-    return updated
+    return updated, override_traces
 
 
 def _is_magnit_h1_2025(

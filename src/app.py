@@ -11,6 +11,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 import src.routers.analyses as analyses_router
+import src.routers.debug as debug_router
 import src.routers.multi_analysis as multi_analysis_router
 import src.routers.pdf_tasks as pdf_tasks_router
 import src.routers.system as system_router
@@ -259,3 +260,4 @@ app.include_router(pdf_tasks_router.router)
 app.include_router(analyses_router.router)
 app.include_router(multi_analysis_router.router)
 app.include_router(websocket_router.router)
+app.include_router(debug_router.router)

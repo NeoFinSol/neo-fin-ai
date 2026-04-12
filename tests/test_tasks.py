@@ -172,40 +172,29 @@ class TestProcessPdf:
         task_id = "test-task-123"
         file_path = "/tmp/test.pdf"
 
-        with patch(
-            "src.tasks.update_analysis", new_callable=AsyncMock
-        ) as mock_update, patch(
-            "src.tasks.create_analysis", new_callable=AsyncMock
-        ) as mock_create, patch(
-            "src.tasks.get_analysis", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.is_analysis_cancel_requested",
-            new_callable=AsyncMock,
-            return_value=False,
-        ), patch(
-            "src.tasks.is_scanned_pdf", return_value=False
-        ), patch(
-            "src.tasks.extract_text", return_value="Extracted text"
-        ), patch(
-            "src.tasks.extract_tables", return_value=[]
-        ), patch(
-            "src.tasks.parse_financial_statements_with_metadata", return_value={}
-        ), patch(
-            "src.tasks.apply_confidence_filter", return_value=({}, {})
-        ), patch(
-            "src.tasks.calculate_ratios", return_value={}
-        ), patch(
-            "src.tasks.calculate_integral_score", return_value=_MOCK_SCORE
-        ), patch(
-            "src.tasks.broadcast_task_event", new_callable=AsyncMock
-        ) as mock_ws, patch(
-            "src.tasks._ensure_analysis_exists", return_value=True
-        ), patch(
-            "src.tasks.cleanup_temp_file"
+        with (
+            patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update,
+            patch("src.tasks.create_analysis", new_callable=AsyncMock) as mock_create,
+            patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None),
+            patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock),
+            patch(
+                "src.tasks.is_analysis_cancel_requested",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch("src.tasks.is_scanned_pdf", return_value=False),
+            patch("src.tasks.extract_text", return_value="Extracted text"),
+            patch("src.tasks.extract_tables", return_value=[]),
+            patch(
+                "src.tasks.parse_financial_statements_with_metadata", return_value={}
+            ),
+            patch("src.tasks.apply_confidence_filter", return_value=({}, {})),
+            patch("src.tasks.calculate_ratios", return_value={}),
+            patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE),
+            patch("src.tasks.broadcast_task_event", new_callable=AsyncMock) as mock_ws,
+            patch("src.tasks._ensure_analysis_exists", return_value=True),
+            patch("src.tasks.cleanup_temp_file"),
         ):
-
             await process_pdf(task_id, file_path)
 
             mock_update.assert_called()
@@ -217,40 +206,29 @@ class TestProcessPdf:
         task_id = "test-task-456"
         file_path = "/tmp/test2.pdf"
 
-        with patch(
-            "src.tasks.update_analysis", new_callable=AsyncMock
-        ) as mock_update, patch(
-            "src.tasks.create_analysis", new_callable=AsyncMock
-        ) as mock_create, patch(
-            "src.tasks.get_analysis", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.is_analysis_cancel_requested",
-            new_callable=AsyncMock,
-            return_value=False,
-        ), patch(
-            "src.tasks.is_scanned_pdf", return_value=False
-        ), patch(
-            "src.tasks.extract_text", return_value="Text"
-        ), patch(
-            "src.tasks.extract_tables", return_value=[]
-        ), patch(
-            "src.tasks.parse_financial_statements_with_metadata", return_value={}
-        ), patch(
-            "src.tasks.apply_confidence_filter", return_value=({}, {})
-        ), patch(
-            "src.tasks.calculate_ratios", return_value={}
-        ), patch(
-            "src.tasks.calculate_integral_score", return_value=_MOCK_SCORE
-        ), patch(
-            "src.tasks.broadcast_task_event", new_callable=AsyncMock
-        ), patch(
-            "src.tasks._ensure_analysis_exists", return_value=True
-        ), patch(
-            "src.tasks.cleanup_temp_file"
+        with (
+            patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update,
+            patch("src.tasks.create_analysis", new_callable=AsyncMock) as mock_create,
+            patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None),
+            patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock),
+            patch(
+                "src.tasks.is_analysis_cancel_requested",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch("src.tasks.is_scanned_pdf", return_value=False),
+            patch("src.tasks.extract_text", return_value="Text"),
+            patch("src.tasks.extract_tables", return_value=[]),
+            patch(
+                "src.tasks.parse_financial_statements_with_metadata", return_value={}
+            ),
+            patch("src.tasks.apply_confidence_filter", return_value=({}, {})),
+            patch("src.tasks.calculate_ratios", return_value={}),
+            patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE),
+            patch("src.tasks.broadcast_task_event", new_callable=AsyncMock),
+            patch("src.tasks._ensure_analysis_exists", return_value=True),
+            patch("src.tasks.cleanup_temp_file"),
         ):
-
             mock_update.return_value = {"id": task_id}
 
             await process_pdf(task_id, file_path)
@@ -263,40 +241,29 @@ class TestProcessPdf:
         task_id = "scanned-task"
         file_path = "/tmp/scanned.pdf"
 
-        with patch(
-            "src.tasks.update_analysis", new_callable=AsyncMock
-        ) as mock_update, patch(
-            "src.tasks.create_analysis", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.get_analysis", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.is_analysis_cancel_requested",
-            new_callable=AsyncMock,
-            return_value=False,
-        ), patch(
-            "src.tasks.is_scanned_pdf", return_value=True
-        ), patch(
-            "src.tasks.extract_text_from_scanned", return_value="OCR text"
-        ), patch(
-            "src.tasks.extract_tables", return_value=[]
-        ), patch(
-            "src.tasks.parse_financial_statements_with_metadata", return_value={}
-        ), patch(
-            "src.tasks.apply_confidence_filter", return_value=({}, {})
-        ), patch(
-            "src.tasks.calculate_ratios", return_value={}
-        ), patch(
-            "src.tasks.calculate_integral_score", return_value=_MOCK_SCORE
-        ), patch(
-            "src.tasks.broadcast_task_event", new_callable=AsyncMock
-        ), patch(
-            "src.tasks._ensure_analysis_exists", return_value=True
-        ), patch(
-            "src.tasks.cleanup_temp_file"
+        with (
+            patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update,
+            patch("src.tasks.create_analysis", new_callable=AsyncMock),
+            patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None),
+            patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock),
+            patch(
+                "src.tasks.is_analysis_cancel_requested",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch("src.tasks.is_scanned_pdf", return_value=True),
+            patch("src.tasks.extract_text_from_scanned", return_value="OCR text"),
+            patch("src.tasks.extract_tables", return_value=[]),
+            patch(
+                "src.tasks.parse_financial_statements_with_metadata", return_value={}
+            ),
+            patch("src.tasks.apply_confidence_filter", return_value=({}, {})),
+            patch("src.tasks.calculate_ratios", return_value={}),
+            patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE),
+            patch("src.tasks.broadcast_task_event", new_callable=AsyncMock),
+            patch("src.tasks._ensure_analysis_exists", return_value=True),
+            patch("src.tasks.cleanup_temp_file"),
         ):
-
             await process_pdf(task_id, file_path)
             _assert_completed_status_called(mock_update, task_id)
 
@@ -305,26 +272,20 @@ class TestProcessPdf:
         task_id = "failed-task"
         file_path = "/tmp/fail.pdf"
 
-        with patch(
-            "src.tasks.update_analysis", new_callable=AsyncMock
-        ) as mock_update, patch(
-            "src.tasks.create_analysis", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.is_analysis_cancel_requested",
-            new_callable=AsyncMock,
-            return_value=False,
-        ), patch(
-            "src.tasks.is_scanned_pdf", side_effect=Exception("PDF corrupted")
-        ), patch(
-            "src.tasks.broadcast_task_event", new_callable=AsyncMock
-        ) as mock_ws, patch(
-            "src.tasks._ensure_analysis_exists", return_value=True
-        ), patch(
-            "src.tasks.cleanup_temp_file"
+        with (
+            patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update,
+            patch("src.tasks.create_analysis", new_callable=AsyncMock),
+            patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock),
+            patch(
+                "src.tasks.is_analysis_cancel_requested",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch("src.tasks.is_scanned_pdf", side_effect=Exception("PDF corrupted")),
+            patch("src.tasks.broadcast_task_event", new_callable=AsyncMock) as mock_ws,
+            patch("src.tasks._ensure_analysis_exists", return_value=True),
+            patch("src.tasks.cleanup_temp_file"),
         ):
-
             await process_pdf(task_id, file_path)
 
             mock_update.assert_called()
@@ -343,40 +304,29 @@ class TestProcessPdf:
         task_id = "cleanup-task"
         file_path = "/tmp/cleanup.pdf"
 
-        with patch(
-            "src.tasks.update_analysis", new_callable=AsyncMock
-        ) as mock_update, patch(
-            "src.tasks.create_analysis", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.get_analysis", new_callable=AsyncMock, return_value=None
-        ), patch(
-            "src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.is_analysis_cancel_requested",
-            new_callable=AsyncMock,
-            return_value=False,
-        ), patch(
-            "src.tasks.is_scanned_pdf", return_value=False
-        ), patch(
-            "src.tasks.extract_text", return_value="Text"
-        ), patch(
-            "src.tasks.extract_tables", return_value=[]
-        ), patch(
-            "src.tasks.parse_financial_statements_with_metadata", return_value={}
-        ), patch(
-            "src.tasks.apply_confidence_filter", return_value=({}, {})
-        ), patch(
-            "src.tasks.calculate_ratios", return_value={}
-        ), patch(
-            "src.tasks.calculate_integral_score", return_value=_MOCK_SCORE
-        ), patch(
-            "src.tasks.broadcast_task_event", new_callable=AsyncMock
-        ), patch(
-            "src.tasks._ensure_analysis_exists", return_value=True
-        ), patch(
-            "src.tasks.cleanup_temp_file"
-        ) as mock_cleanup:
-
+        with (
+            patch("src.tasks.update_analysis", new_callable=AsyncMock) as mock_update,
+            patch("src.tasks.create_analysis", new_callable=AsyncMock),
+            patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None),
+            patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock),
+            patch(
+                "src.tasks.is_analysis_cancel_requested",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch("src.tasks.is_scanned_pdf", return_value=False),
+            patch("src.tasks.extract_text", return_value="Text"),
+            patch("src.tasks.extract_tables", return_value=[]),
+            patch(
+                "src.tasks.parse_financial_statements_with_metadata", return_value={}
+            ),
+            patch("src.tasks.apply_confidence_filter", return_value=({}, {})),
+            patch("src.tasks.calculate_ratios", return_value={}),
+            patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE),
+            patch("src.tasks.broadcast_task_event", new_callable=AsyncMock),
+            patch("src.tasks._ensure_analysis_exists", return_value=True),
+            patch("src.tasks.cleanup_temp_file") as mock_cleanup,
+        ):
             await process_pdf(task_id, file_path)
 
             _assert_completed_status_called(mock_update, task_id)
@@ -388,24 +338,20 @@ class TestProcessPdf:
         task_id = "cleanup-fail-task"
         file_path = "/tmp/cleanup_fail.pdf"
 
-        with patch("src.tasks.update_analysis", new_callable=AsyncMock), patch(
-            "src.tasks.create_analysis", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.is_analysis_cancel_requested",
-            new_callable=AsyncMock,
-            return_value=False,
-        ), patch(
-            "src.tasks.is_scanned_pdf", side_effect=Exception("Error")
-        ), patch(
-            "src.tasks.broadcast_task_event", new_callable=AsyncMock
-        ), patch(
-            "src.tasks._ensure_analysis_exists", return_value=True
-        ), patch(
-            "src.tasks.cleanup_temp_file"
-        ) as mock_cleanup:
-
+        with (
+            patch("src.tasks.update_analysis", new_callable=AsyncMock),
+            patch("src.tasks.create_analysis", new_callable=AsyncMock),
+            patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock),
+            patch(
+                "src.tasks.is_analysis_cancel_requested",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch("src.tasks.is_scanned_pdf", side_effect=Exception("Error")),
+            patch("src.tasks.broadcast_task_event", new_callable=AsyncMock),
+            patch("src.tasks._ensure_analysis_exists", return_value=True),
+            patch("src.tasks.cleanup_temp_file") as mock_cleanup,
+        ):
             await process_pdf(task_id, file_path)
 
             mock_cleanup.assert_called_once_with(file_path)
@@ -415,22 +361,20 @@ class TestProcessPdf:
         task_id = "cancelled-task"
         file_path = "/tmp/cancelled.pdf"
 
-        with patch(
-            "src.tasks.mark_analysis_cancelled", new_callable=AsyncMock
-        ) as mock_mark_cancelled, patch(
-            "src.tasks.broadcast_task_event", new_callable=AsyncMock
-        ) as mock_ws, patch(
-            "src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock
-        ), patch(
-            "src.tasks.is_analysis_cancel_requested",
-            new_callable=AsyncMock,
-            return_value=True,
-        ), patch(
-            "src.tasks._ensure_analysis_exists", return_value=True
-        ), patch(
-            "src.tasks.cleanup_temp_file"
-        ) as mock_cleanup:
-
+        with (
+            patch(
+                "src.tasks.mark_analysis_cancelled", new_callable=AsyncMock
+            ) as mock_mark_cancelled,
+            patch("src.tasks.broadcast_task_event", new_callable=AsyncMock) as mock_ws,
+            patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock),
+            patch(
+                "src.tasks.is_analysis_cancel_requested",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("src.tasks._ensure_analysis_exists", return_value=True),
+            patch("src.tasks.cleanup_temp_file") as mock_cleanup,
+        ):
             await process_pdf(task_id, file_path)
 
             mock_mark_cancelled.assert_awaited_once()
@@ -451,12 +395,12 @@ class TestProcessPdf:
         task_id = "no-db-task"
         file_path = "/tmp/doesnt_exist.pdf"
 
-        with patch("src.tasks.update_analysis", new_callable=AsyncMock), patch(
-            "src.tasks.create_analysis", new_callable=AsyncMock
-        ), patch("src.tasks._ensure_analysis_exists", return_value=False), patch(
-            "src.tasks.cleanup_temp_file"
-        ) as mock_cleanup:
-
+        with (
+            patch("src.tasks.update_analysis", new_callable=AsyncMock),
+            patch("src.tasks.create_analysis", new_callable=AsyncMock),
+            patch("src.tasks._ensure_analysis_exists", return_value=False),
+            patch("src.tasks.cleanup_temp_file") as mock_cleanup,
+        ):
             await process_pdf(task_id, file_path)
 
             # In the current implementation, cleanup is in 'finally' block
@@ -474,22 +418,27 @@ class TestProcessPdf:
             "total_assets": 435_659_511_000.0,
         }
 
-        with patch("src.tasks.is_scanned_pdf", return_value=True), patch(
-            "src.tasks.extract_text_from_scanned", return_value="OCR text"
-        ), patch("src.tasks.is_clean_financial_text", return_value=True), patch(
-            "src.tasks.parse_financial_statements_with_metadata", return_value={}
-        ), patch(
-            "src.tasks.apply_confidence_filter",
-            return_value=(filtered_metrics.copy(), {}),
-        ), patch(
-            "src.tasks.extract_metrics_regex",
-            return_value={"revenue": 123_618_123_618.0},
-        ), patch.object(
-            __import__("src.tasks", fromlist=["app_settings"]).app_settings,
-            "llm_extraction_enabled",
-            False,
+        with (
+            patch("src.tasks.is_scanned_pdf", return_value=True),
+            patch("src.tasks.extract_text_from_scanned", return_value="OCR text"),
+            patch("src.tasks.is_clean_financial_text", return_value=True),
+            patch(
+                "src.tasks.parse_financial_statements_with_metadata", return_value={}
+            ),
+            patch(
+                "src.tasks.apply_confidence_filter",
+                return_value=(filtered_metrics.copy(), {}),
+            ),
+            patch(
+                "src.tasks.extract_metrics_regex",
+                return_value={"revenue": 123_618_123_618.0},
+            ),
+            patch.object(
+                __import__("src.tasks", fromlist=["app_settings"]).app_settings,
+                "llm_extraction_enabled",
+                False,
+            ),
         ):
-
             result = await _run_extraction_phase("/tmp/scanned.pdf", logger)
 
         assert result["metrics"]["revenue"] is None
@@ -507,11 +456,14 @@ class TestTryLlmExtraction:
             source="text_regex",
         )
 
-        with patch(
-            "src.tasks.parse_financial_statements_with_metadata", return_value=fallback
-        ), patch("src.tasks.ai_service") as mock_ai_service, patch(
-            "src.tasks.extract_with_llm", new_callable=AsyncMock
-        ) as mock_extract:
+        with (
+            patch(
+                "src.tasks.parse_financial_statements_with_metadata",
+                return_value=fallback,
+            ),
+            patch("src.tasks.ai_service") as mock_ai_service,
+            patch("src.tasks.extract_with_llm", new_callable=AsyncMock) as mock_extract,
+        ):
             mock_ai_service.is_configured = True
             mock_extract.return_value = LlmExtractionRunResult(
                 metrics=None,
@@ -525,7 +477,7 @@ class TestTryLlmExtraction:
                     __import__("logging").getLogger("test"),
                 )
 
-        assert result["revenue"].value == 1_000_000.0
+        assert result["metadata"]["revenue"].value == 1_000_000.0
         assert "reason=invalid_schema" in caplog.text
 
     @pytest.mark.asyncio
@@ -573,11 +525,14 @@ class TestTryLlmExtraction:
             reason_code=semantics.REASON_LLM_EXTRACTION,
         )
 
-        with patch(
-            "src.tasks.parse_financial_statements_with_metadata", return_value=fallback
-        ), patch("src.tasks.ai_service") as mock_ai_service, patch(
-            "src.tasks.extract_with_llm", new_callable=AsyncMock
-        ) as mock_extract:
+        with (
+            patch(
+                "src.tasks.parse_financial_statements_with_metadata",
+                return_value=fallback,
+            ),
+            patch("src.tasks.ai_service") as mock_ai_service,
+            patch("src.tasks.extract_with_llm", new_callable=AsyncMock) as mock_extract,
+        ):
             mock_ai_service.is_configured = True
             mock_extract.return_value = LlmExtractionRunResult(
                 metrics=llm_metrics,
@@ -591,15 +546,15 @@ class TestTryLlmExtraction:
                     __import__("logging").getLogger("test"),
                 )
 
-        assert result["revenue"].value == 1_000_000.0
-        assert result["revenue"].source == "text_regex"
-        assert result["total_assets"].value == 2_500_000.0
-        assert result["total_assets"].source == "text"
-        assert result["total_assets"].evidence_version == "v2"
-        assert result["cash_and_equivalents"].value == 250_000.0
-        assert result["cash_and_equivalents"].source == "text"
+        assert result["metadata"]["revenue"].value == 1_000_000.0
+        assert result["metadata"]["revenue"].source == "text_regex"
+        assert result["metadata"]["total_assets"].value == 2_500_000.0
+        assert result["metadata"]["total_assets"].source == "text"
+        assert result["metadata"]["total_assets"].evidence_version == "v2"
+        assert result["metadata"]["cash_and_equivalents"].value == 250_000.0
+        assert result["metadata"]["cash_and_equivalents"].source == "text"
         assert (
-            result["cash_and_equivalents"].reason_code
+            result["metadata"]["cash_and_equivalents"].reason_code
             == semantics.REASON_LLM_EXTRACTION
         )
         assert "contributed metrics" in caplog.text
@@ -631,11 +586,14 @@ class TestTryLlmExtraction:
             reason_code=semantics.REASON_LLM_EXTRACTION,
         )
 
-        with patch(
-            "src.tasks.parse_financial_statements_with_metadata", return_value=fallback
-        ), patch("src.tasks.ai_service") as mock_ai_service, patch(
-            "src.tasks.extract_with_llm", new_callable=AsyncMock
-        ) as mock_extract:
+        with (
+            patch(
+                "src.tasks.parse_financial_statements_with_metadata",
+                return_value=fallback,
+            ),
+            patch("src.tasks.ai_service") as mock_ai_service,
+            patch("src.tasks.extract_with_llm", new_callable=AsyncMock) as mock_extract,
+        ):
             mock_ai_service.is_configured = True
             mock_extract.return_value = LlmExtractionRunResult(
                 metrics=llm_metrics,
@@ -649,8 +607,8 @@ class TestTryLlmExtraction:
                     __import__("logging").getLogger("test"),
                 )
 
-        assert result["ebitda"].source == "issuer_fallback"
-        assert result["ebitda"].authoritative_override is True
+        assert result["metadata"]["ebitda"].source == "issuer_fallback"
+        assert result["metadata"]["ebitda"].authoritative_override is True
         assert "rejected for existing fallback metrics" in caplog.text
 
 
@@ -675,7 +633,7 @@ class TestTaskQueueDispatch:
             )
 
         background_tasks.add_task.assert_called_once_with(
-            background_callable, "task-123", "/tmp/test.pdf"
+            background_callable, "task-123", "/tmp/test.pdf", None, False
         )
 
     @pytest.mark.asyncio
@@ -710,7 +668,7 @@ class TestTaskQueueDispatch:
 
         background_tasks.add_task.assert_not_called()
         mock_apply_async.assert_called_once_with(
-            args=["task-123", "/tmp/test.pdf"],
+            args=["task-123", "/tmp/test.pdf", None, False],
             task_id="task-123",
             queue="neofin",
         )
@@ -738,6 +696,7 @@ class TestTaskQueueDispatch:
             "task-123",
             "/tmp/test.pdf",
             "ollama",
+            False,
         )
 
     @pytest.mark.asyncio

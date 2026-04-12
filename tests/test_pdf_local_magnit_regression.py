@@ -103,7 +103,7 @@ def test_local_magnit_regression(
 
     text, tables = cached_payload
     metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, text)
-    metadata = apply_issuer_metric_overrides(
+    metadata, _overrides = apply_issuer_metric_overrides(
         metadata,
         filename=case["filename"],
         text=text,

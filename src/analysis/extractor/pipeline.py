@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import inspect
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from . import legacy_helpers, semantics
 from .confidence_policy import ConfidencePolicy
+from .decision_trace import build_candidate_id
 from .guardrails import apply_result_guardrails, derive_missing_metrics
 from .ranking import build_metadata_from_candidate, build_metadata_with_decision_log
 from .rules import _METRIC_KEYWORDS
@@ -32,6 +33,7 @@ class ExtractorStageTrace:
     context: ExtractorContext
     raw_candidates: RawCandidates
     guardrail_events: list[semantics.GuardrailEvent]
+    winner_map: dict[str, str | None] = field(default_factory=dict)
 
 
 def _build_context(tables: list, text: str) -> ExtractorContext:
@@ -95,6 +97,7 @@ def _build_metadata_result(
     guardrail_events: list[semantics.GuardrailEvent] | None = None,
     include_decision_logs: bool = False,
     confidence_policy: ConfidencePolicy | None = None,
+    winner_map: dict[str, str | None] | None = None,
 ) -> (
     dict[str, ExtractionMetadata]
     | tuple[dict[str, ExtractionMetadata], dict[str, semantics.SemanticsDecisionLog]]
@@ -156,6 +159,15 @@ def _build_metadata_result(
         result,
         guardrail_events=guardrail_events,
     )
+
+    if winner_map is not None:
+        for key in _METRIC_KEYWORDS:
+            candidate = raw.get(key)
+            if candidate is not None and result[key].value is not None:
+                winner_map[key] = build_candidate_id(key, candidate)
+            else:
+                winner_map[key] = None
+
     if decision_logs is None:
         return result
 
@@ -193,6 +205,7 @@ def _invoke_metadata_builder(
     guardrail_events: list[semantics.GuardrailEvent],
     include_decision_logs: bool,
     confidence_policy: ConfidencePolicy | None,
+    winner_map: dict[str, str | None] | None = None,
 ):
     try:
         signature = inspect.signature(builder)
@@ -203,6 +216,7 @@ def _invoke_metadata_builder(
             guardrail_events=guardrail_events,
             include_decision_logs=include_decision_logs,
             confidence_policy=confidence_policy,
+            winner_map=winner_map,
         )
 
     kwargs = {}
@@ -212,6 +226,8 @@ def _invoke_metadata_builder(
         kwargs["include_decision_logs"] = include_decision_logs
     if "confidence_policy" in signature.parameters:
         kwargs["confidence_policy"] = confidence_policy
+    if "winner_map" in signature.parameters:
+        kwargs["winner_map"] = winner_map
     return builder(context, raw, **kwargs)
 
 
@@ -265,14 +281,18 @@ def build_metadata_from_trace(
     dict[str, ExtractionMetadata]
     | tuple[dict[str, ExtractionMetadata], dict[str, semantics.SemanticsDecisionLog]]
 ):
-    return _invoke_metadata_builder(
+    winner_map: dict[str, str | None] = {}
+    result = _invoke_metadata_builder(
         _build_metadata_result,
         trace.context,
         trace.raw_candidates,
         guardrail_events=trace.guardrail_events,
         include_decision_logs=include_decision_logs,
         confidence_policy=confidence_policy,
+        winner_map=winner_map,
     )
+    trace.winner_map = winner_map
+    return result
 
 
 def parse_financial_statements_debug(
@@ -288,6 +308,8 @@ def parse_financial_statements_debug(
         metadata=metadata,
         decision_logs=decision_logs,
         guardrail_events=trace.guardrail_events,
+        raw_candidates=trace.raw_candidates,
+        winner_map=trace.winner_map,
     )
 
 

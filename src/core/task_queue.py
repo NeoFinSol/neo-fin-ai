@@ -103,10 +103,15 @@ if celery_app is not None:
         task_id: str,
         file_path: str,
         ai_provider: str | None = None,
+        debug_trace: bool = False,
     ) -> None:
         from src.tasks import process_pdf
 
-        _run_worker_job(process_pdf(task_id, file_path, ai_provider=ai_provider))
+        _run_worker_job(
+            process_pdf(
+                task_id, file_path, ai_provider=ai_provider, debug_trace=debug_trace
+            )
+        )
 
     @celery_app.task(name="neofin.process_multi_analysis")
     def run_multi_analysis_task(
@@ -134,21 +139,21 @@ async def dispatch_pdf_task(
     file_path: str,
     background_callable: Callable[..., Any],
     ai_provider: str | None = None,
+    debug_trace: bool = False,
 ) -> None:
     if app_settings.task_runtime == "background":
-        if ai_provider is None:
-            background_tasks.add_task(background_callable, task_id, file_path)
-        else:
-            background_tasks.add_task(
-                background_callable, task_id, file_path, ai_provider
-            )
+        background_tasks.add_task(
+            background_callable,
+            task_id,
+            file_path,
+            ai_provider,
+            debug_trace,
+        )
         return
 
     _ensure_celery_runtime()
     try:
-        task_args = [task_id, file_path]
-        if ai_provider is not None:
-            task_args.append(ai_provider)
+        task_args = [task_id, file_path, ai_provider, debug_trace]
         run_pdf_task.apply_async(
             args=task_args,
             task_id=task_id,

@@ -24,7 +24,12 @@ def test_upload_and_result(client, monkeypatch, tmp_path):
     async def fake_get(task_id: str):
         return store.get(task_id)
 
-    async def fake_process(task_id: str, file_path: str):
+    async def fake_process(
+        task_id: str,
+        file_path: str,
+        ai_provider: str | None = None,
+        debug_trace: bool = False,
+    ):
         analysis = store.get(task_id)
         if analysis:
             analysis.status = "completed"
@@ -78,7 +83,10 @@ def test_upload_forwards_requested_ai_provider(client, monkeypatch, tmp_path):
         return store.get(task_id)
 
     async def fake_process(
-        task_id: str, file_path: str, ai_provider: str | None = None
+        task_id: str,
+        file_path: str,
+        ai_provider: str | None = None,
+        debug_trace: bool = False,
     ):
         captured["provider"] = ai_provider
         analysis = store.get(task_id)

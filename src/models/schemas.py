@@ -226,6 +226,87 @@ class AnalysisDetailResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Decision Transparency schemas (Wave 7)
+# ---------------------------------------------------------------------------
+
+
+class DecisionStepSchema(BaseModel):
+    step: str
+    action: str
+    reason_code: str | None = None
+    detail: str | None = None
+
+
+class MetricCandidateTraceSchema(BaseModel):
+    candidate_id: str
+    profile_key: tuple[str, str, str]
+    value: float | None
+    confidence: float
+    quality_delta: float = 0.0
+    structural_bonus: float = 0.0
+    conflict_penalty: float = 0.0
+    guardrail_penalty: float = 0.0
+    candidate_quality: int | None = None
+    signal_flags: list[str] = Field(default_factory=list)
+    reason_code: str | None = None
+
+
+class CandidateOutcomeTraceSchema(BaseModel):
+    candidate: MetricCandidateTraceSchema
+    outcome: str
+    outcome_step: str
+    outcome_reason_code: str | None = None
+
+
+class MetricDecisionTraceSchema(BaseModel):
+    metric_key: str
+    final_state: str
+    outcomes: list[CandidateOutcomeTraceSchema] = Field(default_factory=list)
+    reason_path: list[DecisionStepSchema] = Field(default_factory=list)
+    guardrail_events: list[dict] | None = None
+    human_summary: str = ""
+
+
+class RejectionTraceSchema(BaseModel):
+    metric_key: str
+    winner_profile: tuple[str, str, str]
+    loser_profile: tuple[str, str, str]
+    reason_code: str
+    reason_detail: str | None = None
+
+
+class IssuerOverrideTraceSchema(BaseModel):
+    metric_key: str
+    original_value: float | None
+    original_source: str
+    override_value: float | None
+    discrepancy_pct: float | None
+    reason_code: str
+
+
+class LLMMergeTraceSchema(BaseModel):
+    contributed: list[str] = Field(default_factory=list)
+    rejected: list[RejectionTraceSchema] = Field(default_factory=list)
+
+
+class PipelineDecisionTraceSchema(BaseModel):
+    llm_merge: LLMMergeTraceSchema | None = None
+    issuer_overrides: list[IssuerOverrideTraceSchema] = Field(default_factory=list)
+    confidence_threshold: float
+    policy_name: str
+    human_summary: str = ""
+
+
+class DecisionTraceSchema(BaseModel):
+    per_metric: dict[str, MetricDecisionTraceSchema] = Field(default_factory=dict)
+    pipeline: PipelineDecisionTraceSchema
+    generated_at: str
+    is_complete: bool = True
+    missing_components: list[str] = Field(default_factory=list)
+    trace_version: str = "v1"
+
+
+# ---------------------------------------------------------------------------
 # Multi-Period Analysis schemas (neofin-competition-release)
 # Requirements: 2.3
 # ---------------------------------------------------------------------------

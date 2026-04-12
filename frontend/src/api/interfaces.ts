@@ -145,6 +145,119 @@ export interface ExtractionMetadataItem {
   authoritative_override?: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Decision Transparency types (Wave 7)
+// ---------------------------------------------------------------------------
+
+export type DecisionStepKind =
+  | 'ranking'
+  | 'confidence_filter'
+  | 'guardrail'
+  | 'llm_merge'
+  | 'issuer_override';
+export type DecisionAction =
+  | 'selected'
+  | 'dropped'
+  | 'replaced'
+  | 'invalidated'
+  | 'merged'
+  | 'overridden';
+export type MetricFinalState =
+  | 'selected'
+  | 'absent'
+  | 'filtered_out'
+  | 'invalidated';
+export type CandidateOutcomeKind =
+  | 'winner'
+  | 'loser'
+  | 'filtered_out'
+  | 'invalidated';
+
+export interface DecisionStep {
+  step: DecisionStepKind;
+  action: DecisionAction;
+  reason_code?: string | null;
+  detail?: string | null;
+}
+
+export interface MetricCandidateTrace {
+  candidate_id: string;
+  profile_key: [string, string, string];
+  value: number | null;
+  confidence: number;
+  quality_delta: number;
+  structural_bonus: number;
+  conflict_penalty: number;
+  guardrail_penalty: number;
+  candidate_quality: number | null;
+  signal_flags: string[];
+  reason_code?: string | null;
+}
+
+export interface CandidateOutcomeTrace {
+  candidate: MetricCandidateTrace;
+  outcome: CandidateOutcomeKind;
+  outcome_step: DecisionStepKind;
+  outcome_reason_code?: string | null;
+}
+
+export interface GuardrailEventWire {
+  metric_key: string;
+  stage: string;
+  action: string;
+  reason_code: string;
+  before_value: number | null;
+  after_value: number | null;
+}
+
+export interface MetricDecisionTrace {
+  metric_key: string;
+  final_state: MetricFinalState;
+  outcomes: CandidateOutcomeTrace[];
+  reason_path: DecisionStep[];
+  guardrail_events?: GuardrailEventWire[] | null;
+  human_summary: string;
+}
+
+export interface RejectionTrace {
+  metric_key: string;
+  winner_profile: [string, string, string];
+  loser_profile: [string, string, string];
+  reason_code: string;
+  reason_detail?: string | null;
+}
+
+export interface IssuerOverrideTraceWire {
+  metric_key: string;
+  original_value: number | null;
+  original_source: ExtractionSource;
+  override_value: number | null;
+  discrepancy_pct: number | null;
+  reason_code: string;
+}
+
+export interface LLMMergeTrace {
+  contributed: string[];
+  rejected: RejectionTrace[];
+}
+
+export interface PipelineDecisionTrace {
+  llm_merge: LLMMergeTrace | null;
+  issuer_overrides: IssuerOverrideTraceWire[];
+  confidence_threshold: number;
+  policy_name: string;
+  human_summary: string;
+}
+
+export interface DecisionTrace {
+  per_metric: Record<string, MetricDecisionTrace>;
+  pipeline: PipelineDecisionTrace;
+  generated_at: string;
+  is_complete: boolean;
+  missing_components: string[];
+  trace_version: string;
+}
+
 export interface AnalysisData {
   scanned: boolean;
   text: string;
@@ -155,6 +268,7 @@ export interface AnalysisData {
   nlp?: NLPResult;
   ai_runtime?: AIRuntimeInfo;
   extraction_metadata?: Record<string, ExtractionMetadataItem>;
+  decision_trace?: DecisionTrace | null;
 }
 
 export interface AnalysisResponse {
