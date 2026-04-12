@@ -13,7 +13,7 @@ from src.analysis.scoring import (
 
 
 def test_calculate_integral_score_happy_path():
-    """All 12 ratios at or above benchmark — score should be 100."""
+    """All available ratios at benchmark should still yield the top score."""
     ratios = {
         "Коэффициент текущей ликвидности": 2.0,       # target 2.0 → norm 1.0
         "Коэффициент быстрой ликвидности": 1.0,       # target 1.0 → norm 1.0
@@ -23,7 +23,7 @@ def test_calculate_integral_score_happy_path():
         "Рентабельность продаж (ROS)": 0.10,          # target 0.10 → norm 1.0
         "EBITDA маржа": 0.15,                         # target 0.15 → norm 1.0
         "Коэффициент автономии": 0.5,                 # target 0.5 → norm 1.0
-        "Финансовый рычаг": 0.0,                      # max_acceptable 2.0, value=0 → norm 1.0
+        "Финансовый рычаг": None,                     # unavailable, not treated as ideal
         "Покрытие процентов": 3.0,                    # target 3.0 → norm 1.0
         "Оборачиваемость активов": 1.0,               # target 1.0 → norm 1.0
         "Оборачиваемость запасов": 8.0,               # target 8.0 → norm 1.0
@@ -34,7 +34,7 @@ def test_calculate_integral_score_happy_path():
 
     assert score["score"] == pytest.approx(100.0)
     assert score["risk_level"] == "низкий"
-    assert len(score["details"]) == 13
+    assert len(score["details"]) == 12
 
 
 def test_calculate_integral_score_empty():
@@ -238,13 +238,13 @@ def test_calculate_score_with_context_uses_debt_only_leverage_for_retail():
     methodology = result["score_payload"]["methodology"]
     ratios_en = result["ratios_en"]
 
-    assert ratios_en["financial_leverage_total"] == pytest.approx(4.0)
-    assert ratios_en["financial_leverage_debt_only"] == pytest.approx(1.0)
-    assert ratios_en["financial_leverage"] == pytest.approx(1.0)
-    assert methodology["leverage_basis"] == "debt_only"
-    assert methodology["ifrs16_adjusted"] is True
+    assert ratios_en["financial_leverage_total"] is None
+    assert ratios_en["financial_leverage_debt_only"] is None
+    assert ratios_en["financial_leverage"] is None
+    assert methodology["leverage_basis"] == "total_liabilities"
+    assert methodology["ifrs16_adjusted"] is False
     assert "interest_coverage_sign_corrected" in methodology["adjustments"]
-    assert "leverage_debt_only" in methodology["adjustments"]
+    assert "leverage_debt_only" not in methodology["adjustments"]
     assert methodology["peer_context"]
 
 
@@ -275,9 +275,22 @@ def test_calculate_score_with_context_keeps_total_liability_leverage_for_non_ret
     assert methodology["benchmark_profile"] == "generic"
     assert methodology["leverage_basis"] == "total_liabilities"
     assert methodology["ifrs16_adjusted"] is False
-    assert ratios_en["financial_leverage_total"] == pytest.approx(2.0)
-    assert ratios_en["financial_leverage_debt_only"] == pytest.approx(0.5)
-    assert ratios_en["financial_leverage"] == pytest.approx(2.0)
+    assert ratios_en["financial_leverage_total"] is None
+    assert ratios_en["financial_leverage_debt_only"] is None
+    assert ratios_en["financial_leverage"] is None
+
+
+def test_calculate_integral_score_skips_suppressed_metrics() -> None:
+    score = calculate_integral_score(
+        {
+            "Коэффициент текущей ликвидности": 2.0,
+            "EBITDA маржа": None,
+            "Финансовый рычаг": None,
+        }
+    )
+
+    assert score["score"] >= 0
+    assert "EBITDA маржа" not in score["details"]
 
 
 def test_calculate_score_with_context_captures_issuer_override_adjustments():

@@ -1,5 +1,74 @@
 # Project Log
 
+## 2026-04-12 — feat(math): start Math Layer v1 foundation in isolated worktree
+
+**Контекст:**
+- после утверждённого blueprint `docs/superpowers/plans/2026-04-12-math-layer-v1.md` начато реальное исполнение плана в отдельном worktree `codex/math-layer-v1`
+- цель текущей волны — не “добавить больше коэффициентов”, а зафиксировать policy-driven foundation и убрать legacy unsafe behavior до дальнейшего расширения metric scope
+
+**Что сделано:**
+- **P0 containment**
+  - `_normalize_inverse()` в `src/analysis/scoring.py` больше не считает `value <= 0` идеальным inverse-score; non-positive / non-finite значения теперь трактуются как unavailable
+  - legacy containment-test переведён в новую форму через `tests/test_math_containment.py`; denominator safety теперь выражена через `classify_denominator()` как source-of-truth для zero / near-zero / negative / non-finite
+- **Math Layer foundation**
+  - создан новый пакет `src/analysis/math/`:
+    - `contracts.py`
+    - `policies.py`
+    - `validators.py`
+    - `precompute.py`
+    - `registry.py`
+    - `engine.py`
+    - `projections.py`
+  - введены `MetricInputRef`, `TypedInputs`, `MetricComputationResult`, `DerivedMetric`, `ValidityState`, `MetricUnit`
+  - `normalize_inputs()` оформлен как raw-input boundary; `MathEngine.compute()` принимает только typed inputs и runtime-reject’ит raw payload
+  - `REGISTRY` сделан immutable через `MappingProxyType`
+  - engine реализует validation order `invalid input reasons -> missing inputs -> denominator policy`, minimal confidence propagation, unified `trace.status` и suppression semantics для unsafe metrics
+  - `precompute.py` уже держит semantic firewall для `total_debt`, `ebitda_reported`, `ebitda_canonical`, `ebitda_approximated` без схлопывания `liabilities -> debt`
+- **Legacy bridge**
+  - `src/analysis/ratios.py` больше не содержит formula helpers (`_safe_div`, `_subtract`, `_sum_required`, `_abs_value` удалены)
+  - `calculate_ratios()` стал compatibility adapter: `normalize_inputs -> MathEngine.compute -> project_legacy_ratios()`
+  - safe v1 subset ограничен:
+    - `current_ratio`
+    - `absolute_liquidity_ratio`
+    - `ros`
+    - `equity_ratio`
+  - unsupported/unsafe legacy ratios (`ROA`, `ROE`, leverage, interest coverage, turnover, EBITDA-based`) теперь возвращаются как `None` через projection semantics
+- **Тесты**
+  - добавлены:
+    - `tests/test_math_containment.py`
+    - `tests/test_math_contracts.py`
+    - `tests/test_math_engine.py`
+    - `tests/test_math_projection_bridge.py`
+  - обновлены `tests/test_ratios.py` и `tests/test_scoring.py` под consumer-only / suppressed semantics
+  - добавлены invariants tests на deterministic `model_dump()` serialization и stable `trace.status`
+
+**Verification:**
+- baseline worktree sanity: `python -m pytest tests/test_scoring.py tests/test_ratios.py -q` → `17 passed`
+- containment slice: `python -m pytest tests/test_math_containment.py tests/test_scoring.py tests/test_ratios.py -q` → `19 passed`
+- foundation slice: `python -m pytest tests/test_math_contracts.py tests/test_math_engine.py -q` → `9 passed`
+- bridge + scoring slice:
+  - `python -m pytest tests/test_math_projection_bridge.py tests/test_ratios.py -q` → `7 passed`
+  - `python -m pytest tests/test_scoring.py -q` → `14 passed`
+- task helper/orchestration subset:
+  - `python -m pytest tests/test_tasks.py -k "TestTranslateRatios or TestBuildScorePayload or successful_processing" -q` → `9 passed, 23 deselected`
+- combined closure slice:
+  - `python -m pytest tests/test_math_contracts.py tests/test_math_engine.py tests/test_math_projection_bridge.py tests/test_math_containment.py tests/test_ratios.py tests/test_scoring.py tests/test_tasks.py -k "not TestProcessPdf and not TestTryLlmExtraction and not TestTaskQueueDispatch" -q`
+  - `46 passed, 20 deselected`
+- full changed-surface closure:
+  - `python -m pytest tests/test_tasks.py tests/test_api.py -q`
+  - `32 passed, 5 skipped`
+  - `python -m pytest tests/test_math_contracts.py tests/test_math_engine.py tests/test_math_projection_bridge.py tests/test_math_containment.py tests/test_ratios.py tests/test_scoring.py tests/test_tasks.py tests/test_api.py -q`
+  - `66 passed, 5 skipped`
+
+**Коммиты:**
+- `fix(math): contain unsafe inverse and denominator handling`
+- `feat(math): add domain contracts and engine foundation`
+- `refactor(ratios): route legacy ratios through math bridge`
+
+**Следующий шаг:**
+- определить стратегию интеграции worktree-ветки обратно в основную ветку без потери уже созданного blueprint/doc context
+- отдельно решить, нужна ли следующая волна по расширению safe metric scope beyond `current_ratio`, `absolute_liquidity_ratio`, `ros`, `equity_ratio`
+
 ## 2026-04-12 — feat(trace): Decision Transparency Wave (Волна 7) — полная реализация
 
 **Контекст:**
