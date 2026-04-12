@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Final
+
+MISSING_CONFIDENCE_PENALTY_FACTOR: Final = 0.9
 
 
 class DenominatorPolicy(str, Enum):

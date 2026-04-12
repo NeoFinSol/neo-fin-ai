@@ -9,6 +9,7 @@ from src.analysis.math.contracts import (
 from src.analysis.math.policies import (
     AveragingPolicy,
     DenominatorPolicy,
+    MISSING_CONFIDENCE_PENALTY_FACTOR,
     SuppressionPolicy,
 )
 
@@ -19,6 +20,7 @@ __all__ = [
     "MetricComputationResult",
     "MetricInputRef",
     "MetricUnit",
+    "MISSING_CONFIDENCE_PENALTY_FACTOR",
     "SuppressionPolicy",
     "TypedInputs",
     "ValidityState",

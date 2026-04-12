@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 from src.analysis.math.engine import MathEngine
-from src.analysis.math.projections import project_legacy_ratios
+from src.analysis.math.projections import LEGACY_RATIO_NAME_MAP, project_legacy_ratios
 from src.analysis.math.validators import normalize_inputs
 
 logger = logging.getLogger(__name__)
@@ -65,31 +65,7 @@ def calculate_ratios(financial_data: dict[str, Any]) -> dict[str, float | None]:
     typed_inputs = normalize_inputs(_build_raw_math_inputs(financial_data))
     derived_metrics = engine.compute(typed_inputs)
     legacy_values, _projection_trace = project_legacy_ratios(derived_metrics)
-    return {
-        "Коэффициент текущей ликвидности": legacy_values.get(
-            "Коэффициент текущей ликвидности"
-        ),
-        "Коэффициент быстрой ликвидности": None,
-        "Коэффициент абсолютной ликвидности": legacy_values.get(
-            "Коэффициент абсолютной ликвидности"
-        ),
-        "Рентабельность активов (ROA)": None,
-        "Рентабельность собственного капитала (ROE)": None,
-        "Рентабельность продаж (ROS)": legacy_values.get(
-            "Рентабельность продаж (ROS)"
-        ),
-        "EBITDA маржа": legacy_values.get("EBITDA маржа"),
-        "Коэффициент автономии": legacy_values.get("Коэффициент автономии"),
-        "Финансовый рычаг": None,
-        "Финансовый рычаг (обязательства/капитал)": None,
-        "Финансовый рычаг (долг/капитал)": legacy_values.get(
-            "Финансовый рычаг (долг/капитал)"
-        ),
-        "Покрытие процентов": None,
-        "Оборачиваемость активов": None,
-        "Оборачиваемость запасов": None,
-        "Оборачиваемость дебиторской задолженности": None,
-    }
+    return {key: legacy_values.get(key) for key in LEGACY_RATIO_NAME_MAP.values()}
 
 
 def _build_raw_math_inputs(financial_data: dict[str, Any]) -> dict[str, object]:

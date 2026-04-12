@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from src.analysis.math.contracts import (
     DerivedMetric,
+    MetricComputationResult,
     MetricInputRef,
     MetricUnit,
     TypedInputs,
     ValidityState,
 )
-from src.analysis.math.policies import DenominatorPolicy, SuppressionPolicy
+from src.analysis.math.policies import (
+    MISSING_CONFIDENCE_PENALTY_FACTOR,
+    DenominatorPolicy,
+    SuppressionPolicy,
+)
 from src.analysis.math.precompute import build_precomputed_inputs
 from src.analysis.math.registry import REGISTRY, MetricDefinition
 from src.analysis.math.validators import classify_denominator
@@ -43,15 +48,16 @@ def _compute_metric(
     missing_inputs = _collect_missing_inputs(trace_inputs)
     if missing_inputs:
         reason_codes = [
-            f"missing_required_input:{metric_key}"
-            for metric_key in missing_inputs
+            f"missing_required_input:{metric_key}" for metric_key in missing_inputs
         ]
         return _build_invalid_metric(definition, reason_codes, trace_inputs)
     denominator_reason = _validate_denominator_policy(definition, prepared_inputs)
     if denominator_reason is not None:
         return _build_invalid_metric(definition, [denominator_reason], trace_inputs)
     computation = definition.compute(prepared_inputs)
-    return _build_computed_metric(definition, trace_inputs, prepared_inputs, computation)
+    return _build_computed_metric(
+        definition, trace_inputs, prepared_inputs, computation
+    )
 
 
 def _build_suppressed_metric(definition: MetricDefinition) -> DerivedMetric:
@@ -118,10 +124,7 @@ def _build_invalid_metric(
         formula_id=definition.formula_id,
         formula_version=definition.formula_version,
         reason_codes=reason_codes,
-        inputs_snapshot={
-            item.metric_key: item.value
-            for item in trace_inputs
-        },
+        inputs_snapshot={item.metric_key: item.value for item in trace_inputs},
     )
 
 
@@ -129,7 +132,7 @@ def _build_computed_metric(
     definition: MetricDefinition,
     trace_inputs: list[MetricInputRef],
     prepared_inputs: TypedInputs,
-    computation,
+    computation: MetricComputationResult,
 ) -> DerivedMetric:
     confidence, confidence_components = _derive_confidence(trace_inputs)
     trace_status = "valid" if computation.value is not None else "invalid"
@@ -140,7 +143,9 @@ def _build_computed_metric(
         formula_id=definition.formula_id,
         formula_version=definition.formula_version,
         validity_state=(
-            ValidityState.VALID if computation.value is not None else ValidityState.INVALID
+            ValidityState.VALID
+            if computation.value is not None
+            else ValidityState.INVALID
         ),
         inputs_used=trace_inputs,
         reason_codes=list(computation.extra_reason_codes),
@@ -150,7 +155,9 @@ def _build_computed_metric(
         | {
             "status": trace_status,
             "inputs": {
-                key: prepared_inputs.get(key, MetricInputRef(metric_key=key)).model_dump()
+                key: prepared_inputs.get(
+                    key, MetricInputRef(metric_key=key)
+                ).model_dump()
                 for key in definition.required_inputs
             },
             "formula_id": definition.formula_id,
@@ -162,15 +169,21 @@ def _build_computed_metric(
 def _derive_confidence(
     trace_inputs: list[MetricInputRef],
 ) -> tuple[float | None, dict[str, float | bool]]:
-    confidences = [item.confidence for item in trace_inputs if item.confidence is not None]
+    confidences = [
+        item.confidence for item in trace_inputs if item.confidence is not None
+    ]
     if not confidences:
         return None, {"missing_confidence_penalty_applied": False}
     derived_confidence = min(confidences)
     penalty_applied = len(confidences) < len(trace_inputs)
     if penalty_applied:
-        derived_confidence = round(derived_confidence * 0.9, 4)
+        derived_confidence = round(
+            derived_confidence * MISSING_CONFIDENCE_PENALTY_FACTOR, 4
+        )
     return derived_confidence, {
         "inputs_min": min(confidences),
         "missing_confidence_penalty_applied": penalty_applied,
-        "missing_confidence_penalty_factor": 0.9 if penalty_applied else 1.0,
+        "missing_confidence_penalty_factor": MISSING_CONFIDENCE_PENALTY_FACTOR
+        if penalty_applied
+        else 1.0,
     }

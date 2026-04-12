@@ -6,7 +6,7 @@ from pathlib import Path
 from src.analysis.math.engine import MathEngine
 from src.analysis.math.projections import project_legacy_ratios
 from src.analysis.math.validators import normalize_inputs
-from src.analysis.ratios import calculate_ratios
+from src.analysis.ratios import RATIO_KEY_MAP, calculate_ratios
 
 
 def test_calculate_ratios_uses_math_engine_projection() -> None:
@@ -172,3 +172,9 @@ def test_scoring_handles_all_suppressed_ratios_without_crash() -> None:
     assert isinstance(result, dict)
     assert "score" in result
     assert "risk_level" in result
+
+
+def test_legacy_and_ratio_key_maps_are_consistent() -> None:
+    from src.analysis.math.projections import LEGACY_RATIO_NAME_MAP
+
+    assert set(LEGACY_RATIO_NAME_MAP.keys()) == set(RATIO_KEY_MAP.values())
