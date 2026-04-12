@@ -33,7 +33,9 @@ class MetricDefinition:
 
 def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
     def _compute(values: TypedInputs) -> MetricComputationResult:
-        numerator_ref = values.get(numerator_key, MetricInputRef(metric_key=numerator_key))
+        numerator_ref = values.get(
+            numerator_key, MetricInputRef(metric_key=numerator_key)
+        )
         denominator_ref = values.get(
             denominator_key,
             MetricInputRef(metric_key=denominator_key),
@@ -62,6 +64,30 @@ def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
         )
 
     return _compute
+
+
+def _placeholder_compute(metric_id: str) -> MetricComputer:
+    def _compute(_: TypedInputs) -> MetricComputationResult:
+        return MetricComputationResult(
+            value=None,
+            trace={"placeholder_metric": metric_id},
+        )
+
+    return _compute
+
+
+def _suppressed_placeholder(metric_id: str) -> MetricDefinition:
+    return MetricDefinition(
+        metric_id=metric_id,
+        formula_id=metric_id,
+        formula_version="v1",
+        required_inputs=(),
+        denominator_key=metric_id,
+        denominator_policy=DenominatorPolicy.ALLOW_ANY_NON_ZERO,
+        averaging_policy=AveragingPolicy.NONE,
+        suppression_policy=SuppressionPolicy.SUPPRESS_UNSAFE,
+        compute=_placeholder_compute(metric_id),
+    )
 
 
 REGISTRY = MappingProxyType(
@@ -121,5 +147,17 @@ REGISTRY = MappingProxyType(
             suppression_policy=SuppressionPolicy.SUPPRESS_UNSAFE,
             compute=_ratio("ebitda_reported", "revenue"),
         ),
+        "quick_ratio": _suppressed_placeholder("quick_ratio"),
+        "roa": _suppressed_placeholder("roa"),
+        "roe": _suppressed_placeholder("roe"),
+        "financial_leverage": _suppressed_placeholder("financial_leverage"),
+        "financial_leverage_total": _suppressed_placeholder("financial_leverage_total"),
+        "financial_leverage_debt_only": _suppressed_placeholder(
+            "financial_leverage_debt_only"
+        ),
+        "interest_coverage": _suppressed_placeholder("interest_coverage"),
+        "asset_turnover": _suppressed_placeholder("asset_turnover"),
+        "inventory_turnover": _suppressed_placeholder("inventory_turnover"),
+        "receivables_turnover": _suppressed_placeholder("receivables_turnover"),
     }
 )

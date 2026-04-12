@@ -107,7 +107,7 @@ def test_project_legacy_ratios_returns_all_map_keys() -> None:
 
 
 def test_calculate_ratios_delegates_to_math_engine(monkeypatch) -> None:
-    import src.analysis.ratios as ratios_module
+    from src.analysis import ratios as ratios_module
 
     call_log: list[object] = []
 

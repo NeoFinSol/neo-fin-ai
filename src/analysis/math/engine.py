@@ -184,7 +184,7 @@ def _derive_confidence(
     return derived_confidence, {
         "inputs_min": min(confidences),
         "missing_confidence_penalty_applied": penalty_applied,
-        "missing_confidence_penalty_factor": MISSING_CONFIDENCE_PENALTY_FACTOR
-        if penalty_applied
-        else 1.0,
+        "missing_confidence_penalty_factor": (
+            MISSING_CONFIDENCE_PENALTY_FACTOR if penalty_applied else 1.0
+        ),
     }
