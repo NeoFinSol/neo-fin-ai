@@ -20,11 +20,11 @@ def test_calculate_ratios_basic():
     ratios = calculate_ratios(data)
 
     assert ratios["Коэффициент текущей ликвидности"] == pytest.approx(2.0)
+    assert ratios["Рентабельность продаж (ROS)"] == pytest.approx(0.05)
     assert ratios["Коэффициент автономии"] == pytest.approx(0.5)
-    assert ratios["Рентабельность активов (ROA)"] == pytest.approx(0.1)
-    assert ratios["Рентабельность собственного капитала (ROE)"] == pytest.approx(0.2)
-    # Финансовый рычаг = liabilities / equity = 120 / 150
-    assert ratios["Финансовый рычаг"] == pytest.approx(0.8)
+    assert ratios["Рентабельность активов (ROA)"] is None
+    assert ratios["Рентабельность собственного капитала (ROE)"] is None
+    assert ratios["Финансовый рычаг"] is None
 
 
 def test_calculate_ratios_missing_data():
@@ -43,7 +43,7 @@ def test_calculate_ratios_missing_data():
     assert ratios["Финансовый рычаг"] is None
 
 
-def test_calculate_ratios_corrects_negative_interest_expense_sign():
+def test_calculate_ratios_suppresses_unsafe_ebitda_metrics():
     data = {
         "revenue": 1_000_000.0,
         "net_profit": 120_000.0,
@@ -58,10 +58,11 @@ def test_calculate_ratios_corrects_negative_interest_expense_sign():
 
     ratios = calculate_ratios(data)
 
-    assert ratios["Покрытие процентов"] == pytest.approx(3.0)
+    assert ratios["EBITDA маржа"] is None
+    assert ratios["Покрытие процентов"] is None
 
 
-def test_calculate_ratios_exposes_dual_leverage_metrics():
+def test_calculate_ratios_keeps_debt_metrics_unavailable_without_safe_math_support():
     data = {
         "revenue": 1_000_000.0,
         "net_profit": 120_000.0,
@@ -76,6 +77,6 @@ def test_calculate_ratios_exposes_dual_leverage_metrics():
 
     ratios = calculate_ratios(data)
 
-    assert ratios["Финансовый рычаг"] == pytest.approx(3.0)
-    assert ratios["Финансовый рычаг (обязательства/капитал)"] == pytest.approx(3.0)
-    assert ratios["Финансовый рычаг (долг/капитал)"] == pytest.approx(1.0)
+    assert ratios["Финансовый рычаг"] is None
+    assert ratios["Финансовый рычаг (обязательства/капитал)"] is None
+    assert ratios["Финансовый рычаг (долг/капитал)"] is None

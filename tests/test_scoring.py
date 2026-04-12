@@ -238,13 +238,13 @@ def test_calculate_score_with_context_uses_debt_only_leverage_for_retail():
     methodology = result["score_payload"]["methodology"]
     ratios_en = result["ratios_en"]
 
-    assert ratios_en["financial_leverage_total"] == pytest.approx(4.0)
-    assert ratios_en["financial_leverage_debt_only"] == pytest.approx(1.0)
-    assert ratios_en["financial_leverage"] == pytest.approx(1.0)
-    assert methodology["leverage_basis"] == "debt_only"
-    assert methodology["ifrs16_adjusted"] is True
+    assert ratios_en["financial_leverage_total"] is None
+    assert ratios_en["financial_leverage_debt_only"] is None
+    assert ratios_en["financial_leverage"] is None
+    assert methodology["leverage_basis"] == "total_liabilities"
+    assert methodology["ifrs16_adjusted"] is False
     assert "interest_coverage_sign_corrected" in methodology["adjustments"]
-    assert "leverage_debt_only" in methodology["adjustments"]
+    assert "leverage_debt_only" not in methodology["adjustments"]
     assert methodology["peer_context"]
 
 
@@ -275,9 +275,22 @@ def test_calculate_score_with_context_keeps_total_liability_leverage_for_non_ret
     assert methodology["benchmark_profile"] == "generic"
     assert methodology["leverage_basis"] == "total_liabilities"
     assert methodology["ifrs16_adjusted"] is False
-    assert ratios_en["financial_leverage_total"] == pytest.approx(2.0)
-    assert ratios_en["financial_leverage_debt_only"] == pytest.approx(0.5)
-    assert ratios_en["financial_leverage"] == pytest.approx(2.0)
+    assert ratios_en["financial_leverage_total"] is None
+    assert ratios_en["financial_leverage_debt_only"] is None
+    assert ratios_en["financial_leverage"] is None
+
+
+def test_calculate_integral_score_skips_suppressed_metrics() -> None:
+    score = calculate_integral_score(
+        {
+            "Коэффициент текущей ликвидности": 2.0,
+            "EBITDA маржа": None,
+            "Финансовый рычаг": None,
+        }
+    )
+
+    assert score["score"] >= 0
+    assert "EBITDA маржа" not in score["details"]
 
 
 def test_calculate_score_with_context_captures_issuer_override_adjustments():
