@@ -308,6 +308,7 @@ def parse_financial_statements_debug(
         metadata=metadata,
         decision_logs=decision_logs,
         guardrail_events=trace.guardrail_events,
+        raw_candidates=trace.raw_candidates,
         winner_map=trace.winner_map,
     )
 

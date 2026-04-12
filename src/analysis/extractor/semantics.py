@@ -12,7 +12,7 @@ from .confidence_policy import (
     EvidenceProfile,
     build_policy_decision_log,
 )
-from .types import ExtractionMetadata
+from .types import ExtractionMetadata, RawCandidates
 
 V1: Final = "v1"
 V2: Final = "v2"
@@ -130,6 +130,7 @@ class ExtractionDebugTrace:
     metadata: dict[str, ExtractionMetadata]
     decision_logs: dict[str, SemanticsDecisionLog]
     guardrail_events: list[GuardrailEvent]
+    raw_candidates: RawCandidates = field(default_factory=RawCandidates)
     winner_map: dict[str, str | None] = field(default_factory=dict)
 
 

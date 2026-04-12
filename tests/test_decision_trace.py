@@ -17,8 +17,6 @@ from src.analysis.extractor.decision_trace import (
     MetricFinalState,
     PipelineDecisionTrace,
     ReasonCode,
-    REASON_BELOW_CONFIDENCE_THRESHOLD,
-    REASON_LOWER_CONFIDENCE,
     RejectionTrace,
     _guardrail_action_to_decision_action,
     _short_value_hash,

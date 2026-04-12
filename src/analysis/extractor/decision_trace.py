@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -149,6 +148,10 @@ def _short_value_hash(value: float | None) -> str:
 
 
 def build_candidate_id(metric_key: str, candidate: RawMetricCandidate) -> str:
+    """Deterministic, unique identifier for a metric candidate.
+
+    Format: ``{metric_key}::{source}::{match_semantics}::{inference_mode}::{value_hash}``
+    """
     value_hash = _short_value_hash(candidate.value)
     return f"{metric_key}::{candidate.source}::{candidate.match_semantics}::{candidate.inference_mode}::{value_hash}"
 
