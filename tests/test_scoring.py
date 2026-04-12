@@ -13,7 +13,7 @@ from src.analysis.scoring import (
 
 
 def test_calculate_integral_score_happy_path():
-    """All 12 ratios at or above benchmark — score should be 100."""
+    """All available ratios at benchmark should still yield the top score."""
     ratios = {
         "Коэффициент текущей ликвидности": 2.0,       # target 2.0 → norm 1.0
         "Коэффициент быстрой ликвидности": 1.0,       # target 1.0 → norm 1.0
@@ -23,7 +23,7 @@ def test_calculate_integral_score_happy_path():
         "Рентабельность продаж (ROS)": 0.10,          # target 0.10 → norm 1.0
         "EBITDA маржа": 0.15,                         # target 0.15 → norm 1.0
         "Коэффициент автономии": 0.5,                 # target 0.5 → norm 1.0
-        "Финансовый рычаг": 0.0,                      # max_acceptable 2.0, value=0 → norm 1.0
+        "Финансовый рычаг": None,                     # unavailable, not treated as ideal
         "Покрытие процентов": 3.0,                    # target 3.0 → norm 1.0
         "Оборачиваемость активов": 1.0,               # target 1.0 → norm 1.0
         "Оборачиваемость запасов": 8.0,               # target 8.0 → norm 1.0
@@ -34,7 +34,7 @@ def test_calculate_integral_score_happy_path():
 
     assert score["score"] == pytest.approx(100.0)
     assert score["risk_level"] == "низкий"
-    assert len(score["details"]) == 13
+    assert len(score["details"]) == 12
 
 
 def test_calculate_integral_score_empty():

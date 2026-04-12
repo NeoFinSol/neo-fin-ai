@@ -1,7 +1,10 @@
 import logging
+import math
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_DENOMINATOR_EPSILON = 1e-9
 
 # Маппинг русских ключей ratios → snake_case English для frontend
 # Порядок соответствует группам: ликвидность, рентабельность, устойчивость, активность
@@ -158,9 +161,17 @@ def _safe_div(numerator: float | None, denominator: float | None) -> float | Non
     Returns:
         Result of division or None if calculation is not possible
     """
-    if numerator is None or denominator in (None, 0):
+    if numerator is None or denominator is None:
         return None
     try:
+        if not math.isfinite(numerator) or not math.isfinite(denominator):
+            return None
+        if denominator == 0:
+            return None
+        if abs(denominator) < _DENOMINATOR_EPSILON:
+            return None
+        if denominator < 0:
+            return None
         return numerator / denominator
     except Exception as exc:
         logger.warning("Failed to compute ratio: %s", exc)

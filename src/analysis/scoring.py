@@ -1,4 +1,5 @@
 import logging
+import math
 from typing import Any
 
 from src.analysis.ratios import RATIO_KEY_MAP, calculate_ratios, translate_ratios
@@ -678,12 +679,12 @@ def _normalize_positive(value: float, target: float) -> float:
     return min(value / target, 1.0)
 
 
-def _normalize_inverse(value: float, max_acceptable: float) -> float:
-    """Normalize: lower is better. Returns 1.0 when value <= 0, 0.0 when value >= max."""
-    if value <= 0:
-        return 1.0
-    if max_acceptable <= 0:
-        return 0.0
+def _normalize_inverse(value: float, max_acceptable: float) -> float | None:
+    """Normalize inverse ratios; invalid or non-positive inputs are unavailable."""
+    if not math.isfinite(value) or value <= 0:
+        return None
+    if not math.isfinite(max_acceptable) or max_acceptable <= 0:
+        return None
     if value >= max_acceptable:
         return 0.0
     return 1.0 - (value / max_acceptable)
