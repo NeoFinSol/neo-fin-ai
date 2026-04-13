@@ -1,5 +1,97 @@
 # Project Log
 
+## 2026-04-13 — refactor(core): remediate confirmed post-math-layer debt
+
+**Контекст:**
+- после синхронизации `Math Layer v1` в `main` остались 5 подтверждённых хвостов, зафиксированных в `.agent/local_notes.md` и отдельной spec `Confirmed Debt Remediation Wave`
+- scope этой волны был жёстко ограничен:
+  - без новых formulas / ratios / metric ids
+  - без изменения public wire contracts и observable frontend/API behavior
+  - только remediation confirmed debt + controlled adjacent cleanup
+
+**Что сделано:**
+- **Canonical Metric Registry / domain constraints**
+  - `src/analysis/math/registry.py` расширен:
+    - `MetricDefinition` теперь несёт `legacy_label`, `frontend_key`, `non_negative_inputs`
+    - введён `InputDomainConstraint`
+    - `LEGACY_RATIO_NAME_MAP`, `RATIO_KEY_MAP`, `INPUT_DOMAIN_CONSTRAINTS` теперь строятся производно из registry
+    - `get_input_domain_constraint()` стал canonical lookup для validator layer
+  - `src/analysis/math/validators.py` больше не хранит `EXPECTED_NON_NEGATIVE_INPUTS`; negative-input semantics теперь резолвятся из registry-derived constraints
+- **Naming source of truth**
+  - локальная `RATIO_KEY_MAP` удалена из `src/analysis/ratios.py`
+  - `src/analysis/math/projections.py` больше не держит собственный `LEGACY_RATIO_NAME_MAP`
+  - translate/projection path теперь читает derived lookup maps из canonical registry, снижая drift-risk между RU labels и frontend keys
+- **Extractor pipeline contract cleanup**
+  - `src/analysis/extractor/pipeline.py` удалил reflection-based dispatch через `inspect.signature(...)`
+  - введены explicit typed callable contracts:
+    - `StageCollector`
+    - `MetadataBuilder`
+    - `MetadataBuildResult`
+  - `_invoke_stage_collector()` и `_invoke_metadata_builder()` теперь вызывают collectors/builders только по явному callable contract, без implicit compatibility magic
+- **`upload_pdf()` structural remediation**
+  - `src/routers/pdf_tasks.py` разрезан на thin boundary helpers:
+    - `_validate_upload_content_type`
+    - `_read_upload_header`
+    - `_create_upload_temp_file`
+    - `_write_upload_chunks`
+    - `_save_uploaded_pdf`
+    - `_resolve_requested_provider`
+    - `_create_upload_analysis_record`
+    - `_dispatch_upload_task`
+  - `upload_pdf()` теперь:
+    - имеет явный return type
+    - остаётся thin boundary wrapper
+    - не протекает temp-file при provider validation errors / dispatch failure
+    - не падает из-за best-effort close ошибок temp file
+- **`process_pdf()` structural remediation**
+  - `src/tasks.py::process_pdf()` превращён в thin orchestration wrapper
+  - orchestration вынесена в phase helpers:
+    - `_start_analysis_processing`
+    - `_broadcast_analysis_status`
+    - `_checkpoint_analysis_phase`
+    - `_run_analysis_extraction_step`
+    - `_run_analysis_scoring_step`
+    - `_run_analysis_ai_step`
+    - `_finalize_analysis_success`
+    - `_run_process_pdf`
+  - сохранены:
+    - status order `extracting -> scoring -> analyzing -> completed`
+    - heartbeat/cancellation checkpoints
+    - final result payload shape
+    - optional `decision_trace` attach path
+
+**Тесты / verification:**
+- добавлены и/или усилены:
+  - `tests/test_math_engine.py`
+    - registry-derived domain constraints
+    - anti-regression на отсутствие hardcoded validator semantic set
+  - `tests/test_math_projection_bridge.py`
+    - `MetricDefinition` naming projections
+    - maps re-exported from canonical registry
+  - `tests/test_pdf_extractor_facade.py`
+    - anti-regression на отсутствие `inspect.signature`
+    - explicit guardrail-aware stage contract
+  - `tests/test_routers_pdf_tasks.py`
+    - cleanup при invalid AI provider
+    - close-error tolerance в upload path
+  - `tests/test_tasks.py`
+    - ordered phase status updates for `process_pdf()`
+- основной closure gate:
+  - `python -m pytest tests/test_math_containment.py tests/test_math_contracts.py tests/test_math_engine.py tests/test_math_projection_bridge.py tests/test_scoring.py tests/test_ratios.py tests/test_pdf_extractor_facade.py tests/test_routers_pdf_tasks.py tests/test_tasks.py tests/test_api.py tests/test_analysis_scoring.py -q`
+  - `149 passed, 5 skipped`
+- hygiene:
+  - `python -m black --check ...` по touched files → clean
+  - `python -m isort --profile black --check-only ...` по touched files → clean
+  - `git diff --check` → clean
+
+**Review:**
+- явный local `code_review` pass выполнен после full verification gate
+- blocking findings не осталось; remaining known debt moved back to `local_notes` only if still unresolved
+
+**Следующий шаг:**
+- либо коммитить эту волну как отдельный remediation package
+- либо собрать post-wave список реально оставшегося debt после закрытия 5 confirmed issues
+
 ## 2026-04-12 — feat(math): start Math Layer v1 foundation in isolated worktree
 
 **Контекст:**
