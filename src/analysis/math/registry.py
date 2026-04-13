@@ -16,6 +16,7 @@ from src.analysis.math.policies import (
 )
 
 MetricComputer = Callable[[TypedInputs], MetricComputationResult]
+STRICT_AVERAGE_BALANCE_METRICS = frozenset({"roa", "roe", "asset_turnover"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +101,29 @@ def _suppressed_placeholder(metric_id: str, legacy_label: str) -> MetricDefiniti
     )
 
 
+def _average_balance_metric(
+    *,
+    metric_id: str,
+    legacy_label: str,
+    numerator_key: str,
+    denominator_key: str,
+) -> MetricDefinition:
+    return MetricDefinition(
+        metric_id=metric_id,
+        formula_id=metric_id,
+        formula_version="v1.5",
+        required_inputs=(numerator_key, denominator_key),
+        denominator_key=denominator_key,
+        denominator_policy=DenominatorPolicy.STRICT_POSITIVE,
+        averaging_policy=AveragingPolicy.AVERAGE_BALANCE,
+        suppression_policy=SuppressionPolicy.NEVER,
+        compute=_ratio(numerator_key, denominator_key),
+        legacy_label=legacy_label,
+        frontend_key=metric_id,
+        non_negative_inputs=(denominator_key,),
+    )
+
+
 REGISTRY = MappingProxyType(
     {
         "current_ratio": MetricDefinition(
@@ -176,10 +200,17 @@ REGISTRY = MappingProxyType(
             "quick_ratio",
             "Коэффициент быстрой ликвидности",
         ),
-        "roa": _suppressed_placeholder("roa", "Рентабельность активов (ROA)"),
-        "roe": _suppressed_placeholder(
-            "roe",
-            "Рентабельность собственного капитала (ROE)",
+        "roa": _average_balance_metric(
+            metric_id="roa",
+            legacy_label="Рентабельность активов (ROA)",
+            numerator_key="net_profit",
+            denominator_key="average_total_assets",
+        ),
+        "roe": _average_balance_metric(
+            metric_id="roe",
+            legacy_label="Рентабельность собственного капитала (ROE)",
+            numerator_key="net_profit",
+            denominator_key="average_equity",
         ),
         "financial_leverage": _suppressed_placeholder(
             "financial_leverage",
@@ -197,9 +228,11 @@ REGISTRY = MappingProxyType(
             "interest_coverage",
             "Покрытие процентов",
         ),
-        "asset_turnover": _suppressed_placeholder(
-            "asset_turnover",
-            "Оборачиваемость активов",
+        "asset_turnover": _average_balance_metric(
+            metric_id="asset_turnover",
+            legacy_label="Оборачиваемость активов",
+            numerator_key="revenue",
+            denominator_key="average_total_assets",
         ),
         "inventory_turnover": _suppressed_placeholder(
             "inventory_turnover",

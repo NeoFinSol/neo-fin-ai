@@ -157,7 +157,7 @@ def test_precompute_keeps_debt_semantics_separate_from_liabilities() -> None:
     assert values["liabilities"].value == 400.0
 
 
-def test_engine_emits_suppressed_placeholders_for_unsupported_legacy_metrics() -> None:
+def test_engine_keeps_non_enabled_legacy_metrics_suppressed() -> None:
     engine = MathEngine()
     result = engine.compute(
         normalize_inputs(
@@ -175,19 +175,63 @@ def test_engine_emits_suppressed_placeholders_for_unsupported_legacy_metrics() -
 
     for metric_id in {
         "quick_ratio",
-        "roa",
-        "roe",
         "financial_leverage",
         "financial_leverage_total",
         "financial_leverage_debt_only",
         "interest_coverage",
-        "asset_turnover",
         "inventory_turnover",
         "receivables_turnover",
     }:
         metric = result[metric_id]
         assert metric.validity_state == "suppressed"
         assert metric.trace["status"] == "suppressed"
+
+
+def test_engine_computes_average_balance_metrics_when_average_inputs_exist() -> None:
+    engine = MathEngine()
+    result = engine.compute(
+        normalize_inputs(
+            {
+                "revenue": {"value": 120.0},
+                "net_profit": {"value": 12.0},
+                "average_total_assets": {"value": 120.0},
+                "average_equity": {"value": 60.0},
+            }
+        )
+    )
+
+    assert result["roa"].validity_state == "valid"
+    assert result["roa"].value == 0.1
+    assert result["roe"].validity_state == "valid"
+    assert result["roe"].value == 0.2
+    assert result["asset_turnover"].validity_state == "valid"
+    assert result["asset_turnover"].value == 1.0
+
+
+def test_engine_invalidates_average_balance_metrics_when_average_inputs_missing() -> (
+    None
+):
+    engine = MathEngine()
+    result = engine.compute(
+        normalize_inputs(
+            {
+                "revenue": {"value": 120.0},
+                "net_profit": {"value": 12.0},
+                "total_assets": {"value": 140.0},
+                "equity": {"value": 70.0},
+            }
+        )
+    )
+
+    assert result["roa"].validity_state == "invalid"
+    assert "missing_required_input:average_total_assets" in result["roa"].reason_codes
+    assert result["roe"].validity_state == "invalid"
+    assert "missing_required_input:average_equity" in result["roe"].reason_codes
+    assert result["asset_turnover"].validity_state == "invalid"
+    assert (
+        "missing_required_input:average_total_assets"
+        in result["asset_turnover"].reason_codes
+    )
 
 
 def test_engine_is_deterministic_for_same_inputs() -> None:

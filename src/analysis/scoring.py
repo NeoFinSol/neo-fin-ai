@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any
+from typing import Any, TypedDict
 
 from src.analysis.ratios import RATIO_KEY_MAP, calculate_ratios, translate_ratios
 from src.models.settings import app_settings
@@ -59,6 +59,15 @@ _ANNUALIZED_METRIC_KEYS = (
     "interest_expense",
     "cost_of_goods_sold",
 )
+
+
+class ScoreComputationResult(TypedDict):
+    ratios_ru: dict[str, Any]
+    ratios_en: dict[str, Any]
+    raw_score: dict[str, Any]
+    score_payload: dict[str, Any]
+    methodology: dict[str, Any]
+
 
 # Human-readable names for frontend display
 FRIENDLY_NAMES: dict[str, str] = {
@@ -259,7 +268,7 @@ def calculate_score_with_context(
     filename: str | None = None,
     text: str | None = None,
     extraction_metadata: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> ScoreComputationResult:
     """Run document-aware scoring with retail/interim auto-detection."""
     base_ratios_ru = calculate_ratios(metrics)
     base_ratios_en = translate_ratios(base_ratios_ru)
@@ -272,11 +281,27 @@ def calculate_score_with_context(
     scoring_metrics = annualize_metrics_for_period(metrics, methodology["period_basis"])
     ratios_ru = calculate_ratios(scoring_metrics)
     ratios_en = translate_ratios(ratios_ru)
+    return calculate_score_from_precomputed_ratios(
+        metrics=scoring_metrics,
+        ratios_ru=ratios_ru,
+        ratios_en=ratios_en,
+        methodology=methodology,
+        extraction_metadata=extraction_metadata,
+    )
+
+
+def calculate_score_from_precomputed_ratios(
+    metrics: dict[str, Any],
+    ratios_ru: dict[str, Any],
+    ratios_en: dict[str, Any],
+    methodology: dict[str, Any],
+    extraction_metadata: dict[str, Any] | None = None,
+) -> ScoreComputationResult:
     ratios_ru, ratios_en, methodology = _apply_scoring_methodology_adjustments(
         ratios_ru,
         ratios_en,
         methodology,
-        scoring_metrics,
+        metrics,
         extraction_metadata=extraction_metadata,
     )
     raw_score = calculate_integral_score(

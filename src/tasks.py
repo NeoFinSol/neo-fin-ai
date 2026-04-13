@@ -1,11 +1,10 @@
 import asyncio
 import logging
 import os
-import re
 import time
 from dataclasses import dataclass
+from typing import Any
 
-from src.analysis import pdf_extractor
 from src.analysis.extractor import semantics as extractor_semantics
 from src.analysis.extractor.confidence_policy import (
     CALIBRATED_RUNTIME_CONFIDENCE_POLICY,
@@ -24,6 +23,9 @@ from src.analysis.extractor.runtime_decisions import (
 from src.analysis.extractor.types import ExtractionMetadata as ExtractionMetadataType
 from src.analysis.extractor.types import RawCandidates
 from src.analysis.issuer_fallback import apply_issuer_metric_overrides
+from src.analysis.math.comparative import ComparativePeriodInput, run_comparative_math
+from src.analysis.math.periods import compatibility_sort_key
+from src.analysis.math.projections import project_legacy_ratios
 from src.analysis.nlp_analysis import analyze_narrative_with_runtime
 from src.analysis.pdf_extractor import (
     apply_confidence_filter,
@@ -47,9 +49,8 @@ from src.analysis.ratios import (  # backward-compatible test patch surface
 from src.analysis.recommendations import generate_recommendations
 from src.analysis.scoring import (  # backward-compatible test patch surface
     annualize_metrics_for_period,
-    apply_data_quality_guardrails,
-    build_score_payload,
     calculate_integral_score,
+    calculate_score_from_precomputed_ratios,
     calculate_score_with_context,
     resolve_scoring_methodology,
 )
@@ -897,25 +898,8 @@ _MULTI_ANALYSIS_TIMEOUT = 600  # seconds
 
 
 def parse_period_label(label: str) -> tuple[int, int]:
-    """
-    Parse period label into a sortable (year, quarter) tuple.
-
-    Formats:
-        "YYYY"      → (year, 0)
-        "Qn/YYYY"   → (year, n)
-        invalid     → (9999, 0)
-    """
-    label = label.strip()
-
-    m = re.fullmatch(r"Q([1-4])/(\d{4})", label, re.IGNORECASE)
-    if m:
-        return int(m.group(2)), int(m.group(1))
-
-    m = re.fullmatch(r"(\d{4})", label)
-    if m:
-        return int(m.group(1)), 0
-
-    return 9999, 0
+    """Compatibility wrapper around the canonical period parser sort key."""
+    return compatibility_sort_key(label)
 
 
 def sort_periods_chronologically(periods: list[dict]) -> list[dict]:
@@ -951,12 +935,26 @@ def _build_multi_cancelled_result(collected: list[dict]) -> dict:
     return payload
 
 
+def _build_multi_period_error_result(period_label: str, error: str) -> dict[str, Any]:
+    return {
+        "period_label": period_label,
+        "ratios": {},
+        "score": None,
+        "risk_level": None,
+        "score_methodology": None,
+        "extraction_metadata": {},
+        "error": error,
+    }
+
+
 async def _finalize_multi_analysis_cancellation(
     session_id: str,
     progress: dict[str, int],
-    collected: list[dict],
+    extracted_periods: list[dict[str, Any]],
+    failed_periods: list[dict[str, Any]],
     session_logger: logging.Logger,
 ) -> None:
+    collected = await _assemble_multi_period_results(extracted_periods, failed_periods)
     result_payload = _build_multi_cancelled_result(collected)
     await mark_multi_session_cancelled(
         session_id,
@@ -980,7 +978,8 @@ async def _finalize_multi_analysis_cancellation(
 async def _maybe_cancel_multi_analysis(
     session_id: str,
     progress: dict[str, int],
-    collected: list[dict],
+    extracted_periods: list[dict[str, Any]],
+    failed_periods: list[dict[str, Any]],
     session_logger: logging.Logger,
 ) -> bool:
     if not await is_multi_session_cancel_requested(session_id):
@@ -988,7 +987,8 @@ async def _maybe_cancel_multi_analysis(
     await _finalize_multi_analysis_cancellation(
         session_id,
         progress,
-        collected,
+        extracted_periods,
+        failed_periods,
         session_logger,
     )
     return True
@@ -998,63 +998,127 @@ async def _process_single_period(
     period_label: str, file_path: str, session_id: str | None = None
 ) -> dict:
     """
-    Run the full financial analysis pipeline for one period's PDF.
-
-    Reuses existing pipeline functions: extractor → confidence filter → ratios → scoring.
-    NLP/recommendations are skipped for multi-period to keep latency bounded.
+    Extract one period for later batch comparative processing.
 
     Args:
         period_label: Human-readable period identifier (e.g. "2023", "Q1/2023")
         file_path: Path to the PDF file for this period
 
     Returns:
-        dict with keys: period_label, ratios, score, risk_level, extraction_metadata
-        On failure: {period_label, error: "processing_failed"}
+        dict with extracted data or a period-shaped error result.
     """
+    period_logger = get_logger(__name__, session_id=session_id, task_id=period_label)
     try:
-        scanned = await asyncio.to_thread(pdf_extractor.is_scanned_pdf, file_path)
-        if scanned:
-            text = await asyncio.to_thread(
-                pdf_extractor.extract_text_from_scanned, file_path
-            )
-        else:
-            text = await asyncio.to_thread(pdf_extractor.extract_text, file_path)
-
-        tables = await asyncio.to_thread(pdf_extractor.extract_tables, file_path)
+        extraction = await _run_extraction_phase(file_path, period_logger)
         if session_id is not None:
             await touch_multi_session_runtime_heartbeat(session_id)
-        metadata = await asyncio.to_thread(
-            pdf_extractor.parse_financial_statements_with_metadata, tables, text
-        )
-        metrics, extraction_metadata_payload = apply_confidence_filter(metadata)
-        scoring_results = await _run_scoring_phase(
-            metrics,
-            logger,
-            filename=period_label,
-            text=text,
-            extraction_metadata=extraction_metadata_payload,
-        )
-        if session_id is not None:
-            await touch_multi_session_runtime_heartbeat(session_id)
-        ratios_en = scoring_results["ratios_en"]
-        score_payload = scoring_results["score_payload"]
-
         return {
             "period_label": period_label,
-            "ratios": ratios_en,
-            "score": score_payload.get("score", None),
-            "risk_level": score_payload.get("risk_level", None),
-            "score_methodology": score_payload.get("methodology", None),
-            "extraction_metadata": extraction_metadata_payload,
+            "text": extraction["text"],
+            "metrics": extraction["metrics"],
+            "extraction_metadata": extraction["metadata"],
         }
     except FileNotFoundError:
-        logger.warning("Period '%s' file not found: %s", period_label, file_path)
-        return {"period_label": period_label, "error": "file_not_found"}
+        period_logger.warning("Period '%s' file not found: %s", period_label, file_path)
+        return _build_multi_period_error_result(period_label, "file_not_found")
     except Exception as exc:
-        logger.warning(
+        period_logger.warning(
             "Period '%s' processing failed: %s", period_label, exc, exc_info=True
         )
-        return {"period_label": period_label, "error": "processing_failed"}
+        return _build_multi_period_error_result(period_label, "processing_failed")
+
+
+def _resolve_multi_period_methodology(period_result: dict[str, Any]) -> dict[str, Any]:
+    base_ratios_ru = calculate_ratios(period_result["metrics"])
+    base_ratios_en = translate_ratios(base_ratios_ru)
+    return resolve_scoring_methodology(
+        period_result["metrics"],
+        ratios_en=base_ratios_en,
+        filename=period_result["period_label"],
+        text=period_result["text"],
+    )
+
+
+def _prepare_period_for_comparative(
+    period_result: dict[str, Any],
+) -> tuple[dict[str, Any], ComparativePeriodInput]:
+    methodology = _resolve_multi_period_methodology(period_result)
+    basis_metrics = annualize_metrics_for_period(
+        period_result["metrics"],
+        methodology["period_basis"],
+    )
+    prepared_period = {
+        "period_label": period_result["period_label"],
+        "basis_metrics": basis_metrics,
+        "extraction_metadata": period_result["extraction_metadata"],
+        "methodology": methodology,
+    }
+    comparative_input = ComparativePeriodInput(
+        period_label=period_result["period_label"],
+        metrics=basis_metrics,
+        extraction_metadata=period_result["extraction_metadata"],
+    )
+    return prepared_period, comparative_input
+
+
+def _score_comparative_period(
+    prepared_period: dict[str, Any],
+    comparative_result,
+) -> dict[str, Any]:
+    ratios_ru, _projection_trace = project_legacy_ratios(
+        comparative_result.derived_metrics
+    )
+    ratios_en = translate_ratios(ratios_ru)
+    score_context = calculate_score_from_precomputed_ratios(
+        metrics=prepared_period["basis_metrics"],
+        ratios_ru=ratios_ru,
+        ratios_en=ratios_en,
+        methodology=prepared_period["methodology"],
+        extraction_metadata=prepared_period["extraction_metadata"],
+    )
+    score_payload = score_context["score_payload"]
+    return {
+        "period_label": prepared_period["period_label"],
+        "ratios": ratios_en,
+        "score": score_payload.get("score"),
+        "risk_level": score_payload.get("risk_level"),
+        "score_methodology": score_payload.get("methodology"),
+        "extraction_metadata": prepared_period["extraction_metadata"],
+    }
+
+
+def _build_multi_period_results(extracted_periods: list[dict[str, Any]]) -> list[dict]:
+    prepared_periods: list[dict[str, Any]] = []
+    comparative_inputs: list[ComparativePeriodInput] = []
+    for period_result in extracted_periods:
+        prepared_period, comparative_input = _prepare_period_for_comparative(
+            period_result
+        )
+        prepared_periods.append(prepared_period)
+        comparative_inputs.append(comparative_input)
+
+    comparative_results = run_comparative_math(comparative_inputs)
+    return [
+        _score_comparative_period(prepared_period, comparative_result)
+        for prepared_period, comparative_result in zip(
+            prepared_periods,
+            comparative_results,
+            strict=True,
+        )
+    ]
+
+
+async def _assemble_multi_period_results(
+    extracted_periods: list[dict[str, Any]],
+    failed_periods: list[dict[str, Any]],
+) -> list[dict]:
+    if not extracted_periods:
+        return list(failed_periods)
+    successful_results = await asyncio.to_thread(
+        _build_multi_period_results,
+        list(extracted_periods),
+    )
+    return [*failed_periods, *successful_results]
 
 
 async def process_multi_analysis(
@@ -1079,8 +1143,8 @@ async def process_multi_analysis(
     session_logger = get_logger(__name__, session_id=session_id)
     session_logger.info("Multi-analysis session started: %d periods", total)
 
-    collected: list[dict] = []
-    failed_count = 0
+    extracted_periods: list[dict[str, Any]] = []
+    failed_periods: list[dict[str, Any]] = []
     remaining_paths = [period.file_path for period in periods]
 
     try:
@@ -1094,7 +1158,8 @@ async def process_multi_analysis(
         if await _maybe_cancel_multi_analysis(
             session_id,
             {"completed": 0, "total": total},
-            collected,
+            extracted_periods,
+            failed_periods,
             session_logger,
         ):
             return
@@ -1119,7 +1184,8 @@ async def process_multi_analysis(
             if await _maybe_cancel_multi_analysis(
                 session_id,
                 progress_payload,
-                collected,
+                extracted_periods,
+                failed_periods,
                 session_logger,
             ):
                 return
@@ -1138,12 +1204,11 @@ async def process_multi_analysis(
                 remaining_paths.remove(file_path)
 
             if "error" in result:
-                failed_count += 1
+                failed_periods.append(result)
                 period_logger.warning("Period failed: %s", result["error"])
             else:
+                extracted_periods.append(result)
                 period_logger.info("Period completed successfully")
-
-            collected.append(result)
 
             progress_payload = {"completed": idx + 1, "total": total}
             await update_multi_session(
@@ -1165,11 +1230,19 @@ async def process_multi_analysis(
         if await _maybe_cancel_multi_analysis(
             session_id,
             {"completed": total, "total": total},
-            collected,
+            extracted_periods,
+            failed_periods,
             session_logger,
         ):
             return
 
+        await touch_multi_session_runtime_heartbeat(session_id)
+        collected = await _assemble_multi_period_results(
+            extracted_periods,
+            failed_periods,
+        )
+        await touch_multi_session_runtime_heartbeat(session_id)
+        failed_count = len(failed_periods)
         sorted_results = sort_periods_chronologically(collected)
         total_duration = (time.monotonic() - start_time) * 1000
 

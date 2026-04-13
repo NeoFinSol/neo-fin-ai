@@ -1,4 +1,5 @@
 ﻿"""Basic smoke tests for calculate_integral_score (legacy compatibility)."""
+
 from __future__ import annotations
 
 import pytest
@@ -7,6 +8,7 @@ from src.analysis.scoring import (
     WEIGHTS,
     annualize_metrics_for_period,
     calculate_integral_score,
+    calculate_score_from_precomputed_ratios,
     calculate_score_with_context,
     resolve_scoring_methodology,
 )
@@ -15,18 +17,18 @@ from src.analysis.scoring import (
 def test_calculate_integral_score_happy_path():
     """All available ratios at benchmark should still yield the top score."""
     ratios = {
-        "Коэффициент текущей ликвидности": 2.0,       # target 2.0 → norm 1.0
-        "Коэффициент быстрой ликвидности": 1.0,       # target 1.0 → norm 1.0
-        "Коэффициент абсолютной ликвидности": 0.2,    # target 0.2 → norm 1.0
-        "Рентабельность активов (ROA)": 0.08,         # target 0.08 → norm 1.0
+        "Коэффициент текущей ликвидности": 2.0,  # target 2.0 → norm 1.0
+        "Коэффициент быстрой ликвидности": 1.0,  # target 1.0 → norm 1.0
+        "Коэффициент абсолютной ликвидности": 0.2,  # target 0.2 → norm 1.0
+        "Рентабельность активов (ROA)": 0.08,  # target 0.08 → norm 1.0
         "Рентабельность собственного капитала (ROE)": 0.15,  # target 0.15 → norm 1.0
-        "Рентабельность продаж (ROS)": 0.10,          # target 0.10 → norm 1.0
-        "EBITDA маржа": 0.15,                         # target 0.15 → norm 1.0
-        "Коэффициент автономии": 0.5,                 # target 0.5 → norm 1.0
-        "Финансовый рычаг": None,                     # unavailable, not treated as ideal
-        "Покрытие процентов": 3.0,                    # target 3.0 → norm 1.0
-        "Оборачиваемость активов": 1.0,               # target 1.0 → norm 1.0
-        "Оборачиваемость запасов": 8.0,               # target 8.0 → norm 1.0
+        "Рентабельность продаж (ROS)": 0.10,  # target 0.10 → norm 1.0
+        "EBITDA маржа": 0.15,  # target 0.15 → norm 1.0
+        "Коэффициент автономии": 0.5,  # target 0.5 → norm 1.0
+        "Финансовый рычаг": None,  # unavailable, not treated as ideal
+        "Покрытие процентов": 3.0,  # target 3.0 → norm 1.0
+        "Оборачиваемость активов": 1.0,  # target 1.0 → norm 1.0
+        "Оборачиваемость запасов": 8.0,  # target 8.0 → norm 1.0
         "Оборачиваемость дебиторской задолженности": 8.0,  # target 8.0 → norm 1.0
     }
 
@@ -334,3 +336,53 @@ def test_calculate_score_with_context_captures_issuer_override_adjustments():
     assert "issuer_override:ebitda" in methodology["adjustments"]
     assert "issuer_override:interest_expense" in methodology["adjustments"]
     assert "issuer_override:net_profit" in methodology["adjustments"]
+
+
+def test_calculate_score_from_precomputed_ratios_matches_existing_score_context_shape():
+    methodology = {
+        "benchmark_profile": "generic",
+        "period_basis": "reported",
+        "detection_mode": "auto",
+        "reasons": [],
+        "guardrails": [],
+        "leverage_basis": "total_liabilities",
+        "ifrs16_adjusted": False,
+        "adjustments": [],
+        "peer_context": [],
+    }
+    ratios_ru = {
+        "Коэффициент текущей ликвидности": 2.0,
+        "Рентабельность активов (ROA)": 0.1,
+        "Рентабельность собственного капитала (ROE)": 0.2,
+        "Оборачиваемость активов": 1.0,
+    }
+    ratios_en = {
+        "current_ratio": 2.0,
+        "roa": 0.1,
+        "roe": 0.2,
+        "asset_turnover": 1.0,
+    }
+
+    result = calculate_score_from_precomputed_ratios(
+        metrics={
+            "revenue": 120.0,
+            "net_profit": 12.0,
+            "total_assets": 140.0,
+            "equity": 70.0,
+        },
+        ratios_ru=ratios_ru,
+        ratios_en=ratios_en,
+        methodology=methodology,
+        extraction_metadata=None,
+    )
+
+    assert set(result.keys()) == {
+        "ratios_ru",
+        "ratios_en",
+        "raw_score",
+        "score_payload",
+        "methodology",
+    }
+    for key, value in ratios_en.items():
+        assert result["ratios_en"][key] == value
+    assert result["score_payload"]["methodology"]["benchmark_profile"] == "generic"

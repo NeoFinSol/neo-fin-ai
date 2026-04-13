@@ -83,6 +83,26 @@ def test_projection_uses_suppressed_trace_for_unsupported_legacy_exports() -> No
     )
 
 
+def test_projection_returns_enabled_average_balance_metrics_when_valid() -> None:
+    engine = MathEngine()
+    metrics = engine.compute(
+        normalize_inputs(
+            {
+                "revenue": {"value": 120.0},
+                "net_profit": {"value": 12.0},
+                "average_total_assets": {"value": 120.0},
+                "average_equity": {"value": 60.0},
+            }
+        )
+    )
+
+    values, _trace = project_legacy_ratios(metrics)
+
+    assert values["Рентабельность активов (ROA)"] == 0.1
+    assert values["Рентабельность собственного капитала (ROE)"] == 0.2
+    assert values["Оборачиваемость активов"] == 1.0
+
+
 def test_project_legacy_ratios_returns_all_map_keys() -> None:
     engine = MathEngine()
     metrics = engine.compute(
