@@ -96,6 +96,7 @@ def test_raw_candidates_use_named_candidate_records_with_existing_precedence() -
 
 def test_pipeline_parse_with_metadata_runs_explicit_stage_sequence(monkeypatch) -> None:
     call_order: list[str] = []
+    guardrail_events_ref = None
 
     context = types.ExtractorContext(
         tables=[],
@@ -128,24 +129,40 @@ def test_pipeline_parse_with_metadata_runs_explicit_stage_sequence(monkeypatch) 
     def fake_collect_text_candidates(
         extractor_context: types.ExtractorContext,
         raw: types.RawCandidates,
+        *,
+        guardrail_events,
     ) -> None:
+        nonlocal guardrail_events_ref
         call_order.append("text")
         assert extractor_context is context
+        guardrail_events_ref = guardrail_events
 
     def fake_derive_missing_metrics(
         extractor_context: types.ExtractorContext,
         raw: types.RawCandidates,
+        *,
+        guardrail_events,
     ) -> None:
         call_order.append("derive")
         assert extractor_context is context
+        assert guardrail_events is guardrail_events_ref
 
     def fake_build_metadata_result(
         extractor_context: types.ExtractorContext,
         raw: types.RawCandidates,
+        *,
+        guardrail_events,
+        include_decision_logs: bool,
+        confidence_policy,
+        winner_map,
     ) -> dict[str, types.ExtractionMetadata]:
         call_order.append("build")
         assert extractor_context is context
         assert raw["revenue"].value == 1000.0
+        assert guardrail_events is guardrail_events_ref
+        assert include_decision_logs is False
+        assert confidence_policy is None
+        assert isinstance(winner_map, dict)
         result = {
             key: types.ExtractionMetadata(
                 value=None,
@@ -251,3 +268,9 @@ def test_legacy_helpers_keeps_only_single_parse_entrypoint_definition() -> None:
 
     assert source.count("def parse_financial_statements_with_metadata(") == 1
     assert source.count("def parse_financial_statements(") == 1
+
+
+def test_pipeline_module_has_no_signature_introspection_dispatch() -> None:
+    source = Path(pipeline.__file__).read_text(encoding="utf-8")
+
+    assert "inspect.signature" not in source

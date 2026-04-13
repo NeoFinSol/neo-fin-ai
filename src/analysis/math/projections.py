@@ -1,24 +1,7 @@
 from __future__ import annotations
 
 from src.analysis.math.contracts import DerivedMetric, ValidityState
-
-LEGACY_RATIO_NAME_MAP = {
-    "current_ratio": "Коэффициент текущей ликвидности",
-    "quick_ratio": "Коэффициент быстрой ликвидности",
-    "absolute_liquidity_ratio": "Коэффициент абсолютной ликвидности",
-    "roa": "Рентабельность активов (ROA)",
-    "roe": "Рентабельность собственного капитала (ROE)",
-    "ros": "Рентабельность продаж (ROS)",
-    "equity_ratio": "Коэффициент автономии",
-    "financial_leverage": "Финансовый рычаг",
-    "financial_leverage_total": "Финансовый рычаг (обязательства/капитал)",
-    "ebitda_margin": "EBITDA маржа",
-    "financial_leverage_debt_only": "Финансовый рычаг (долг/капитал)",
-    "interest_coverage": "Покрытие процентов",
-    "asset_turnover": "Оборачиваемость активов",
-    "inventory_turnover": "Оборачиваемость запасов",
-    "receivables_turnover": "Оборачиваемость дебиторской задолженности",
-}
+from src.analysis.math.registry import LEGACY_RATIO_NAME_MAP
 
 
 def project_metric_value(

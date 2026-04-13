@@ -19,6 +19,11 @@ MetricComputer = Callable[[TypedInputs], MetricComputationResult]
 
 
 @dataclass(frozen=True, slots=True)
+class InputDomainConstraint:
+    requires_non_negative: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class MetricDefinition:
     metric_id: str
     formula_id: str
@@ -29,6 +34,9 @@ class MetricDefinition:
     averaging_policy: AveragingPolicy
     suppression_policy: SuppressionPolicy
     compute: MetricComputer
+    legacy_label: str | None = None
+    frontend_key: str | None = None
+    non_negative_inputs: tuple[str, ...] = ()
 
 
 def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
@@ -76,7 +84,7 @@ def _placeholder_compute(metric_id: str) -> MetricComputer:
     return _compute
 
 
-def _suppressed_placeholder(metric_id: str) -> MetricDefinition:
+def _suppressed_placeholder(metric_id: str, legacy_label: str) -> MetricDefinition:
     return MetricDefinition(
         metric_id=metric_id,
         formula_id=metric_id,
@@ -87,6 +95,8 @@ def _suppressed_placeholder(metric_id: str) -> MetricDefinition:
         averaging_policy=AveragingPolicy.NONE,
         suppression_policy=SuppressionPolicy.SUPPRESS_UNSAFE,
         compute=_placeholder_compute(metric_id),
+        legacy_label=legacy_label,
+        frontend_key=metric_id,
     )
 
 
@@ -102,6 +112,9 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.NEVER,
             compute=_ratio("current_assets", "short_term_liabilities"),
+            legacy_label="Коэффициент текущей ликвидности",
+            frontend_key="current_ratio",
+            non_negative_inputs=("current_assets", "short_term_liabilities"),
         ),
         "absolute_liquidity_ratio": MetricDefinition(
             metric_id="absolute_liquidity_ratio",
@@ -113,6 +126,9 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.NEVER,
             compute=_ratio("cash_and_equivalents", "short_term_liabilities"),
+            legacy_label="Коэффициент абсолютной ликвидности",
+            frontend_key="absolute_liquidity_ratio",
+            non_negative_inputs=("cash_and_equivalents", "short_term_liabilities"),
         ),
         "ros": MetricDefinition(
             metric_id="ros",
@@ -124,6 +140,9 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.NEVER,
             compute=_ratio("net_profit", "revenue"),
+            legacy_label="Рентабельность продаж (ROS)",
+            frontend_key="ros",
+            non_negative_inputs=("revenue",),
         ),
         "equity_ratio": MetricDefinition(
             metric_id="equity_ratio",
@@ -135,6 +154,9 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.NEVER,
             compute=_ratio("equity", "total_assets"),
+            legacy_label="Коэффициент автономии",
+            frontend_key="equity_ratio",
+            non_negative_inputs=("equity", "total_assets"),
         ),
         "ebitda_margin": MetricDefinition(
             metric_id="ebitda_margin",
@@ -146,18 +168,85 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.SUPPRESS_UNSAFE,
             compute=_ratio("ebitda_reported", "revenue"),
+            legacy_label="EBITDA маржа",
+            frontend_key="ebitda_margin",
+            non_negative_inputs=("revenue",),
         ),
-        "quick_ratio": _suppressed_placeholder("quick_ratio"),
-        "roa": _suppressed_placeholder("roa"),
-        "roe": _suppressed_placeholder("roe"),
-        "financial_leverage": _suppressed_placeholder("financial_leverage"),
-        "financial_leverage_total": _suppressed_placeholder("financial_leverage_total"),
+        "quick_ratio": _suppressed_placeholder(
+            "quick_ratio",
+            "Коэффициент быстрой ликвидности",
+        ),
+        "roa": _suppressed_placeholder("roa", "Рентабельность активов (ROA)"),
+        "roe": _suppressed_placeholder(
+            "roe",
+            "Рентабельность собственного капитала (ROE)",
+        ),
+        "financial_leverage": _suppressed_placeholder(
+            "financial_leverage",
+            "Финансовый рычаг",
+        ),
+        "financial_leverage_total": _suppressed_placeholder(
+            "financial_leverage_total",
+            "Финансовый рычаг (обязательства/капитал)",
+        ),
         "financial_leverage_debt_only": _suppressed_placeholder(
-            "financial_leverage_debt_only"
+            "financial_leverage_debt_only",
+            "Финансовый рычаг (долг/капитал)",
         ),
-        "interest_coverage": _suppressed_placeholder("interest_coverage"),
-        "asset_turnover": _suppressed_placeholder("asset_turnover"),
-        "inventory_turnover": _suppressed_placeholder("inventory_turnover"),
-        "receivables_turnover": _suppressed_placeholder("receivables_turnover"),
+        "interest_coverage": _suppressed_placeholder(
+            "interest_coverage",
+            "Покрытие процентов",
+        ),
+        "asset_turnover": _suppressed_placeholder(
+            "asset_turnover",
+            "Оборачиваемость активов",
+        ),
+        "inventory_turnover": _suppressed_placeholder(
+            "inventory_turnover",
+            "Оборачиваемость запасов",
+        ),
+        "receivables_turnover": _suppressed_placeholder(
+            "receivables_turnover",
+            "Оборачиваемость дебиторской задолженности",
+        ),
     }
 )
+
+
+def _build_legacy_ratio_name_map(
+    definitions: dict[str, MetricDefinition],
+) -> dict[str, str]:
+    return {
+        metric_id: definition.legacy_label
+        for metric_id, definition in definitions.items()
+        if definition.legacy_label is not None
+    }
+
+
+def _build_frontend_ratio_key_map(
+    definitions: dict[str, MetricDefinition],
+) -> dict[str, str]:
+    return {
+        definition.legacy_label: definition.frontend_key
+        for definition in definitions.values()
+        if definition.legacy_label is not None and definition.frontend_key is not None
+    }
+
+
+def _build_input_domain_constraints(
+    definitions: dict[str, MetricDefinition],
+) -> dict[str, InputDomainConstraint]:
+    constraints: dict[str, InputDomainConstraint] = {}
+    for definition in definitions.values():
+        for metric_key in definition.non_negative_inputs:
+            constraints[metric_key] = InputDomainConstraint(requires_non_negative=True)
+    return constraints
+
+
+LEGACY_RATIO_NAME_MAP = MappingProxyType(_build_legacy_ratio_name_map(REGISTRY))
+RATIO_KEY_MAP = MappingProxyType(_build_frontend_ratio_key_map(REGISTRY))
+INPUT_DOMAIN_CONSTRAINTS = MappingProxyType(_build_input_domain_constraints(REGISTRY))
+
+
+def get_input_domain_constraint(metric_key: str) -> InputDomainConstraint:
+    return INPUT_DOMAIN_CONSTRAINTS.get(metric_key, InputDomainConstraint())

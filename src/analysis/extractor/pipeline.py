@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import inspect
 from dataclasses import dataclass, field
+from typing import Protocol, TypeAlias
 
 from . import legacy_helpers, semantics
 from .confidence_policy import ConfidencePolicy
@@ -34,6 +34,35 @@ class ExtractorStageTrace:
     raw_candidates: RawCandidates
     guardrail_events: list[semantics.GuardrailEvent]
     winner_map: dict[str, str | None] = field(default_factory=dict)
+
+
+MetadataBuildResult: TypeAlias = (
+    dict[str, ExtractionMetadata]
+    | tuple[dict[str, ExtractionMetadata], dict[str, semantics.SemanticsDecisionLog]]
+)
+
+
+class StageCollector(Protocol):
+    def __call__(
+        self,
+        context: ExtractorContext,
+        raw: RawCandidates,
+        *,
+        guardrail_events: list[semantics.GuardrailEvent],
+    ) -> None: ...
+
+
+class MetadataBuilder(Protocol):
+    def __call__(
+        self,
+        context: ExtractorContext,
+        raw: RawCandidates,
+        *,
+        guardrail_events: list[semantics.GuardrailEvent],
+        include_decision_logs: bool,
+        confidence_policy: ConfidencePolicy | None,
+        winner_map: dict[str, str | None] | None = None,
+    ) -> MetadataBuildResult: ...
 
 
 def _build_context(tables: list, text: str) -> ExtractorContext:
@@ -178,27 +207,17 @@ def _build_metadata_result(
 
 
 def _invoke_stage_collector(
-    collector,
+    collector: StageCollector,
     context: ExtractorContext,
     raw: RawCandidates,
     *,
     guardrail_events: list[semantics.GuardrailEvent],
 ) -> None:
-    try:
-        signature = inspect.signature(collector)
-    except (TypeError, ValueError):
-        collector(context, raw, guardrail_events=guardrail_events)
-        return
-
-    if "guardrail_events" in signature.parameters:
-        collector(context, raw, guardrail_events=guardrail_events)
-        return
-
-    collector(context, raw)
+    collector(context, raw, guardrail_events=guardrail_events)
 
 
 def _invoke_metadata_builder(
-    builder,
+    builder: MetadataBuilder,
     context: ExtractorContext,
     raw: RawCandidates,
     *,
@@ -206,29 +225,15 @@ def _invoke_metadata_builder(
     include_decision_logs: bool,
     confidence_policy: ConfidencePolicy | None,
     winner_map: dict[str, str | None] | None = None,
-):
-    try:
-        signature = inspect.signature(builder)
-    except (TypeError, ValueError):
-        return builder(
-            context,
-            raw,
-            guardrail_events=guardrail_events,
-            include_decision_logs=include_decision_logs,
-            confidence_policy=confidence_policy,
-            winner_map=winner_map,
-        )
-
-    kwargs = {}
-    if "guardrail_events" in signature.parameters:
-        kwargs["guardrail_events"] = guardrail_events
-    if "include_decision_logs" in signature.parameters:
-        kwargs["include_decision_logs"] = include_decision_logs
-    if "confidence_policy" in signature.parameters:
-        kwargs["confidence_policy"] = confidence_policy
-    if "winner_map" in signature.parameters:
-        kwargs["winner_map"] = winner_map
-    return builder(context, raw, **kwargs)
+) -> MetadataBuildResult:
+    return builder(
+        context,
+        raw,
+        guardrail_events=guardrail_events,
+        include_decision_logs=include_decision_logs,
+        confidence_policy=confidence_policy,
+        winner_map=winner_map,
+    )
 
 
 def parse_financial_statements_with_metadata(
