@@ -4,16 +4,9 @@ import math
 from typing import Any
 
 from src.analysis.math.contracts import MetricInputRef, TypedInputs
+from src.analysis.math.registry import get_input_domain_constraint
 
 DENOMINATOR_EPSILON = 1e-9  # Threshold below which denominator is treated as near-zero to avoid instability
-EXPECTED_NON_NEGATIVE_INPUTS = {
-    "cash_and_equivalents",
-    "current_assets",
-    "equity",
-    "revenue",
-    "short_term_liabilities",
-    "total_assets",
-}
 KNOWN_MONETARY_UNITS = {None, "currency"}
 
 
@@ -26,7 +19,8 @@ def validate_input_semantics(key: str, raw_value: Any) -> MetricInputRef:
         return candidate
     if not math.isfinite(value):
         return _invalidate_input(candidate, "input_non_finite")
-    if key in EXPECTED_NON_NEGATIVE_INPUTS and value < 0:
+    domain_constraint = get_input_domain_constraint(key)
+    if domain_constraint.requires_non_negative and value < 0:
         return _invalidate_input(candidate, "unexpected_negative_input")
     return candidate
 

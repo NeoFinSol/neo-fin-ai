@@ -178,3 +178,22 @@ def test_legacy_and_ratio_key_maps_are_consistent() -> None:
     from src.analysis.math.projections import LEGACY_RATIO_NAME_MAP
 
     assert set(LEGACY_RATIO_NAME_MAP.keys()) == set(RATIO_KEY_MAP.values())
+
+
+def test_metric_definitions_encode_naming_projections() -> None:
+    from src.analysis.math.registry import REGISTRY
+
+    definition = REGISTRY["current_ratio"]
+
+    assert definition.legacy_label == "Коэффициент текущей ликвидности"
+    assert definition.frontend_key == "current_ratio"
+
+
+def test_ratio_lookup_maps_are_reexported_from_canonical_registry() -> None:
+    from src.analysis import ratios
+    from src.analysis.math import projections
+    from src.analysis.math.registry import LEGACY_RATIO_NAME_MAP as canonical_legacy_map
+    from src.analysis.math.registry import RATIO_KEY_MAP as canonical_ratio_key_map
+
+    assert projections.LEGACY_RATIO_NAME_MAP is canonical_legacy_map
+    assert ratios.RATIO_KEY_MAP is canonical_ratio_key_map

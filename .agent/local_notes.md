@@ -3,22 +3,34 @@
 ## Активные проблемы
 
 ### Tech debt: confidence penalty factor — magic constant 0.9 в engine
-**Статус**: открыт
+**Статус**: ✅ Решено
 **Дата**: 2026-04-12
 **Проблема**: `_derive_confidence` в `src/analysis/math/engine.py` содержит `0.9` как missing-confidence penalty factor. Это policy decision, живущий не в policies.py. При изменении penalty придётся править engine.
-**Решение**: вынести в `src/analysis/math/policies.py` как `MISSING_CONFIDENCE_PENALTY_FACTOR: Final = 0.9`.
+**Решение**: penalty вынесен в `src/analysis/math/policies.py` как `MISSING_CONFIDENCE_PENALTY_FACTOR: Final = 0.9`; engine теперь читает только policy constant.
 
 ### Tech debt: domain constraints в validators
-**Статус**: открыт
+**Статус**: ✅ Решено (2026-04-13)
 **Дата**: 2026-04-12
 **Проблема**: `EXPECTED_NON_NEGATIVE_INPUTS` в `src/analysis/math/validators.py` — хардкоженный набор ключей (`cash_and_equivalents`, `equity`, `revenue`, etc.). Это domain/registry knowledge, а не validation concern. Новая метрика с non-negative constraint требует правки validators.
-**Решение**: вынести в registry или отдельный `domain_constraints.py`, либо сделать частью `MetricDefinition`.
+**Решение**: `MetricDefinition` теперь несёт `non_negative_inputs`, а `INPUT_DOMAIN_CONSTRAINTS`/`get_input_domain_constraint()` строятся производно из canonical registry. `validators.py` больше не содержит отдельного semantic list.
 
 ### Tech debt: две параллельные map без structural link
-**Статус**: открыт
+**Статус**: ✅ Решено (2026-04-13)
 **Дата**: 2026-04-12
 **Проблема**: `LEGACY_RATIO_NAME_MAP` (projections.py) и `RATIO_KEY_MAP` (ratios.py) содержат одинаковые 15 metric IDs, но поддерживаются независимо. Drift risk — добавление entry в одну map без другой = тихий regression.
-**Решение**: сделать одну map authoritative, вторую — производной, либо добавить тест `set(LEGACY_RATIO_NAME_MAP.keys()) == set(RATIO_KEY_MAP.values())`.
+**Решение**: canonical naming projections перенесены в `MetricDefinition` (`legacy_label`, `frontend_key`) внутри `src/analysis/math/registry.py`; `LEGACY_RATIO_NAME_MAP` и `RATIO_KEY_MAP` теперь derived lookup maps, локальная map в `ratios.py` удалена.
+
+### Confirmed debt wave: `process_pdf()`, `upload_pdf()` и reflection dispatch remediation
+**Статус**: ✅ Решено (2026-04-13)
+**Дата**: 2026-04-13
+**Проблема**: после интеграции `Math Layer v1` оставались три cross-layer structural хвоста:
+- `src/tasks.py::process_pdf()` был слишком длинным orchestration entrypoint
+- `src/routers/pdf_tasks.py::upload_pdf()` смешивал transport, tempfile lifecycle, DB creation и dispatch coordination
+- `src/analysis/extractor/pipeline.py` использовал `inspect.signature(...)` как implicit compatibility dispatch
+**Решение**:
+- `process_pdf()` превращён в thin orchestration wrapper с phase helpers и сохранением status/cancellation behavior
+- `upload_pdf()` превращён в thin boundary wrapper с отдельными helpers для upload/save/provider/DB/dispatch path
+- reflection dispatch удалён; pipeline stage invocation теперь идёт только по explicit typed callable contract
 
 ### Tech debt: precompute.py не должен стать вторым math engine
 **Статус**: открыт

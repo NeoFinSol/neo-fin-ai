@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 
 import pytest
 
@@ -338,3 +339,20 @@ def test_engine_missing_confidence_applies_penalty() -> None:
     assert metric.confidence == pytest.approx(0.9 * 0.9)
     assert metric.confidence_components["missing_confidence_penalty_applied"] is True
     assert metric.confidence_components["missing_confidence_penalty_factor"] == 0.9
+
+
+def test_registry_derives_input_domain_constraints() -> None:
+    from src.analysis.math.registry import (
+        INPUT_DOMAIN_CONSTRAINTS,
+        get_input_domain_constraint,
+    )
+
+    assert INPUT_DOMAIN_CONSTRAINTS["cash_and_equivalents"].requires_non_negative
+    assert INPUT_DOMAIN_CONSTRAINTS["revenue"].requires_non_negative
+    assert not get_input_domain_constraint("net_profit").requires_non_negative
+
+
+def test_validators_module_has_no_hardcoded_domain_constraint_sets() -> None:
+    source = Path("src/analysis/math/validators.py").read_text(encoding="utf-8")
+
+    assert "EXPECTED_NON_NEGATIVE_INPUTS" not in source

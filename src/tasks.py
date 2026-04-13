@@ -177,6 +177,293 @@ async def _maybe_cancel_analysis(task_id: str, task_logger: logging.Logger) -> b
     return True
 
 
+async def _start_analysis_processing(
+    task_id: str,
+    task_logger: logging.Logger,
+) -> bool:
+    task_logger.info("PDF processing started")
+
+    if not await _ensure_analysis_exists(task_id):
+        task_logger.critical("Database unavailable - aborting processing")
+        metrics.record_task_failure()
+        return False
+
+    await touch_analysis_runtime_heartbeat(task_id)
+    return not await _maybe_cancel_analysis(task_id, task_logger)
+
+
+async def _broadcast_analysis_status(
+    task_id: str,
+    status: str,
+    progress: int,
+) -> None:
+    await broadcast_task_event(
+        task_id,
+        {
+            "type": "status_update",
+            "task_id": task_id,
+            "status": status,
+            "progress": progress,
+        },
+    )
+
+
+async def _checkpoint_analysis_phase(
+    task_id: str,
+    task_logger: logging.Logger,
+    *,
+    next_status: str | None = None,
+    progress: int | None = None,
+) -> bool:
+    await touch_analysis_runtime_heartbeat(task_id)
+    if await _maybe_cancel_analysis(task_id, task_logger):
+        return False
+    if next_status is not None and progress is not None:
+        await _broadcast_analysis_status(task_id, next_status, progress)
+    return True
+
+
+async def _load_analysis_filename(task_id: str) -> str | None:
+    analysis_record = await get_analysis(task_id)
+    if analysis_record and isinstance(analysis_record.result, dict):
+        return analysis_record.result.get("filename")
+    return None
+
+
+def _build_result_payload(
+    *,
+    filename: str | None,
+    scanned: bool,
+    text: str,
+    tables: list,
+    metrics_filtered: dict,
+    ratios_en: dict,
+    score_payload: dict,
+    nlp_result: dict,
+    ai_runtime: dict,
+    metadata_payload: dict,
+) -> dict:
+    return {
+        "filename": filename,
+        "data": {
+            "scanned": scanned,
+            "text": text[:5000],
+            "tables": tables[:10],
+            "metrics": metrics_filtered,
+            "ratios": ratios_en,
+            "score": score_payload,
+            "nlp": nlp_result,
+            "ai_runtime": ai_runtime,
+            "extraction_metadata": metadata_payload,
+        },
+    }
+
+
+def _coerce_final_metadata(
+    metadata_payload: dict,
+) -> dict[str, ExtractionMetadataType]:
+    final_metadata: dict[str, ExtractionMetadataType] = {}
+    for metric_key, metric_value in metadata_payload.items():
+        if isinstance(metric_value, dict) and "confidence" in metric_value:
+            final_metadata[metric_key] = ExtractionMetadataType(**metric_value)
+        elif isinstance(metric_value, ExtractionMetadataType):
+            final_metadata[metric_key] = metric_value
+    return final_metadata
+
+
+def _build_result_decision_trace(
+    extraction_results: dict,
+    metadata_payload: dict,
+) -> dict:
+    extractor_debug = extraction_results.get("extractor_debug")
+    raw_candidates = (
+        extractor_debug.raw_candidates if extractor_debug else RawCandidates()
+    )
+    decision_logs = extractor_debug.decision_logs if extractor_debug else {}
+    guardrail_events = extractor_debug.guardrail_events if extractor_debug else []
+    winner_map = extractor_debug.winner_map if extractor_debug else {}
+
+    decision_trace = build_decision_trace(
+        raw_candidates=raw_candidates,
+        metadata=_coerce_final_metadata(metadata_payload),
+        decision_logs=decision_logs,
+        guardrail_events=guardrail_events,
+        winner_map=winner_map,
+        llm_merge_trace=extraction_results.get("llm_merge_trace"),
+        issuer_overrides=extraction_results.get("issuer_override_traces", []),
+        confidence_threshold=CALIBRATED_RUNTIME_CONFIDENCE_POLICY.strong_direct_threshold,
+        policy_name=CALIBRATED_RUNTIME_CONFIDENCE_POLICY.name,
+    )
+    return decision_trace_to_dict(decision_trace)
+
+
+def _attach_decision_trace(
+    result_payload: dict,
+    extraction_results: dict,
+    metadata_payload: dict,
+) -> None:
+    result_payload["data"]["decision_trace"] = _build_result_decision_trace(
+        extraction_results,
+        metadata_payload,
+    )
+
+
+async def _run_analysis_extraction_step(
+    task_id: str,
+    file_path: str,
+    task_logger: logging.Logger,
+    *,
+    ai_provider: str | None,
+    debug_trace: bool,
+) -> dict | None:
+    await _broadcast_analysis_status(task_id, "extracting", 25)
+    extraction_results = await _run_extraction_phase(
+        file_path,
+        task_logger,
+        ai_provider=ai_provider,
+        debug_trace=debug_trace,
+    )
+    if not await _checkpoint_analysis_phase(
+        task_id,
+        task_logger,
+        next_status="scoring",
+        progress=55,
+    ):
+        return None
+    return extraction_results
+
+
+async def _run_analysis_scoring_step(
+    task_id: str,
+    extraction_results: dict,
+    task_logger: logging.Logger,
+) -> tuple[str | None, dict] | None:
+    filename = await _load_analysis_filename(task_id)
+    scoring_results = await _run_scoring_phase(
+        extraction_results["metrics"],
+        task_logger,
+        filename=filename,
+        text=extraction_results["text"],
+        extraction_metadata=extraction_results["metadata"],
+    )
+    if not await _checkpoint_analysis_phase(
+        task_id,
+        task_logger,
+        next_status="analyzing",
+        progress=80,
+    ):
+        return None
+    return filename, scoring_results
+
+
+async def _run_analysis_ai_step(
+    task_id: str,
+    extraction_results: dict,
+    scoring_results: dict,
+    task_logger: logging.Logger,
+    *,
+    ai_provider: str | None,
+) -> tuple[dict, dict] | None:
+    ai_results = await _run_ai_analysis_phase(
+        extraction_results["text"],
+        extraction_results["metrics"],
+        scoring_results["ratios_en"],
+        task_logger,
+        ai_provider=ai_provider,
+    )
+    if not await _checkpoint_analysis_phase(task_id, task_logger):
+        return None
+    return ai_results
+
+
+async def _finalize_analysis_success(
+    task_id: str,
+    start_time: float,
+    task_logger: logging.Logger,
+    *,
+    filename: str | None,
+    extraction_results: dict,
+    scoring_results: dict,
+    nlp_result: dict,
+    ai_runtime: dict,
+    debug_trace: bool,
+) -> None:
+    result_payload = _build_result_payload(
+        filename=filename,
+        scanned=extraction_results["scanned"],
+        text=extraction_results["text"],
+        tables=extraction_results["tables"],
+        metrics_filtered=extraction_results["metrics"],
+        ratios_en=scoring_results["ratios_en"],
+        score_payload=scoring_results["score_payload"],
+        nlp_result=nlp_result,
+        ai_runtime=ai_runtime,
+        metadata_payload=extraction_results["metadata"],
+    )
+    if debug_trace:
+        _attach_decision_trace(
+            result_payload,
+            extraction_results,
+            extraction_results["metadata"],
+        )
+
+    total_duration = (time.monotonic() - start_time) * 1000
+    await _finalize_task(task_id, result_payload, total_duration, task_logger)
+
+
+async def _run_process_pdf(
+    task_id: str,
+    file_path: str,
+    task_logger: logging.Logger,
+    *,
+    ai_provider: str | None,
+    debug_trace: bool,
+    start_time: float,
+) -> None:
+    if not await _start_analysis_processing(task_id, task_logger):
+        return
+
+    extraction_results = await _run_analysis_extraction_step(
+        task_id,
+        file_path,
+        task_logger,
+        ai_provider=ai_provider,
+        debug_trace=debug_trace,
+    )
+    if extraction_results is None:
+        return
+
+    scoring_step = await _run_analysis_scoring_step(
+        task_id, extraction_results, task_logger
+    )
+    if scoring_step is None:
+        return
+    filename, scoring_results = scoring_step
+
+    ai_step = await _run_analysis_ai_step(
+        task_id,
+        extraction_results,
+        scoring_results,
+        task_logger,
+        ai_provider=ai_provider,
+    )
+    if ai_step is None:
+        return
+    nlp_result, ai_runtime = ai_step
+
+    await _finalize_analysis_success(
+        task_id,
+        start_time,
+        task_logger,
+        filename=filename,
+        extraction_results=extraction_results,
+        scoring_results=scoring_results,
+        nlp_result=nlp_result,
+        ai_runtime=ai_runtime,
+        debug_trace=debug_trace,
+    )
+
+
 async def process_pdf(
     task_id: str,
     file_path: str,
@@ -194,158 +481,20 @@ async def process_pdf(
     """
     start_time = time.monotonic()
     metrics.record_task_start()
-
     task_logger = get_logger(__name__, task_id=task_id)
 
     try:
-        task_logger.info("PDF processing started")
-
-        if not await _ensure_analysis_exists(task_id):
-            task_logger.critical("Database unavailable - aborting processing")
-            metrics.record_task_failure()
-            return
-
-        await touch_analysis_runtime_heartbeat(task_id)
-
-        if await _maybe_cancel_analysis(task_id, task_logger):
-            return
-
-        await broadcast_task_event(
+        await _run_process_pdf(
             task_id,
-            {
-                "type": "status_update",
-                "task_id": task_id,
-                "status": "extracting",
-                "progress": 25,
-            },
-        )
-
-        # 1. Extraction Phase
-        extraction_results = await _run_extraction_phase(
             file_path,
             task_logger,
             ai_provider=ai_provider,
             debug_trace=debug_trace,
+            start_time=start_time,
         )
-        text = extraction_results["text"]
-        metrics_filtered = extraction_results["metrics"]
-        metadata_payload = extraction_results["metadata"]
-        scanned = extraction_results["scanned"]
-        tables = extraction_results["tables"]
-
-        await touch_analysis_runtime_heartbeat(task_id)
-
-        if await _maybe_cancel_analysis(task_id, task_logger):
-            return
-
-        await broadcast_task_event(
-            task_id,
-            {
-                "type": "status_update",
-                "task_id": task_id,
-                "status": "scoring",
-                "progress": 55,
-            },
-        )
-
-        analysis_record = await get_analysis(task_id)
-        filename = None
-        if analysis_record and isinstance(analysis_record.result, dict):
-            filename = analysis_record.result.get("filename")
-
-        # 2. Ratios & Scoring Phase
-        scoring_results = await _run_scoring_phase(
-            metrics_filtered,
-            task_logger,
-            filename=filename,
-            text=text,
-            extraction_metadata=metadata_payload,
-        )
-        ratios_en = scoring_results["ratios_en"]
-        score_payload = scoring_results["score_payload"]
-
-        await touch_analysis_runtime_heartbeat(task_id)
-
-        if await _maybe_cancel_analysis(task_id, task_logger):
-            return
-
-        await broadcast_task_event(
-            task_id,
-            {
-                "type": "status_update",
-                "task_id": task_id,
-                "status": "analyzing",
-                "progress": 80,
-            },
-        )
-
-        # 3. AI Analysis Phase
-        nlp_result, ai_runtime = await _run_ai_analysis_phase(
-            text,
-            metrics_filtered,
-            ratios_en,
-            task_logger,
-            ai_provider=ai_provider,
-        )
-
-        await touch_analysis_runtime_heartbeat(task_id)
-
-        if await _maybe_cancel_analysis(task_id, task_logger):
-            return
-
-        # 4. Save & Notify
-        total_duration = (time.monotonic() - start_time) * 1000
-        result_payload = {
-            "filename": filename,
-            "data": {
-                "scanned": scanned,
-                "text": text[:5000],
-                "tables": tables[:10],
-                "metrics": metrics_filtered,
-                "ratios": ratios_en,
-                "score": score_payload,
-                "nlp": nlp_result,
-                "ai_runtime": ai_runtime,
-                "extraction_metadata": metadata_payload,
-            },
-        }
-
-        if debug_trace:
-            extractor_debug = extraction_results.get("extractor_debug")
-            raw_candidates = (
-                extractor_debug.raw_candidates if extractor_debug else RawCandidates()
-            )
-            decision_logs = extractor_debug.decision_logs if extractor_debug else {}
-            guardrail_events = (
-                extractor_debug.guardrail_events if extractor_debug else []
-            )
-            winner_map = extractor_debug.winner_map if extractor_debug else {}
-            final_metadata = {}
-            for mk, mv in metadata_payload.items():
-                if isinstance(mv, dict) and "confidence" in mv:
-                    final_metadata[mk] = ExtractionMetadataType(**mv)
-                elif isinstance(mv, ExtractionMetadataType):
-                    final_metadata[mk] = mv
-
-            dt = build_decision_trace(
-                raw_candidates=raw_candidates,
-                metadata=final_metadata,
-                decision_logs=decision_logs,
-                guardrail_events=guardrail_events,
-                winner_map=winner_map,
-                llm_merge_trace=extraction_results.get("llm_merge_trace"),
-                issuer_overrides=extraction_results.get("issuer_override_traces", []),
-                confidence_threshold=CALIBRATED_RUNTIME_CONFIDENCE_POLICY.strong_direct_threshold,
-                policy_name=CALIBRATED_RUNTIME_CONFIDENCE_POLICY.name,
-            )
-            result_payload["data"]["decision_trace"] = decision_trace_to_dict(dt)
-
-        await _finalize_task(task_id, result_payload, total_duration, task_logger)
-
     except Exception as exc:
         await _handle_task_failure(task_id, exc, start_time, task_logger)
     finally:
-        # Unified cleanup for both success and failure cases
         cleanup_temp_file(file_path)
 
 

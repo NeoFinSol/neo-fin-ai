@@ -45,6 +45,11 @@ def _validate_pdf_file(content: bytes) -> bool:
     return content[:5] == PDF_MAGIC_HEADER
 
 
+def _validate_upload_content_type(file: UploadFile) -> None:
+    if file.content_type not in ("application/pdf", "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="PDF file expected")
+
+
 async def _cleanup_temp_file(file_path: str) -> None:
     """
     Safely cleanup temporary file.
@@ -63,6 +68,15 @@ async def _cleanup_temp_file(file_path: str) -> None:
         logger.warning("Failed to delete temporary file %s: %s", file_path, exc)
 
 
+def _close_temp_file_quietly(temp_file) -> None:
+    if temp_file is None:
+        return
+    try:
+        temp_file.close()
+    except Exception:
+        logger.debug("Failed to close temporary file", exc_info=True)
+
+
 def _analysis_runtime_status(analysis) -> str:
     if is_analysis_cancellation_pending(analysis):
         return "cancelling"
@@ -75,94 +89,61 @@ def _task_storage_dir() -> str | None:
     return ensure_directory(app_settings.task_storage_dir)
 
 
-@router.post("/upload")
-async def upload_pdf(
-    file: UploadFile,
-    background_tasks: BackgroundTasks,
-    ai_provider: Annotated[str | None, Form()] = None,
-    debug_trace: Annotated[str, Form()] = "false",
-    api_key: str = Depends(get_api_key),
-    request: Request = None,  # keyword-only, not used directly (rate limiting via middleware)
-):
-    if file.content_type not in ("application/pdf", "application/octet-stream"):
-        raise HTTPException(status_code=400, detail="PDF file expected")
+async def _read_upload_header(file: UploadFile) -> bytes:
+    first_chunk = await asyncio.to_thread(file.file.read, MAGIC_HEADER_SIZE)
+    if not first_chunk:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if not _validate_pdf_file(first_chunk):
+        raise HTTPException(status_code=400, detail="Invalid PDF file format")
+    return first_chunk
 
-    temp_file = None
-    tmp_path = None
+
+def _create_upload_temp_file():
+    return tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".pdf",
+        dir=_task_storage_dir(),
+    )
+
+
+async def _write_upload_chunks(
+    file: UploadFile, temp_file, *, first_chunk: bytes
+) -> str:
+    temp_file.write(first_chunk)
+    total_size = len(first_chunk)
+    chunk_size = 8192
+
+    while True:
+        chunk = await asyncio.to_thread(file.file.read, chunk_size)
+        if not chunk:
+            break
+
+        total_size += len(chunk)
+        if total_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)} MB",
+            )
+        temp_file.write(chunk)
+
+    temp_file.flush()
+    return temp_file.name
+
+
+async def _save_uploaded_pdf(file: UploadFile) -> str:
+    first_chunk = await _read_upload_header(file)
+    temp_file = _create_upload_temp_file()
 
     try:
-        # Read first chunk to check header and size
-        header_size = MAGIC_HEADER_SIZE
-        first_chunk = await asyncio.to_thread(file.file.read, header_size)
-
-        if not first_chunk:
-            raise HTTPException(status_code=400, detail="Empty file")
-
-        # Validate magic header before reading full file
-        if not _validate_pdf_file(first_chunk):
-            raise HTTPException(status_code=400, detail="Invalid PDF file format")
-
-        # Create temporary file and write in chunks
-        suffix = ".pdf"
-        # Use delete=False so we can pass the path to background task
-        temp_file = tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=suffix,
-            dir=_task_storage_dir(),
-        )
-        temp_file.write(first_chunk)
-
-        # Read remaining content in chunks
-        chunk_size = 8192  # 8KB
-        total_size = len(first_chunk)
-
-        while True:
-            chunk = await asyncio.to_thread(file.file.read, chunk_size)
-            if not chunk:
-                break
-
-            total_size += len(chunk)
-
-            # Check size limit during read
-            if total_size > MAX_FILE_SIZE:
-                # Close and cleanup - use asyncio.to_thread for safety
-                temp_file.close()
-                await _cleanup_temp_file(temp_file.name)
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)} MB",
-                )
-
-            temp_file.write(chunk)
-
-        temp_file.flush()
-        temp_file.close()
-        tmp_path = temp_file.name
-
-    except HTTPException:
-        # Clean up on HTTP errors
-        if temp_file:
-            try:
-                temp_file.close()
-            except Exception:
-                # Ignore close errors during cleanup
-                pass
-        if tmp_path:
-            await _cleanup_temp_file(tmp_path)
+        return await _write_upload_chunks(file, temp_file, first_chunk=first_chunk)
+    except Exception:
+        await _cleanup_temp_file(temp_file.name)
         raise
-    except Exception as exc:
-        logger.exception("Failed to save uploaded file: %s", exc)
-        # Clean up on general errors
-        if temp_file:
-            try:
-                temp_file.close()
-            except Exception:
-                # Ignore close errors during cleanup
-                pass
-        if tmp_path:
-            await _cleanup_temp_file(tmp_path)
-        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+    finally:
+        _close_temp_file_quietly(temp_file)
 
+
+def _resolve_requested_provider(ai_provider: str | None) -> str | None:
     try:
         requested_provider = ai_service.normalize_requested_provider(ai_provider)
     except ValueError as exc:
@@ -173,34 +154,81 @@ async def upload_pdf(
             status_code=400,
             detail=f"AI provider '{requested_provider}' is not available",
         )
+    return requested_provider
 
-    task_id = str(uuid.uuid4())
+
+async def _create_upload_analysis_record(task_id: str, filename: str | None) -> None:
     try:
-        await create_analysis(task_id, "processing", {"filename": file.filename})
+        await create_analysis(task_id, "processing", {"filename": filename})
     except SQLAlchemyError as exc:
         logger.exception("Failed to create analysis record: %s", exc)
-        # Clean up temp file if DB operation fails
-        await _cleanup_temp_file(tmp_path)
         raise DatabaseError("Database operation failed") from exc
     except Exception as exc:
         logger.exception("Failed to create analysis record: %s", exc)
-        await _cleanup_temp_file(tmp_path)
         raise HTTPException(status_code=500, detail="Failed to create analysis record")
 
+
+def _parse_debug_trace_flag(debug_trace: str) -> bool:
+    return debug_trace.strip().lower() == "true"
+
+
+async def _dispatch_upload_task(
+    background_tasks: BackgroundTasks,
+    *,
+    task_id: str,
+    file_path: str,
+    requested_provider: str | None,
+    debug_trace: bool,
+) -> None:
+    await dispatch_pdf_task(
+        background_tasks,
+        task_id=task_id,
+        file_path=file_path,
+        background_callable=process_pdf,
+        ai_provider=requested_provider,
+        debug_trace=debug_trace,
+    )
+
+
+@router.post("/upload")
+async def upload_pdf(
+    file: UploadFile,
+    background_tasks: BackgroundTasks,
+    ai_provider: Annotated[str | None, Form()] = None,
+    debug_trace: Annotated[str, Form()] = "false",
+    api_key: str = Depends(get_api_key),
+    request: Request = None,  # keyword-only, not used directly (rate limiting via middleware)
+) -> dict[str, str]:
+    _validate_upload_content_type(file)
+    filename = getattr(file, "filename", None)
+
     try:
-        _debug_trace_bool = debug_trace.strip().lower() == "true"
-        await dispatch_pdf_task(
+        tmp_path = await _save_uploaded_pdf(file)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to save uploaded file: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+
+    task_id = str(uuid.uuid4())
+    try:
+        requested_provider = _resolve_requested_provider(ai_provider)
+        await _create_upload_analysis_record(task_id, filename)
+        await _dispatch_upload_task(
             background_tasks,
             task_id=task_id,
             file_path=tmp_path,
-            background_callable=process_pdf,
-            ai_provider=requested_provider,
-            debug_trace=_debug_trace_bool,
+            requested_provider=requested_provider,
+            debug_trace=_parse_debug_trace_flag(debug_trace),
         )
     except TaskRuntimeError:
         await _cleanup_temp_file(tmp_path)
         await update_analysis(task_id, "failed", {"error": "Task dispatch failed"})
         raise
+    except Exception:
+        await _cleanup_temp_file(tmp_path)
+        raise
+
     return {"task_id": task_id}
 
 

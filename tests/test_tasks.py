@@ -333,6 +333,43 @@ class TestProcessPdf:
             mock_cleanup.assert_called_once_with(file_path)
 
     @pytest.mark.asyncio
+    async def test_successful_processing_emits_phase_updates_in_order(self):
+        task_id = "ordered-task"
+        file_path = "/tmp/ordered.pdf"
+
+        with (
+            patch("src.tasks.update_analysis", new_callable=AsyncMock),
+            patch("src.tasks.create_analysis", new_callable=AsyncMock),
+            patch("src.tasks.get_analysis", new_callable=AsyncMock, return_value=None),
+            patch("src.tasks.touch_analysis_runtime_heartbeat", new_callable=AsyncMock),
+            patch(
+                "src.tasks.is_analysis_cancel_requested",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch("src.tasks.is_scanned_pdf", return_value=False),
+            patch("src.tasks.extract_text", return_value="Text"),
+            patch("src.tasks.extract_tables", return_value=[]),
+            patch(
+                "src.tasks.parse_financial_statements_with_metadata", return_value={}
+            ),
+            patch("src.tasks.apply_confidence_filter", return_value=({}, {})),
+            patch("src.tasks.calculate_ratios", return_value={}),
+            patch("src.tasks.calculate_integral_score", return_value=_MOCK_SCORE),
+            patch("src.tasks.broadcast_task_event", new_callable=AsyncMock) as mock_ws,
+            patch("src.tasks._ensure_analysis_exists", return_value=True),
+            patch("src.tasks.cleanup_temp_file"),
+        ):
+            await process_pdf(task_id, file_path)
+
+        statuses = [
+            call.args[1]["status"]
+            for call in mock_ws.await_args_list
+            if call.args and len(call.args) > 1 and "status" in call.args[1]
+        ]
+        assert statuses == ["extracting", "scoring", "analyzing", "completed"]
+
+    @pytest.mark.asyncio
     async def test_temp_file_cleanup_on_failure(self):
         """Test temporary file cleanup even when processing fails."""
         task_id = "cleanup-fail-task"

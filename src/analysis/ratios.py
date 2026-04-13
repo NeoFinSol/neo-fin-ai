@@ -2,34 +2,11 @@ import logging
 from typing import Any
 
 from src.analysis.math.engine import MathEngine
-from src.analysis.math.projections import LEGACY_RATIO_NAME_MAP, project_legacy_ratios
+from src.analysis.math.projections import project_legacy_ratios
+from src.analysis.math.registry import LEGACY_RATIO_NAME_MAP, RATIO_KEY_MAP
 from src.analysis.math.validators import normalize_inputs
 
 logger = logging.getLogger(__name__)
-
-# Маппинг русских ключей ratios → snake_case English для frontend
-# Порядок соответствует группам: ликвидность, рентабельность, устойчивость, активность
-RATIO_KEY_MAP = {
-    # Liquidity
-    "Коэффициент текущей ликвидности": "current_ratio",
-    "Коэффициент быстрой ликвидности": "quick_ratio",
-    "Коэффициент абсолютной ликвидности": "absolute_liquidity_ratio",
-    # Profitability
-    "Рентабельность активов (ROA)": "roa",
-    "Рентабельность собственного капитала (ROE)": "roe",
-    "Рентабельность продаж (ROS)": "ros",
-    "EBITDA маржа": "ebitda_margin",
-    # Financial stability
-    "Коэффициент автономии": "equity_ratio",
-    "Финансовый рычаг": "financial_leverage",
-    "Финансовый рычаг (обязательства/капитал)": "financial_leverage_total",
-    "Финансовый рычаг (долг/капитал)": "financial_leverage_debt_only",
-    "Покрытие процентов": "interest_coverage",
-    # Business activity
-    "Оборачиваемость активов": "asset_turnover",
-    "Оборачиваемость запасов": "inventory_turnover",
-    "Оборачиваемость дебиторской задолженности": "receivables_turnover",
-}
 
 
 def translate_ratios(ratios: dict) -> dict:
