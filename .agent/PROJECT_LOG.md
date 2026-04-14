@@ -1,5 +1,27 @@
 # Project Log
 
+## 2026-04-14 — fix(test): sync ai service test imports with isort
+
+**Контекст:**
+- после follow-up push remote `Code Linting` всё ещё падал на `isort --profile black --check-only`
+- фактический blocking issue был локализован в `tests/test_core_ai_service.py`, где import line не совпадала с canonical isort ordering
+
+**Что сделано:**
+- `tests/test_core_ai_service.py`
+  - import из `src.core.ai_service` отсортирован в порядке `'_TIMEOUT_RETRY_EXHAUSTED, AIService'`
+  - других semantic changes не вносилось
+
+**Верификация:**
+- `python -m isort --profile black --check-only src tests`
+  - проходит без ошибок
+- `python -m pytest tests/test_core_ai_service.py -q`
+  - `20 passed`
+
+**Следующий шаг:**
+- закоммитить lint follow-up в ту же ветку и допушить, чтобы remote Actions пересобрались
+
+---
+
 ## 2026-04-14 — fix(core): close post-push CI and review feedback for immediate wave
 
 **Контекст:**

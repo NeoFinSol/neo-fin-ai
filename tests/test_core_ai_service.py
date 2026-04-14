@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.core.ai_service import AIService, _TIMEOUT_RETRY_EXHAUSTED
+from src.core.ai_service import _TIMEOUT_RETRY_EXHAUSTED, AIService
 
 
 class TestAIServiceInit:

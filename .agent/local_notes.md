@@ -2,6 +2,17 @@
 
 ## Активные проблемы
 
+### Post-push lint follow-up: isort can fail on single-line import ordering in tests
+**Статус**: ✅ Решено (2026-04-14)
+**Дата**: 2026-04-14
+**Проблема**:
+- после functional follow-up CI продолжал падать на `isort --profile black --check-only`
+- причина оказалась не в бизнес-логике, а в single-line import order в `tests/test_core_ai_service.py`
+**Решение**:
+- import из `src.core.ai_service` синхронизирован с canonical `isort` ordering: `_TIMEOUT_RETRY_EXHAUSTED, AIService`
+**Памятка**:
+- после ручного добавления имён в import line для tests стоит прогонять именно `isort --profile black --check-only src tests`, а не полагаться только на `black`
+
 ### Post-push hardening follow-up: non-ASCII API key mismatch + timeout exhaustion accounting + mypy canonical ORM target
 **Статус**: ✅ Решено (2026-04-14)
 **Дата**: 2026-04-14
