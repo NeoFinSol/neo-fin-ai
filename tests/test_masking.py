@@ -2,6 +2,7 @@
 Property-based tests for src/utils/masking.py
 Feature: analysis-history-visualization
 """
+
 import os
 import sys
 
@@ -10,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from src.utils.masking import mask_analysis_data
+from src.utils.masking import _mask_number, mask_analysis_data
 
 # ---------------------------------------------------------------------------
 # Strategies
@@ -104,15 +105,15 @@ def test_mask_replaces_numbers_preserves_score(data):
     # All numeric values in metrics and ratios must be replaced with non-numeric (strings)
     for key, value in inner_orig["metrics"].items():
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            assert not isinstance(inner_result["metrics"][key], (int, float)), (
-                f"metrics[{key!r}] should be masked but got {inner_result['metrics'][key]!r}"
-            )
+            assert not isinstance(
+                inner_result["metrics"][key], (int, float)
+            ), f"metrics[{key!r}] should be masked but got {inner_result['metrics'][key]!r}"
 
     for key, value in inner_orig["ratios"].items():
         if isinstance(value, (int, float)) and not isinstance(value, bool):
-            assert not isinstance(inner_result["ratios"][key], (int, float)), (
-                f"ratios[{key!r}] should be masked but got {inner_result['ratios'][key]!r}"
-            )
+            assert not isinstance(
+                inner_result["ratios"][key], (int, float)
+            ), f"ratios[{key!r}] should be masked but got {inner_result['ratios'][key]!r}"
 
     # score, risk_level, factors, normalized_scores, nlp must be identical to originals
     assert inner_result["score"] == inner_orig["score"], "score must be preserved"
@@ -145,9 +146,7 @@ def test_mask_idempotent(data):
     # Validates: Requirements 4.8
     once = mask_analysis_data(data, True)
     twice = mask_analysis_data(once, True)
-    assert twice == once, (
-        "Double masking must equal single masking (idempotency)"
-    )
+    assert twice == once, "Double masking must equal single masking (idempotency)"
 
 
 # ---------------------------------------------------------------------------
@@ -207,3 +206,21 @@ def test_zero_masked_as_x():
     result = mask_analysis_data(data, True)
     assert result["data"]["metrics"]["val"] == "X"
     assert result["data"]["ratios"]["r"] == "X"
+
+
+def test_float_artifact_fractional_mask_is_capped_for_one_third():
+    masked = _mask_number(1 / 3)
+    integer_part, fractional_part = masked.split(".")
+    assert integer_part == "X"
+    assert len(fractional_part) <= 4
+
+
+def test_float_artifact_fractional_mask_is_capped_for_sum():
+    masked = _mask_number(0.1 + 0.2)
+    integer_part, fractional_part = masked.split(".")
+    assert integer_part == "X"
+    assert len(fractional_part) <= 4
+
+
+def test_integer_masking_semantics_remain_unchanged():
+    assert _mask_number(1_234_567.89) == "X,XXX,XXX.XX"

@@ -1,10 +1,11 @@
 """Tests for core/ai_service.py — unified AI service."""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.core.ai_service import AIService
+from src.core.ai_service import _TIMEOUT_RETRY_EXHAUSTED, AIService
 
 
 class TestAIServiceInit:
@@ -21,8 +22,9 @@ class TestAIServiceInit:
             assert svc.is_configured is False
 
     def test_gigachat_provider_selected_first(self):
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.gigachat_agent") as mock_gc:
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.gigachat_agent"
+        ) as mock_gc:
             mock_settings.use_gigachat = True
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = False
@@ -33,8 +35,9 @@ class TestAIServiceInit:
             assert svc.is_configured is True
 
     def test_gigachat_configured_if_not_already(self):
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.gigachat_agent") as mock_gc:
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.gigachat_agent"
+        ) as mock_gc:
             mock_settings.use_gigachat = True
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = False
@@ -48,8 +51,9 @@ class TestAIServiceInit:
             mock_gc.set_config.assert_called_once()
 
     def test_huggingface_provider_selected(self):
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.huggingface_agent") as mock_hf:
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.huggingface_agent"
+        ) as mock_hf:
             mock_settings.use_gigachat = False
             mock_settings.use_huggingface = True
             mock_settings.use_qwen = False
@@ -59,8 +63,9 @@ class TestAIServiceInit:
             assert svc.provider == "huggingface"
 
     def test_qwen_provider_selected(self):
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.qwen_agent") as mock_qwen:
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.qwen_agent"
+        ) as mock_qwen:
             mock_settings.use_gigachat = False
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
@@ -96,8 +101,9 @@ class TestAIServiceInvoke:
 
     @pytest.mark.asyncio
     async def test_invoke_delegates_to_agent(self):
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.qwen_agent") as mock_agent:
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.qwen_agent"
+        ) as mock_agent:
             mock_settings.use_gigachat = False
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
@@ -116,7 +122,9 @@ class TestAIServiceInvoke:
             mock_settings.use_qwen = False
             mock_settings.use_local_llm = True
             svc = AIService()
-            with patch.object(svc, "_invoke_ollama", new_callable=AsyncMock) as mock_ollama:
+            with patch.object(
+                svc, "_invoke_ollama", new_callable=AsyncMock
+            ) as mock_ollama:
                 mock_ollama.return_value = "ollama response"
                 result = await svc.invoke({"tool_input": "test"})
                 assert result == "ollama response"
@@ -124,8 +132,9 @@ class TestAIServiceInvoke:
 
     @pytest.mark.asyncio
     async def test_invoke_uses_requested_provider_override(self):
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.gigachat_agent") as mock_gc:
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.gigachat_agent"
+        ) as mock_gc:
             mock_settings.use_gigachat = True
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = False
@@ -138,7 +147,9 @@ class TestAIServiceInvoke:
             mock_gc.invoke = AsyncMock(return_value="gigachat response")
             svc = AIService()
 
-            with patch.object(svc, "_invoke_ollama", new_callable=AsyncMock) as mock_ollama:
+            with patch.object(
+                svc, "_invoke_ollama", new_callable=AsyncMock
+            ) as mock_ollama:
                 mock_ollama.return_value = "ollama response"
                 result = await svc.invoke({"tool_input": "test"}, provider="ollama")
 
@@ -152,8 +163,9 @@ class TestAIServiceInvokeWithRetry:
 
     @pytest.mark.asyncio
     async def test_returns_on_first_success(self):
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.qwen_agent") as mock_agent:
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.qwen_agent"
+        ) as mock_agent:
             mock_settings.use_gigachat = False
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
@@ -167,8 +179,9 @@ class TestAIServiceInvokeWithRetry:
     @pytest.mark.asyncio
     async def test_retries_on_timeout_then_raises(self):
         """Test that invoke returns None after retries on timeout (graceful degradation)."""
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.qwen_agent") as mock_agent:
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.qwen_agent"
+        ) as mock_agent:
             mock_settings.use_gigachat = False
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
@@ -185,8 +198,9 @@ class TestAIServiceInvokeWithRetry:
     @pytest.mark.asyncio
     async def test_retries_on_exception_then_raises(self):
         """Test that invoke returns None after retries on exception (graceful degradation)."""
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.qwen_agent") as mock_agent:
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.qwen_agent"
+        ) as mock_agent:
             mock_settings.use_gigachat = False
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
@@ -201,9 +215,10 @@ class TestAIServiceInvokeWithRetry:
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_succeeds_on_second_attempt(self):
-        with patch("src.core.ai_service.app_settings") as mock_settings, \
-             patch("src.core.ai_service.qwen_agent") as mock_agent:
+    async def test_non_timeout_exception_does_not_retry(self):
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.qwen_agent"
+        ) as mock_agent:
             mock_settings.use_gigachat = False
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
@@ -216,7 +231,37 @@ class TestAIServiceInvokeWithRetry:
             result = await svc.invoke_with_retry(
                 {"tool_input": "test"}, max_retries=3, retry_delay=0.01
             )
-            assert result == "success"
+            assert result is None
+            assert mock_agent.invoke.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_timeout_exhaustion_records_failure_not_success(self):
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.qwen_agent"
+        ) as mock_agent, patch(
+            "src.core.ai_service.retry_with_timeout",
+            new_callable=AsyncMock,
+            return_value=_TIMEOUT_RETRY_EXHAUSTED,
+        ) as mock_retry, patch(
+            "src.core.ai_service.metrics"
+        ) as mock_metrics:
+            mock_settings.use_gigachat = False
+            mock_settings.use_huggingface = False
+            mock_settings.use_qwen = True
+            mock_settings.use_local_llm = False
+            mock_agent._configured = True
+            svc = AIService()
+            breaker = svc._circuit_breakers["qwen"]
+            breaker.record_failure = AsyncMock()
+            breaker.record_success = AsyncMock()
+
+            result = await svc.invoke({"tool_input": "test"}, use_retry=True)
+
+        assert result is None
+        mock_retry.assert_awaited_once()
+        breaker.record_failure.assert_awaited_once()
+        breaker.record_success.assert_not_awaited()
+        mock_metrics.record_ai_failure.assert_called_once()
 
 
 class TestAIServiceInvokeOllama:
@@ -225,6 +270,7 @@ class TestAIServiceInvokeOllama:
     @pytest.mark.asyncio
     async def test_ollama_success(self):
         import aiohttp
+
         with patch("src.core.ai_service.app_settings") as mock_settings:
             mock_settings.use_gigachat = False
             mock_settings.use_huggingface = False
@@ -285,7 +331,9 @@ class TestAIServiceInvokeOllama:
             mock_settings.llm_url = "http://localhost:11434/api/generate"
             svc = AIService()
 
-            with patch("aiohttp.ClientSession", side_effect=Exception("connection refused")):
+            with patch(
+                "aiohttp.ClientSession", side_effect=Exception("connection refused")
+            ):
                 result = await svc._invoke_ollama({"tool_input": "hello"})
                 assert result is None
 
@@ -302,7 +350,7 @@ class TestAIServiceInvokeOllama:
 
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(return_value={"response": "{\"ok\": true}"})
+            mock_response.json = AsyncMock(return_value={"response": '{"ok": true}'})
             mock_response.__aenter__ = AsyncMock(return_value=mock_response)
             mock_response.__aexit__ = AsyncMock(return_value=False)
 
@@ -320,7 +368,7 @@ class TestAIServiceInvokeOllama:
                     }
                 )
 
-            assert result == "{\"ok\": true}"
+            assert result == '{"ok": true}'
             _, kwargs = mock_session.post.call_args
             assert kwargs["json"]["system"] == "Reply only with valid JSON."
             assert kwargs["json"]["format"] == "json"
@@ -338,7 +386,7 @@ class TestAIServiceInvokeOllama:
 
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(return_value={"response": "{\"ok\": true}"})
+            mock_response.json = AsyncMock(return_value={"response": '{"ok": true}'})
             mock_response.__aenter__ = AsyncMock(return_value=mock_response)
             mock_response.__aexit__ = AsyncMock(return_value=False)
 

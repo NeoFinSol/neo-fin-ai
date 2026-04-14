@@ -720,7 +720,7 @@ curl http://localhost:8000/multi-analysis/7c9e6679-7425-40de-944b-e07fc1f90ae7 \
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-04-02T12:00:00.000000",
+  "timestamp": "2026-04-02T12:00:00.000000+00:00",
   "services": {
     "db": "ok",
     "ai": "ok",
@@ -746,7 +746,7 @@ curl http://localhost:8000/system/health
 ```json
 {
   "status": "healthy",
-  "timestamp": "2024-03-15T10:30:00.000000",
+  "timestamp": "2024-03-15T10:30:00.000000+00:00",
   "components": {
     "database": "healthy",
     "ai_service": "healthy"
@@ -759,7 +759,7 @@ curl http://localhost:8000/system/health
 ```json
 {
   "status": "degraded",
-  "timestamp": "2024-03-15T10:30:00.000000",
+  "timestamp": "2024-03-15T10:30:00.000000+00:00",
   "components": {
     "database": "unhealthy",
     "ai_service": "not_configured"
@@ -800,7 +800,7 @@ curl http://localhost:8000/system/healthz
 
 ```json
 {
-  "detail": "Service not ready: database connection failed - ..."
+  "detail": "Service not ready: database connection failed"
 }
 ```
 

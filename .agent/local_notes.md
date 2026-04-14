@@ -2,6 +2,83 @@
 
 ## Активные проблемы
 
+### Post-push lint follow-up: isort can fail on single-line import ordering in tests
+**Статус**: ✅ Решено (2026-04-14)
+**Дата**: 2026-04-14
+**Проблема**:
+- после functional follow-up CI продолжал падать на `isort --profile black --check-only`
+- причина оказалась не в бизнес-логике, а в single-line import order в `tests/test_core_ai_service.py`
+**Решение**:
+- import из `src.core.ai_service` синхронизирован с canonical `isort` ordering: `_TIMEOUT_RETRY_EXHAUSTED, AIService`
+**Памятка**:
+- после ручного добавления имён в import line для tests стоит прогонять именно `isort --profile black --check-only src tests`, а не полагаться только на `black`
+
+### Post-push hardening follow-up: non-ASCII API key mismatch + timeout exhaustion accounting + mypy canonical ORM target
+**Статус**: ✅ Решено (2026-04-14)
+**Дата**: 2026-04-14
+**Проблема**:
+- `hmac.compare_digest(str, str)` в `src/core/auth.py` падал `TypeError` на non-ASCII header values вместо обычного mismatch
+- после сужения `retry_with_timeout()` exhausted timeout retries возвращали fallback и ошибочно проходили в success path `AIService.invoke()`
+- `.github/workflows/code-quality.yml` всё ещё type-check’ил удалённый orphan file `src/models/database/user.py`
+**Решение**:
+- `_api_keys_match()` теперь сравнивает UTF-8 bytes через `compare_digest`, сохраняя exact-match semantics без normalization/trim
+- retry path в `AIService.invoke()` использует explicit timeout-exhaustion sentinel и записывает такие исходы как breaker/metrics failure
+- mypy workflow target переключён на canonical ORM boundary `src/db/models.py`
+**Памятка**:
+- non-ASCII API key input должен деградировать в mismatch (`401` / `None`), а не в `500`
+- если retry helper снова меняется, exhausted timeout path не должен попадать в `record_success()`
+- если удаляется type-checked file, workflow regression должен синхронно перенаправляться на живой canonical target, а не просто убирать coverage
+
+### Orphan models: delete unsupported `src/models/database` boundary instead of repairing imports
+**Статус**: ✅ Решено (2026-04-14)
+**Дата**: 2026-04-14
+**Проблема**:
+- `src/models/database/user.py` и `project.py` импортировали несуществующий `src.core.database`
+- при этом живой ORM surface проекта уже находился в `src/db/models.py` / `src.db.database.Base`
+- у orphan package не было внешних consumers и не было миграций под `users/projects`
+**Решение**:
+- после execution-time repo-wide recheck по maintained executable surface (`src/tests/scripts/migrations + top-level tooling`) orphan package удалён целиком
+- `src/db/models.py` закреплён как canonical supported ORM boundary
+- добавлен `tests/test_dead_paths.py`, который проверяет:
+  - canonical ORM import smoke через `src.db.models`
+  - отсутствие orphan files
+  - отсутствие ссылок `src.models.database` в поддерживаемой executable surface
+**Памятка**:
+- если в будущем снова понадобится auth/project ORM layer, это уже отдельная schema/domain wave; не воскрешай `src/models/database` точечным import-fix
+- если dead-path guard начинает падать, сначала проверь, не появился ли новый live consumer в `src/tests/scripts/migrations` или tooling, а не возвращай удалённый пакет
+
+### Util/config hardening: timeout-only retry + bounded float masking + nonsecret Alembic placeholder
+**Статус**: ✅ Решено (2026-04-14)
+**Дата**: 2026-04-14
+**Проблема**:
+- `src/utils/retry_utils.py::retry_with_timeout()` retry’ил `(asyncio.TimeoutError, Exception)`, из-за чего programming/non-timeout errors случайно попадали под retry
+- `src/utils/masking.py::_mask_number()` раздувал fractional mask width на float repr artifacts вроде `1/3` и `0.1 + 0.2`
+- `alembic.ini` хранил credential-bearing fallback URL `postgresql+psycopg2://postgres:postgres@localhost:5432/neofin`
+**Решение**:
+- `retry_with_timeout()` сузили до `retryable_exceptions=(asyncio.TimeoutError,)`; если после этого начинают всплывать non-timeout ошибки, считай это размаскированным дефектом, а не regression самого hardening
+- введён `MAX_FRACTIONAL_MASK_WIDTH = 4`; cap применяется только к fractional mask segment и только после текущего fractional-length calculation
+- tracked `alembic.ini` теперь держит intentional nonsecret placeholder `postgresql+psycopg2://user:pass@localhost/dbname` и комментарий, что runtime migrations должны использовать `DATABASE_URL` через `env.py`
+**Памятка**:
+- не расширяй обратно retry policy в `retry_with_timeout()` до broad `Exception` без отдельного решения по transient/non-transient taxonomy
+- в masking fix не трогай integer-part masking, sign handling и zero semantics; режется только дробная маска
+- regression на Alembic должен читать tracked `alembic.ini` файл напрямую, а не только runtime config object
+
+### Auth/system hardening: constant-time API-key compare + sanitized readiness + UTC-aware health timestamps
+**Статус**: ✅ Решено (2026-04-14)
+**Дата**: 2026-04-14
+**Проблема**:
+- `src/core/auth.py` сравнивал API key через обычное `==` / `!=`
+- `src/routers/system.py::/system/ready` отдавал `str(e)` наружу
+- `/system/health` и `/system/healthz` использовали naive `datetime.utcnow().isoformat()`
+**Решение**:
+- введён private helper `_api_keys_match()` на `hmac.compare_digest` без изменения exact-match semantics
+- `/system/ready` теперь возвращает fixed sanitized detail `Service not ready: database connection failed`
+- timestamps для `/system/health` и `/system/healthz` генерируются через shared UTC-aware helper на `datetime.now(timezone.utc)`
+**Памятка**:
+- если снова меняется auth compare path, сохраняй exact-match semantics: без trim/lowercase/normalization
+- если меняется readiness error detail, raw DB exception text должен оставаться только в логах
+- если меняется health timestamp, сохраняй string field `timestamp`, parseable as UTC-aware ISO-8601
+
 ### Tech debt: confidence penalty factor — magic constant 0.9 в engine
 **Статус**: ✅ Решено
 **Дата**: 2026-04-12

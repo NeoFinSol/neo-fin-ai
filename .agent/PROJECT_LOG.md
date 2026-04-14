@@ -1,5 +1,202 @@
 # Project Log
 
+## 2026-04-14 — fix(test): sync ai service test imports with isort
+
+**Контекст:**
+- после follow-up push remote `Code Linting` всё ещё падал на `isort --profile black --check-only`
+- фактический blocking issue был локализован в `tests/test_core_ai_service.py`, где import line не совпадала с canonical isort ordering
+
+**Что сделано:**
+- `tests/test_core_ai_service.py`
+  - import из `src.core.ai_service` отсортирован в порядке `'_TIMEOUT_RETRY_EXHAUSTED, AIService'`
+  - других semantic changes не вносилось
+
+**Верификация:**
+- `python -m isort --profile black --check-only src tests`
+  - проходит без ошибок
+- `python -m pytest tests/test_core_ai_service.py -q`
+  - `20 passed`
+
+**Следующий шаг:**
+- закоммитить lint follow-up в ту же ветку и допушить, чтобы remote Actions пересобрались
+
+---
+
+## 2026-04-14 — fix(core): close post-push CI and review feedback for immediate wave
+
+**Контекст:**
+- после push ветки `codex/immediate-hardening-wave-2026-04-14` remote checks подняли один реальный CI defect и два реальных code-review findings
+- style-only feedback по длине `health_check()` тоже был поднят на changed surface и закрыт в том же follow-up pack без расширения semantics
+
+**Что сделано:**
+- `.github/workflows/code-quality.yml`
+  - mypy type-check target переведён с удалённого orphan path `src/models/database/user.py` на canonical ORM boundary `src/db/models.py`
+- `src/core/auth.py`
+  - `_api_keys_match()` переведён на `hmac.compare_digest()` по UTF-8 bytes
+  - non-ASCII API keys больше не валят auth path `TypeError`; mismatch остаётся `401` / `None`
+- `src/core/ai_service.py`
+  - введён explicit `_TIMEOUT_RETRY_EXHAUSTED` sentinel для retry path
+  - exhausted timeout retries теперь записываются как `breaker.record_failure()` + `metrics.record_ai_failure()`
+  - ложный success path после timeout exhaustion закрыт
+- `src/routers/system.py`
+  - `health_check()` декомпозирован на helpers `_database_is_available()` и `_apply_health_ai_status()` без изменения endpoint semantics
+- `tests/test_core_auth.py`
+  - добавлены regressions на non-ASCII mismatch для `get_api_key()` и `optional_auth()`
+  - compare-digest assertion синхронизирован под bytes path
+- `tests/test_core_ai_service.py`
+  - добавлен regression, что timeout exhaustion в retry path учитывается как failure, а не success
+- `tests/test_github_workflows.py`
+  - добавлен regression, что code-quality mypy target указывает на `src/db/models.py` и не указывает на удалённый orphan file
+
+**Верификация:**
+- `python -m pytest tests/test_core_auth.py tests/test_core_ai_service.py tests/test_routers_system.py tests/test_routers_system_full.py tests/test_github_workflows.py -q`
+  - `75 passed`
+- local CI-equivalent mypy slice:
+  - `python -m mypy --namespace-packages --explicit-package-bases --follow-imports=silent --ignore-missing-imports src/models/schemas.py src/models/requests.py src/db/models.py src/utils/circuit_breaker.py --warn-unused-configs --warn-redundant-casts --warn-unreachable --warn-return-any --strict-optional --pretty`
+  - `Success: no issues found in 4 source files`
+
+**Следующий шаг:**
+- закоммитить follow-up fix в ту же ветку и допушить
+- затем уже ждать обновлённого remote CI status по этой ветке
+
+---
+
+## 2026-04-14 — chore(models): remove orphan database package and add dead-path guard
+
+**Контекст:**
+- после audit synthesis `BUG-001` был вынесен в отдельный decision wave, потому что там был выбор `delete vs repair`
+- execution-time recheck по maintained executable surface подтвердил delete-path:
+  - живой ORM boundary уже находится в `src/db/models.py`
+  - consumers `src.models.database.*` отсутствуют
+  - миграции для `users/projects` отсутствуют
+
+**Что сделано:**
+- удалены:
+  - `src/models/database/user.py`
+  - `src/models/database/project.py`
+- директория `src/models/database/` удалена после проверки, что в ней не осталось ничего кроме `__pycache__`
+- добавлен `tests/test_dead_paths.py`
+  - canonical ORM import smoke через `src.db.models`
+  - проверка, что orphan files действительно отсутствуют
+  - automated dead-path scan по maintained executable surface (`src`, `tests`, `scripts`, `migrations`, top-level tooling files) на остаточные ссылки `src.models.database`
+- `src/db/models.py`, migrations, CRUD, routers и auth flow не менялись
+
+**Верификация:**
+- red phase:
+  - `python -m pytest tests/test_dead_paths.py tests/test_migrations.py -q`
+  - ожидаемо упало на существующие orphan files и их собственные ссылки
+- green phase:
+  - `python -m pytest tests/test_dead_paths.py tests/test_migrations.py -q`
+  - `6 passed`
+
+**Следующий шаг:**
+- перейти к отдельной financial-truth wave для `BUG-002`
+- или к следующему immediate security/runtime пакету из audit backlog
+
+---
+
+## 2026-04-14 — fix(utils): tighten timeout retry, mask floats, and sanitize alembic placeholder
+
+**Контекст:**
+- после auth/system pack в immediate bucket остались `ARCH-008`, `BUG-004`, `SEC-004`
+- scope этой волны был жёстко ограничен: без broader AI retry redesign, без session-lifecycle work и без docs sweep вне tracked Alembic config comment
+
+**Что сделано:**
+- `src/utils/retry_utils.py`
+  - `retry_with_timeout()` больше не retry’ит arbitrary exceptions
+  - retryable set сужен с `(asyncio.TimeoutError, Exception)` до `(asyncio.TimeoutError,)`
+  - mixed failure path теперь останавливается сразу на первом non-timeout exception
+- `src/utils/masking.py`
+  - добавлен `MAX_FRACTIONAL_MASK_WIDTH = 4`
+  - `_mask_number()` теперь капает только fractional mask segment после текущего fractional-length calculation
+  - integer/sign/zero semantics сохранены
+- `alembic.ini`
+  - credential-bearing URL `postgresql+psycopg2://postgres:postgres@localhost:5432/neofin` заменён на intentional nonsecret placeholder `postgresql+psycopg2://user:pass@localhost/dbname`
+  - добавлен короткий комментарий, что runtime migrations должны использовать `DATABASE_URL` через `env.py`
+- `tests/test_retry_utils.py`
+  - добавлены direct utility regressions на timeout retry, no-retry for `RuntimeError` и mixed failure sequence
+- `tests/test_masking.py`
+  - добавлены targeted regressions на float-artifact masking (`1/3`, `0.1 + 0.2`) и explicit guard, что integer masking semantics не дрейфуют
+- `tests/test_migrations.py`
+  - добавлен regression, который читает tracked `alembic.ini` напрямую и проверяет placeholder/no-secret contract
+- `tests/test_core_ai_service.py`
+  - legacy expectation `RuntimeError -> success on second attempt` удалена; AI service теперь явно не retry’ит non-timeout provider errors и возвращает `None` после одного вызова caller boundary
+
+**Верификация:**
+- red phase:
+  - `python -m pytest tests/test_retry_utils.py tests/test_masking.py tests/test_migrations.py -q`
+  - сначала упало ровно на narrowed retry, float-mask cap и tracked Alembic URL
+- green phase:
+  - `python -m pytest tests/test_retry_utils.py tests/test_masking.py tests/test_migrations.py tests/test_core_ai_service.py -q`
+  - `40 passed`
+- hygiene:
+  - `python -m black --check src/utils/retry_utils.py src/utils/masking.py tests/test_retry_utils.py tests/test_masking.py tests/test_migrations.py tests/test_core_ai_service.py`
+  - `git diff --check`
+
+**Следующий шаг:**
+- перейти к `BUG-001` orphan models/import crash
+- или к отдельной financial-truth wave для `BUG-002`
+
+---
+
+## 2026-04-14 — fix(auth): harden API-key comparison and system readiness surface
+
+**Контекст:**
+- после audit synthesis в immediate bucket попали `SEC-001`, `SEC-003`, `HC-003`
+- scope этой волны был жёстко ограничен: без auth expansion на новые endpoints, без raw SQL cleanup, без broader system-router refactor
+
+**Что сделано:**
+- `src/core/auth.py`
+  - добавлен private helper `_api_keys_match()` на `hmac.compare_digest`
+  - `get_api_key()` и `optional_auth()` переведены на единый constant-time comparison path
+  - exact-match semantics сохранены: без trim/lowercase/normalization
+- `src/routers/system.py`
+  - введён shared helper `_current_utc_timestamp()` на `datetime.now(timezone.utc).isoformat()`
+  - `/system/health` и `/system/healthz` теперь возвращают UTC-aware timestamps
+  - `/system/ready` больше не протекает `str(e)` в client-facing `detail`; fixed message: `Service not ready: database connection failed`
+  - server-side logging of DB failure сохранён
+- `tests/test_core_auth.py`
+  - добавлены проверки на вызов `hmac.compare_digest`
+  - добавлены exact-match regressions для trailing whitespace и case changes
+- `tests/test_routers_system.py`, `tests/test_routers_system_full.py`
+  - добавлены UTC-aware timestamp assertions
+  - readiness regression теперь требует fixed sanitized message и отсутствие raw exception text
+- `docs/API.md`
+  - health examples переведены на UTC-aware timestamp examples
+  - readiness error example синхронизирован с fixed sanitized detail
+
+**Верификация:**
+- `python -m pytest tests/test_core_auth.py tests/test_routers_system.py tests/test_routers_system_full.py -q`
+  - `33 passed`
+
+**Следующий шаг:**
+- перейти к следующему immediate security/runtime pack (`BUG-001`, `ARCH-008`, `BUG-004`) или к отдельной verification/fix wave для `BUG-002`
+
+---
+
+## 2026-04-14 — audit: complete Phase 8 Final Synthesis of ultra-deep audit
+
+**Контекст:**
+- 7 фаз ultra-deep audit завершены ранее (4 субагента + 1 дополнительный)
+- Phase 8 (Final Synthesis) не была сформирована — требовалось собрать финальный вердикт
+
+**Что сделано:**
+- Произведён Phase 8 Final Synthesis — формализован в `superpowers/audit/2026-04-14-ultra-deep-audit-final-synthesis.md`
+- **Verdict:** проект функционально работоспособен, но несёт существенный tech debt в infra/core/auth/DB
+- **BLOCKING (2):** orphan `src/models/database/` с `from src.core.database import Base` (модуль не существует)
+- **HIGH (~25):** security (timing-attack auth, unauth WS), concurrency (circuit breaker race, Ollama session leak), architecture (ConfigurationError LSP, _configured breach, DIP violations, raw SQL), function length (5 функций >80 строк), math layer (reason code drift, untyped boundaries, denominator gap)
+- **MEDIUM (8):** dead code, naming semantics, docs mismatches
+- **Test gaps (10):** circuit breaker lifecycle, extraction pipeline, HuggingFace agent, etc.
+- **Roadmap:** Immediate (I1-I5), Short-term (S1-S8), Medium-term (M1-M10)
+- **Strong parts preserved:** math layer, decision trace, staged pipeline, calibration harness, canonical registry, comparative v1.5, CI regression tests, upload decomposition
+- Обновлён `.agent/overview.md` с результатами synthesis
+
+**Следующий шаг:**
+- Реализация Immediate roadmap (I1-I5): orphan delete, timing-attack fix, circuit breaker lock, shared Ollama session, WS auth
+- Или дождаться направления пользователя
+
+---
+
 ## 2026-04-13 — refactor(core): remediate confirmed post-math-layer debt
 
 **Контекст:**

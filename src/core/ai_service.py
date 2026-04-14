@@ -23,6 +23,7 @@ AI_RETRY_BACKOFF = float(os.getenv("AI_RETRY_BACKOFF", "2.0"))
 
 SUPPORTED_AI_PROVIDERS = ("gigachat", "huggingface", "qwen", "ollama")
 AIProviderName = Literal["gigachat", "huggingface", "qwen", "ollama"]
+_TIMEOUT_RETRY_EXHAUSTED = object()
 
 
 class AIService:
@@ -192,6 +193,23 @@ class AIService:
         agent = self._providers[provider]
         return await agent.invoke(input, timeout=timeout)
 
+    async def _handle_retry_timeout_exhaustion(
+        self,
+        breaker: CircuitBreaker,
+        resolved_provider: AIProviderName,
+        actual_timeout: int,
+        start_time: float,
+    ) -> None:
+        duration_ms = (time.monotonic() - start_time) * 1000
+        logger.warning(
+            "AI invocation timed out after retries (provider=%s, timeout=%ds)",
+            resolved_provider,
+            actual_timeout,
+            extra={"duration_ms": duration_ms},
+        )
+        await breaker.record_failure()
+        metrics.record_ai_failure()
+
     async def invoke(
         self,
         input: dict,
@@ -263,11 +281,20 @@ class AIService:
                     timeout=actual_timeout,
                     max_retries=AI_RETRY_COUNT,
                     backoff_multiplier=AI_RETRY_BACKOFF,
-                    fallback=lambda: None,
+                    fallback=lambda: _TIMEOUT_RETRY_EXHAUSTED,
                     operation_name=f"AI invocation ({resolved_provider})",
                 )
             else:
                 result = await asyncio.wait_for(ai_operation(), timeout=actual_timeout)
+
+            if result is _TIMEOUT_RETRY_EXHAUSTED:
+                await self._handle_retry_timeout_exhaustion(
+                    breaker,
+                    resolved_provider,
+                    actual_timeout,
+                    start_time,
+                )
+                return None
 
             # Success
             duration_ms = (time.monotonic() - start_time) * 1000
