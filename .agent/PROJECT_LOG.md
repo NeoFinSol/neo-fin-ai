@@ -1,5 +1,103 @@
 # Project Log
 
+## 2026-04-14 — docs(agent): record Wave 2A BUG-002 verification result
+
+**Контекст:**
+- после завершения immediate hardening wave следующий audit step по handoff board — `Wave 2A / BUG-002`
+- по правилам этой волны нельзя чинить blindly: сначала нужно было перепроверить exact audit claim по текущему коду и доказать downstream impact
+
+**Что сделано:**
+- перечитан exact claim из `superpowers/audit/2026-04-14-ultra-deep-audit-final-synthesis.md`
+  - audit фиксировал `src/analysis/extractor/rules.py:15-16`: `_LINE_CODE_MAP` маппит `2300` в `net_profit`
+- выполнен local role-guided debug investigation без внешней делегации
+  - source of truth для workflow: `.agent/subagents/debug_investigator.toml` + `.agent/subagents/debug_investigator.md`
+  - внешние субагенты не запускались: safe path был локально проверяемым, а role-native delegation здесь не давала новой информации
+- перепроверены текущие extraction paths:
+  - `src/analysis/extractor/rules.py`
+  - `src/analysis/extractor/tables.py`
+  - `src/analysis/extractor/text_extraction.py`
+  - `src/analysis/extractor/pipeline.py`
+  - `src/analysis/scoring.py`
+- собран narrow repro на текущем коде через `parse_financial_statements_debug()`
+  - table/code case с одновременными строками `2300=9000` и `2400=1000`, где `2300` встречается первым
+  - final extractor outcome: `metadata["net_profit"].value == 9000.0`
+  - `winner_map["net_profit"] == net_profit::table::code_match::direct...`
+  - canonical `2400` в этом path не побеждает и не восстанавливается guardrail-ами
+- подтверждён downstream impact:
+  - ratios: `ROS` меняется с `0.09` до `0.01` при identical остальных метриках
+  - scoring internals: `raw_score["score"]` меняется с `97.71` до `79.43`
+  - frontend score payload тоже несёт drift в `normalized_scores.ros` и factor impact (`positive` vs `negative`)
+  - top-level `score_payload.score` в narrow sparse-ratio repro маскируется отдельным low-confidence guardrail до одинаковых `59.99`
+
+**Верификация:**
+- `parse_financial_statements_debug()` narrow repro:
+  - подтвердил live bug в current extractor facade
+- direct ratio/score characterization:
+  - подтвердил real downstream effect на ratio/scoring computation
+
+**Вывод / следующий шаг:**
+- `BUG-002` считать подтверждённым correctness defect
+- remediation делать отдельным узким pack:
+  - fail-closed убрать `2300` из `net_profit` routing
+  - синхронно закрыть mirrored mappings / tests
+  - не смешивать это с broader math or docs cleanup
+
+---
+
+## 2026-04-14 — docs(agent): add Math Layer v2 target-state handoff
+
+**Контекст:**
+- пользователю нужен отдельный handoff не только по audit waves, но и по направлению развития математики после `Math Layer v1/v1.5`
+- важно не потерять, что именно должно войти в `Math Layer v2`, какие invariants нельзя ломать и с чего разумно начинать
+
+**Что сделано:**
+- добавлен `.agent/math_layer_v2_target.md`
+  - baseline текущего `Math Layer v1/v1.5`
+  - why v2 is needed
+  - v2 goals / non-goals
+  - required invariants
+  - likely workstreams
+  - suggested phase order
+  - success criteria
+- `.agent/overview.md` синхронизирован ссылкой на новый v2 handoff-файл
+
+**Верификация:**
+- документ собран на основе текущих `.agent` метафайлов, открытых local notes по math debt, audit backlog и текущего состояния `Math Layer v1`
+- в документе отдельно зафиксировано, что v2 должна расширять canonical math layer, а не переписывать его с нуля
+
+**Следующий шаг:**
+- если пойдём в развитие математики, следующий шаг — отдельная short design/verification wave перед созданием implementation plan
+
+---
+
+## 2026-04-14 — docs(agent): add audit handoff files for next dialog
+
+**Контекст:**
+- пользователю нужен безопасный переход в новый диалог без потери audit context
+- нужно сохранить и уже выполненные волны, и pending verification/fix backlog по ID findings
+
+**Что сделано:**
+- добавлен `.agent/audit_wave_execution_board.md`
+  - current wave board
+  - status выполненных immediate waves
+  - список pending waves
+  - recommended next step: `Wave 2A — BUG-002`
+- добавлен `.agent/audit_findings_registry.md`
+  - детальный per-finding registry
+  - что уже `fixed` / `follow_up_fixed`
+  - что ещё `pending_verification`
+  - рабочие гипотезы по backlog findings
+- `.agent/overview.md` синхронизирован ссылкой на новые handoff файлы
+
+**Верификация:**
+- handoff-файлы созданы в `.agent/`
+- содержание собрано на основе текущих `.agent/` метафайлов и `superpowers/audit/2026-04-14-ultra-deep-audit-final-synthesis.md`
+
+**Следующий шаг:**
+- в новом диалоге начинать с `.agent/audit_wave_execution_board.md`, затем `.agent/audit_findings_registry.md`
+
+---
+
 ## 2026-04-14 — fix(test): sync ai service test imports with isort
 
 **Контекст:**

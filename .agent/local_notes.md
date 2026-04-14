@@ -2,6 +2,40 @@
 
 ## Активные проблемы
 
+### BUG-002 verification: `2300` can still win as `net_profit` on table/code path
+**Статус**: открыт
+**Дата**: 2026-04-14
+**Проблема**:
+- exact audit claim подтверждён на текущем коде:
+  - `src/analysis/extractor/rules.py::_LINE_CODE_MAP` всё ещё содержит `"2300": "net_profit"`
+  - `src/analysis/extractor/tables.py::_collect_table_line_code_candidates()` использует этот map как table-exact candidate source
+- в narrow live repro с одновременными строками `2300=9000` и `2400=1000`, где `2300` встречается раньше, final extractor outcome остаётся:
+  - `metadata["net_profit"].value == 9000.0`
+  - `winner_map["net_profit"] == net_profit::table::code_match::direct...`
+- text/scanned guardrail path иногда вытягивает canonical `2400`, поэтому баг не универсален по всем extraction modes, но table/code precedence path остаётся небезопасным
+
+**Downstream impact**:
+- ratio layer: подтверждён хотя бы для `ROS` (`0.09` vs `0.01` на identical остальных метриках)
+- scoring layer: `raw_score["score"]` меняется materially (`97.71` vs `79.43`), а `score_payload.normalized_scores.ros` / factor impact тоже дрейфуют
+- top-level `score_payload.score` может не отличаться в sparse-ratio repro из-за отдельного low-confidence guardrail (`59.99` cap), поэтому при verification не путать masked top-line score с отсутствием correctness bug
+
+**Решение / safest next step**:
+- fail-closed убрать `2300` из `net_profit` routing, а не пытаться “умно” трактовать `2300` как чистую прибыль
+- синхронно проверить mirrored paths/fixtures:
+  - `src/analysis/extractor/rules.py`
+  - legacy mirrors, если они ещё содержат тот же код-path contract
+  - targeted regression tests на конфликт `2300` vs `2400`
+- не смешивать remediation с broad math/scoring rewrite; это узкий semantic correctness pack
+
+**Памятка**:
+- при проверке `BUG-002` обязательно различать:
+  - `table/code precedence` — живой подтверждённый дефект
+  - `text/form guardrail path` — частично защищённый и не являющийся доказательством, что баг уже закрыт
+- если final top-level score кажется одинаковым, смотри также:
+  - `raw_score["score"]`
+  - `score_payload.normalized_scores.ros`
+  - factor impact по `Рентабельность продаж`
+
 ### Post-push lint follow-up: isort can fail on single-line import ordering in tests
 **Статус**: ✅ Решено (2026-04-14)
 **Дата**: 2026-04-14
