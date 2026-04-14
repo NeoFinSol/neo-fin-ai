@@ -148,6 +148,42 @@ def test_parse_financial_statements_debug_preserves_output_and_exposes_trace() -
     assert "final=" in rendered
 
 
+def test_debug_trace_net_profit_candidate_ignores_line_code_2300() -> None:
+    tables = [
+        {
+            "rows": [
+                ["2300", "9 000", ""],
+                ["2400", "1 000", ""],
+                ["2110", "100 000", ""],
+            ],
+            "flavor": "stream",
+        }
+    ]
+
+    debug_trace = pipeline.parse_financial_statements_debug(tables, "")
+
+    assert debug_trace.metadata["net_profit"].value == 1000.0
+    assert debug_trace.raw_candidates["net_profit"].value == 1000.0
+    assert debug_trace.raw_candidates["net_profit"].conflict_count == 0
+
+
+def test_debug_trace_leaves_net_profit_absent_when_only_line_code_2300_exists() -> None:
+    tables = [
+        {
+            "rows": [
+                ["2300", "9 000", ""],
+                ["2110", "100 000", ""],
+            ],
+            "flavor": "stream",
+        }
+    ]
+
+    debug_trace = pipeline.parse_financial_statements_debug(tables, "")
+
+    assert debug_trace.metadata["net_profit"].value is None
+    assert debug_trace.raw_candidates.get("net_profit") is None
+
+
 def test_result_guardrail_invalidation_records_chronological_event() -> None:
     context = _context()
     result = {

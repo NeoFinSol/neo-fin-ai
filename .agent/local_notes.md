@@ -2,39 +2,37 @@
 
 ## Активные проблемы
 
-### BUG-002 verification: `2300` can still win as `net_profit` on table/code path
-**Статус**: открыт
+### BUG-002 remediation: `2300` no longer routes to `net_profit`
+**Статус**: ✅ Решено (2026-04-14)
 **Дата**: 2026-04-14
 **Проблема**:
-- exact audit claim подтверждён на текущем коде:
-  - `src/analysis/extractor/rules.py::_LINE_CODE_MAP` всё ещё содержит `"2300": "net_profit"`
-  - `src/analysis/extractor/tables.py::_collect_table_line_code_candidates()` использует этот map как table-exact candidate source
-- в narrow live repro с одновременными строками `2300=9000` и `2400=1000`, где `2300` встречается раньше, final extractor outcome остаётся:
-  - `metadata["net_profit"].value == 9000.0`
-  - `winner_map["net_profit"] == net_profit::table::code_match::direct...`
-- text/scanned guardrail path иногда вытягивает canonical `2400`, поэтому баг не универсален по всем extraction modes, но table/code precedence path остаётся небезопасным
+- `2300` (profit before tax) ошибочно считался direct evidence для `net_profit`
+- table/code path позволял раннему `2300` победить позже встречающийся canonical `2400`
+- `only-2300` case порождал surrogate `net_profit` вместо fail-closed absence
 
-**Downstream impact**:
-- ratio layer: подтверждён хотя бы для `ROS` (`0.09` vs `0.01` на identical остальных метриках)
-- scoring layer: `raw_score["score"]` меняется materially (`97.71` vs `79.43`), а `score_payload.normalized_scores.ros` / factor impact тоже дрейфуют
-- top-level `score_payload.score` может не отличаться в sparse-ratio repro из-за отдельного low-confidence guardrail (`59.99` cap), поэтому при verification не путать masked top-line score с отсутствием correctness bug
+**Решение:**
+- из `src/analysis/extractor/rules.py` удалён canonical routing `2300 -> net_profit`
+- `_TEXT_LINE_CODE_MAP` в canonical rules и mirrored legacy helper переведены на `2400`-only semantics
+- добавлены targeted regressions:
+  - `2300 before 2400`
+  - `only 2300`
+  - explicit `2400`
+  - debug trace на empty candidate set / no hidden competition
+  - downstream scoring characterization на canonical `ROS`
 
-**Решение / safest next step**:
-- fail-closed убрать `2300` из `net_profit` routing, а не пытаться “умно” трактовать `2300` как чистую прибыль
-- синхронно проверить mirrored paths/fixtures:
-  - `src/analysis/extractor/rules.py`
-  - legacy mirrors, если они ещё содержат тот же код-path contract
-  - targeted regression tests на конфликт `2300` vs `2400`
-- не смешивать remediation с broad math/scoring rewrite; это узкий semantic correctness pack
+**Памятка:**
+- direct line-code signal для `net_profit` в этой волне только `2400`
+- `2300` не должен:
+  - создавать `net_profit`
+  - спасать missing `net_profit`
+  - входить в candidate set
+  - влиять на ranking / winner selection
+- если в будущем понадобится поддержка прибыли до налогообложения, это отдельная метрика/волна, а не reintroduction `2300 -> net_profit`
 
-**Памятка**:
-- при проверке `BUG-002` обязательно различать:
-  - `table/code precedence` — живой подтверждённый дефект
-  - `text/form guardrail path` — частично защищённый и не являющийся доказательством, что баг уже закрыт
-- если final top-level score кажется одинаковым, смотри также:
-  - `raw_score["score"]`
-  - `score_payload.normalized_scores.ros`
-  - factor impact по `Рентабельность продаж`
+**Верификация:**
+- targeted red/green regression cycle выполнен
+- `python -m pytest tests/test_pdf_extractor.py tests/test_extractor_guardrail_debug.py tests/test_scoring.py -q` → `93 passed`
+- post-fix search по `src/analysis/extractor/*.py` больше не находит `2300`
 
 ### Post-push lint follow-up: isort can fail on single-line import ordering in tests
 **Статус**: ✅ Решено (2026-04-14)

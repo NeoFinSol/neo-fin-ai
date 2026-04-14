@@ -1,5 +1,58 @@
 # Project Log
 
+## 2026-04-14 — fix(extractor): stop treating line code 2300 as net profit
+
+**Контекст:**
+- после verification-first пакета `BUG-002` был подтверждён как live correctness defect
+- требовалась узкая remediation wave без feature expansion, API drift и без broad fixture regeneration
+
+**Что сделано:**
+- выполнен execution-time repo-wide recheck по:
+  - всем live extractor упоминаниям `2300`
+  - всем `net_profit` routing surfaces
+  - target tests/fixtures, которые могли implicitly кодировать старый bug path
+- применён narrow fail-closed fix:
+  - из `src/analysis/extractor/rules.py` удалён canonical routing `2300 -> net_profit`
+  - `_TEXT_LINE_CODE_MAP` в `src/analysis/extractor/rules.py` переведён на `2400`-only для `net_profit`
+  - mirrored `_TEXT_LINE_CODE_MAP` в `src/analysis/extractor/legacy_helpers.py` синхронно переведён на `2400`-only
+- добавлен targeted regression pack без corpus-wide rewrites:
+  - `tests/test_pdf_extractor.py`
+    - `2300 before 2400` теперь закрепляет canonical `2400`
+    - `only 2300` теперь закрепляет fail-closed absence semantics
+    - explicit `2400` remains green
+  - `tests/test_extractor_guardrail_debug.py`
+    - debug trace подтверждает, что `2300` не входит в `net_profit` candidate set и не влияет на winner path
+  - `tests/test_scoring.py`
+    - downstream characterization закрепляет `ROS=0.01` / normalized `ros=0.1` для canonical `2400` case
+- fixture expectations не менялись: recheck не показал committed expectations, завязанных на старое `2300 -> net_profit`
+
+**Верификация:**
+- red phase до фикса:
+  - `python -m pytest ...` по новым targeted tests падал именно на buggy `net_profit=9000.0` вместо canonical `1000.0`
+- green phase после фикса:
+  - `python -m pytest tests/test_pdf_extractor.py::test_table_line_code_net_profit_prefers_2400_over_2300_when_2300_comes_first tests/test_pdf_extractor.py::test_table_line_code_net_profit_is_absent_when_only_2300_is_present tests/test_pdf_extractor.py::test_table_line_code_net_profit_accepts_explicit_2400 tests/test_extractor_guardrail_debug.py::test_debug_trace_net_profit_candidate_ignores_line_code_2300 tests/test_extractor_guardrail_debug.py::test_debug_trace_leaves_net_profit_absent_when_only_line_code_2300_exists tests/test_scoring.py::test_calculate_score_with_context_uses_canonical_2400_for_ros_characterization`
+    - `6 passed`
+  - `python -m pytest tests/test_pdf_extractor.py tests/test_extractor_guardrail_debug.py tests/test_scoring.py -q`
+    - `93 passed`
+  - post-fix repo recheck:
+    - `Get-ChildItem -Path src\\analysis\\extractor -Recurse -Include *.py | Select-String -Pattern '2300'`
+    - пустой результат
+  - `git diff --check`
+    - syntax/hunk issues не выявлены
+
+**Review gate:**
+- выполнен явный local `code_review` pass
+- блокирующих замечаний по пакету не найдено
+- narrow-scope invariant сохранён:
+  - новый metric id не вводился
+  - public contract drift нет
+  - hidden fallback semantics не добавлялись
+
+**Следующий шаг:**
+- вернуться к audit board и выбрать следующий pending wave после закрытия `BUG-002`
+
+---
+
 ## 2026-04-14 — docs(agent): record Wave 2A BUG-002 verification result
 
 **Контекст:**
