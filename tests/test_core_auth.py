@@ -1,5 +1,6 @@
 """Tests for core/auth.py — API key authentication."""
-from unittest.mock import MagicMock, patch
+
+from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
@@ -59,6 +60,47 @@ class TestGetApiKey:
             mock_settings.api_key = "my-secret"
             result = await get_api_key(api_key_header="my-secret")
             assert result == "my-secret"
+
+    @pytest.mark.asyncio
+    async def test_uses_compare_digest_for_equality_check(self):
+        """Equality check must use hmac.compare_digest."""
+        with patch("src.core.auth.app_settings") as mock_settings, patch(
+            "src.core.auth.hmac.compare_digest",
+            return_value=True,
+        ) as mock_compare:
+            mock_settings.dev_mode = False
+            mock_settings.api_key = "secret"
+
+            result = await get_api_key(api_key_header="secret")
+
+        assert result == "secret"
+        mock_compare.assert_called_once_with("secret", "secret")
+
+    @pytest.mark.asyncio
+    async def test_exact_match_semantics_reject_trailing_whitespace(self):
+        """Comparison must not trim inputs before comparing."""
+        with patch("src.core.auth.app_settings") as mock_settings:
+            mock_settings.dev_mode = False
+            mock_settings.api_key = "secret"
+
+            with pytest.raises(HTTPException) as exc_info:
+                await get_api_key(api_key_header="secret ")
+
+        assert exc_info.value.status_code == 401
+        assert "Invalid API key" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_exact_match_semantics_reject_case_changes(self):
+        """Comparison must remain case-sensitive."""
+        with patch("src.core.auth.app_settings") as mock_settings:
+            mock_settings.dev_mode = False
+            mock_settings.api_key = "secret"
+
+            with pytest.raises(HTTPException) as exc_info:
+                await get_api_key(api_key_header="Secret")
+
+        assert exc_info.value.status_code == 401
+        assert "Invalid API key" in exc_info.value.detail
 
 
 class TestOptionalAuth:

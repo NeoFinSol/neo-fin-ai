@@ -263,6 +263,6 @@ async def retry_with_timeout(
         backoff_multiplier=backoff_multiplier,
         initial_delay=initial_delay,
         fallback=fallback,
-        retryable_exceptions=(asyncio.TimeoutError, Exception),
+        retryable_exceptions=(asyncio.TimeoutError,),
         operation_name=operation_name,
     )

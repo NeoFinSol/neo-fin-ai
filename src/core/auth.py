@@ -1,5 +1,6 @@
 """API Key authentication module."""
 
+import hmac
 import logging
 from typing import Optional
 
@@ -11,6 +12,11 @@ from src.models.settings import app_settings
 logger = logging.getLogger(__name__)
 
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def _api_keys_match(configured_key: str, provided_key: str) -> bool:
+    """Compare API keys without transforming either operand."""
+    return hmac.compare_digest(provided_key, configured_key)
 
 
 async def get_api_key(
@@ -37,7 +43,7 @@ async def get_api_key(
             headers={"WWW-Authenticate": "ApiKey"},
         )
 
-    if api_key_header != app_settings.api_key:
+    if not _api_keys_match(app_settings.api_key, api_key_header):
         logger.warning("Invalid API key attempt")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -61,7 +67,7 @@ async def optional_auth(
     if not api_key_header:
         return None
 
-    if api_key_header == app_settings.api_key:
+    if _api_keys_match(app_settings.api_key, api_key_header):
         return api_key_header
 
     return None

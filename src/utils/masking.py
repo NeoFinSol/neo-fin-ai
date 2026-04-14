@@ -8,6 +8,7 @@ import copy
 import math
 
 MASKED_NONE_VALUE = "—"
+MAX_FRACTIONAL_MASK_WIDTH = 4
 
 
 def _mask_number(value: float | int | None) -> str:
@@ -40,6 +41,7 @@ def _mask_number(value: float | int | None) -> str:
         frac_len = len(frac_digits_str)
     else:
         frac_len = 0
+    frac_len = min(frac_len, MAX_FRACTIONAL_MASK_WIDTH)
 
     # Маскируем целую часть с разделителями тысяч
     int_str = str(int_part)

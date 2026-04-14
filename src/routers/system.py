@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
@@ -11,6 +11,11 @@ from src.utils.logging_config import get_logger, metrics
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/system", tags=["system"])
+
+
+def _current_utc_timestamp() -> str:
+    """Return the current time as a timezone-aware UTC ISO-8601 string."""
+    return datetime.now(timezone.utc).isoformat()
 
 
 @router.get("/health")
@@ -34,7 +39,7 @@ async def health_check() -> dict:
     """
     health_status = {
         "status": "ok",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _current_utc_timestamp(),
         "services": {
             "db": "ok",
             "ai": "ok",
@@ -82,7 +87,7 @@ async def healthz_check() -> dict:
     """
     health_status = {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": _current_utc_timestamp(),
         "components": {
             "database": "unknown",
             "ai_service": "unknown",
@@ -134,7 +139,7 @@ async def readiness_check() -> dict[str, str]:
         logger.error("Readiness check failed: %s", e)
         raise HTTPException(
             status_code=503,
-            detail=f"Service not ready: database connection failed - {str(e)}",
+            detail="Service not ready: database connection failed",
         )
 
     return {"status": "ready"}
