@@ -82,6 +82,21 @@ def test_code_quality_type_check_uses_explicit_package_bases_for_src_layout() ->
     assert "--ignore-missing-imports" in command
 
 
+def test_code_quality_type_check_targets_canonical_orm_models() -> None:
+    workflow_path = WORKFLOWS_DIR / "code-quality.yml"
+    parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    type_check_job = parsed["jobs"]["type-check"]
+    run_step = next(
+        step
+        for step in type_check_job["steps"]
+        if step.get("name") == "Run mypy type checking"
+    )
+    command = run_step["run"]
+
+    assert "src/db/models.py" in command
+    assert "src/models/database/user.py" not in command
+
+
 def test_ci_isort_check_uses_black_profile() -> None:
     workflow_path = WORKFLOWS_DIR / "ci.yml"
     parsed = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))

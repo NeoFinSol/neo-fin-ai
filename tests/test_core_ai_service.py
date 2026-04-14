@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.core.ai_service import AIService
+from src.core.ai_service import AIService, _TIMEOUT_RETRY_EXHAUSTED
 
 
 class TestAIServiceInit:
@@ -233,6 +233,35 @@ class TestAIServiceInvokeWithRetry:
             )
             assert result is None
             assert mock_agent.invoke.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_timeout_exhaustion_records_failure_not_success(self):
+        with patch("src.core.ai_service.app_settings") as mock_settings, patch(
+            "src.core.ai_service.qwen_agent"
+        ) as mock_agent, patch(
+            "src.core.ai_service.retry_with_timeout",
+            new_callable=AsyncMock,
+            return_value=_TIMEOUT_RETRY_EXHAUSTED,
+        ) as mock_retry, patch(
+            "src.core.ai_service.metrics"
+        ) as mock_metrics:
+            mock_settings.use_gigachat = False
+            mock_settings.use_huggingface = False
+            mock_settings.use_qwen = True
+            mock_settings.use_local_llm = False
+            mock_agent._configured = True
+            svc = AIService()
+            breaker = svc._circuit_breakers["qwen"]
+            breaker.record_failure = AsyncMock()
+            breaker.record_success = AsyncMock()
+
+            result = await svc.invoke({"tool_input": "test"}, use_retry=True)
+
+        assert result is None
+        mock_retry.assert_awaited_once()
+        breaker.record_failure.assert_awaited_once()
+        breaker.record_success.assert_not_awaited()
+        mock_metrics.record_ai_failure.assert_called_once()
 
 
 class TestAIServiceInvokeOllama:

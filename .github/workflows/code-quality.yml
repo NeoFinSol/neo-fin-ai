@@ -195,7 +195,7 @@ jobs:
           --ignore-missing-imports \
           src/models/schemas.py \
           src/models/requests.py \
-          src/models/database/user.py \
+          src/db/models.py \
           src/utils/circuit_breaker.py \
           --warn-unused-configs \
           --warn-redundant-casts \

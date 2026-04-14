@@ -2,6 +2,22 @@
 
 ## Активные проблемы
 
+### Post-push hardening follow-up: non-ASCII API key mismatch + timeout exhaustion accounting + mypy canonical ORM target
+**Статус**: ✅ Решено (2026-04-14)
+**Дата**: 2026-04-14
+**Проблема**:
+- `hmac.compare_digest(str, str)` в `src/core/auth.py` падал `TypeError` на non-ASCII header values вместо обычного mismatch
+- после сужения `retry_with_timeout()` exhausted timeout retries возвращали fallback и ошибочно проходили в success path `AIService.invoke()`
+- `.github/workflows/code-quality.yml` всё ещё type-check’ил удалённый orphan file `src/models/database/user.py`
+**Решение**:
+- `_api_keys_match()` теперь сравнивает UTF-8 bytes через `compare_digest`, сохраняя exact-match semantics без normalization/trim
+- retry path в `AIService.invoke()` использует explicit timeout-exhaustion sentinel и записывает такие исходы как breaker/metrics failure
+- mypy workflow target переключён на canonical ORM boundary `src/db/models.py`
+**Памятка**:
+- non-ASCII API key input должен деградировать в mismatch (`401` / `None`), а не в `500`
+- если retry helper снова меняется, exhausted timeout path не должен попадать в `record_success()`
+- если удаляется type-checked file, workflow regression должен синхронно перенаправляться на живой canonical target, а не просто убирать coverage
+
 ### Orphan models: delete unsupported `src/models/database` boundary instead of repairing imports
 **Статус**: ✅ Решено (2026-04-14)
 **Дата**: 2026-04-14

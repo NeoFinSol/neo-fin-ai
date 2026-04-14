@@ -16,7 +16,10 @@ API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 def _api_keys_match(configured_key: str, provided_key: str) -> bool:
     """Compare API keys without transforming either operand."""
-    return hmac.compare_digest(provided_key, configured_key)
+    return hmac.compare_digest(
+        provided_key.encode("utf-8"),
+        configured_key.encode("utf-8"),
+    )
 
 
 async def get_api_key(

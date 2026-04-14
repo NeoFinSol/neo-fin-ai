@@ -18,6 +18,34 @@ def _current_utc_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+async def _database_is_available(log_context: str) -> bool:
+    """Check database connectivity and log failures for the calling endpoint."""
+    try:
+        engine = get_engine()
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return True
+    except Exception as e:
+        logger.error("%s: %s", log_context, e)
+        return False
+
+
+def _apply_health_ai_status(health_status: dict) -> None:
+    """Mutate the health payload with the current AI service status."""
+    if not ai_service.is_configured:
+        health_status["services"]["ai"] = "not_configured"
+        return
+
+    if not ai_service.is_available:
+        health_status["services"]["ai"] = "degraded"
+        health_status["ai_circuit_breaker"] = ai_service.get_circuit_breaker_status()
+        if health_status["status"] == "ok":
+            health_status["status"] = "degraded"
+        return
+
+    health_status["services"]["ai"] = "ok"
+
+
 @router.get("/health")
 async def health_check() -> dict:
     """
@@ -47,32 +75,11 @@ async def health_check() -> dict:
         },
     }
 
-    # Check database
-    try:
-        engine = get_engine()
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        health_status["services"]["db"] = "ok"
-    except Exception as e:
-        logger.error("Database health check failed: %s", e)
+    if not await _database_is_available("Database health check failed"):
         health_status["services"]["db"] = "down"
         health_status["status"] = "down"
 
-    # Check AI service
-    if not ai_service.is_configured:
-        health_status["services"]["ai"] = "not_configured"
-        # Don't mark as degraded if AI was never configured (expected in some deployments)
-    elif not ai_service.is_available:
-        # Circuit breaker is open
-        cb_status = ai_service.get_circuit_breaker_status()
-        health_status["services"]["ai"] = "degraded"
-        health_status["ai_circuit_breaker"] = cb_status
-
-        # Only mark as degraded (not down) since core functionality still works
-        if health_status["status"] == "ok":
-            health_status["status"] = "degraded"
-    else:
-        health_status["services"]["ai"] = "ok"
+    _apply_health_ai_status(health_status)
 
     return health_status
 
@@ -94,14 +101,9 @@ async def healthz_check() -> dict:
         },
     }
 
-    # Check database connection with actual query
-    try:
-        engine = get_engine()
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+    if await _database_is_available("Database health check failed"):
         health_status["components"]["database"] = "healthy"
-    except Exception as e:
-        logger.error("Database health check failed: %s", e)
+    else:
         health_status["components"]["database"] = "unhealthy"
         health_status["status"] = "degraded"
 
@@ -131,12 +133,7 @@ async def readiness_check() -> dict[str, str]:
         HTTPException: 503 if not ready
     """
     # Check if database is available with actual connection test
-    try:
-        engine = get_engine()
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-    except Exception as e:
-        logger.error("Readiness check failed: %s", e)
+    if not await _database_is_available("Readiness check failed"):
         raise HTTPException(
             status_code=503,
             detail="Service not ready: database connection failed",

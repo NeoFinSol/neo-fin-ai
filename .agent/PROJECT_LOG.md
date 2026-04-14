@@ -1,5 +1,44 @@
 # Project Log
 
+## 2026-04-14 — fix(core): close post-push CI and review feedback for immediate wave
+
+**Контекст:**
+- после push ветки `codex/immediate-hardening-wave-2026-04-14` remote checks подняли один реальный CI defect и два реальных code-review findings
+- style-only feedback по длине `health_check()` тоже был поднят на changed surface и закрыт в том же follow-up pack без расширения semantics
+
+**Что сделано:**
+- `.github/workflows/code-quality.yml`
+  - mypy type-check target переведён с удалённого orphan path `src/models/database/user.py` на canonical ORM boundary `src/db/models.py`
+- `src/core/auth.py`
+  - `_api_keys_match()` переведён на `hmac.compare_digest()` по UTF-8 bytes
+  - non-ASCII API keys больше не валят auth path `TypeError`; mismatch остаётся `401` / `None`
+- `src/core/ai_service.py`
+  - введён explicit `_TIMEOUT_RETRY_EXHAUSTED` sentinel для retry path
+  - exhausted timeout retries теперь записываются как `breaker.record_failure()` + `metrics.record_ai_failure()`
+  - ложный success path после timeout exhaustion закрыт
+- `src/routers/system.py`
+  - `health_check()` декомпозирован на helpers `_database_is_available()` и `_apply_health_ai_status()` без изменения endpoint semantics
+- `tests/test_core_auth.py`
+  - добавлены regressions на non-ASCII mismatch для `get_api_key()` и `optional_auth()`
+  - compare-digest assertion синхронизирован под bytes path
+- `tests/test_core_ai_service.py`
+  - добавлен regression, что timeout exhaustion в retry path учитывается как failure, а не success
+- `tests/test_github_workflows.py`
+  - добавлен regression, что code-quality mypy target указывает на `src/db/models.py` и не указывает на удалённый orphan file
+
+**Верификация:**
+- `python -m pytest tests/test_core_auth.py tests/test_core_ai_service.py tests/test_routers_system.py tests/test_routers_system_full.py tests/test_github_workflows.py -q`
+  - `75 passed`
+- local CI-equivalent mypy slice:
+  - `python -m mypy --namespace-packages --explicit-package-bases --follow-imports=silent --ignore-missing-imports src/models/schemas.py src/models/requests.py src/db/models.py src/utils/circuit_breaker.py --warn-unused-configs --warn-redundant-casts --warn-unreachable --warn-return-any --strict-optional --pretty`
+  - `Success: no issues found in 4 source files`
+
+**Следующий шаг:**
+- закоммитить follow-up fix в ту же ветку и допушить
+- затем уже ждать обновлённого remote CI status по этой ветке
+
+---
+
 ## 2026-04-14 — chore(models): remove orphan database package and add dead-path guard
 
 **Контекст:**

@@ -74,7 +74,7 @@ class TestGetApiKey:
             result = await get_api_key(api_key_header="secret")
 
         assert result == "secret"
-        mock_compare.assert_called_once_with("secret", "secret")
+        mock_compare.assert_called_once_with(b"secret", b"secret")
 
     @pytest.mark.asyncio
     async def test_exact_match_semantics_reject_trailing_whitespace(self):
@@ -98,6 +98,19 @@ class TestGetApiKey:
 
             with pytest.raises(HTTPException) as exc_info:
                 await get_api_key(api_key_header="Secret")
+
+        assert exc_info.value.status_code == 401
+        assert "Invalid API key" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_non_ascii_mismatch_returns_401_instead_of_500(self):
+        """Non-ASCII header values must be treated as mismatch, not server error."""
+        with patch("src.core.auth.app_settings") as mock_settings:
+            mock_settings.dev_mode = False
+            mock_settings.api_key = "secret"
+
+            with pytest.raises(HTTPException) as exc_info:
+                await get_api_key(api_key_header="ÿ")
 
         assert exc_info.value.status_code == 401
         assert "Invalid API key" in exc_info.value.detail
@@ -144,3 +157,11 @@ class TestOptionalAuth:
             mock_settings.api_key = "correct"
             result = await optional_auth(api_key_header="correct")
             assert result == "correct"
+
+    @pytest.mark.asyncio
+    async def test_non_ascii_mismatch_returns_none(self):
+        with patch("src.core.auth.app_settings") as mock_settings:
+            mock_settings.dev_mode = False
+            mock_settings.api_key = "correct"
+            result = await optional_auth(api_key_header="ÿ")
+            assert result is None
