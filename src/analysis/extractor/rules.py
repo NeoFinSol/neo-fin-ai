@@ -13,7 +13,6 @@ from .legacy_helpers import (
 _LINE_CODE_MAP: dict[str, str] = {
     "2110": "revenue",
     "2400": "net_profit",
-    "2300": "net_profit",
     "1600": "total_assets",
     "1700": "total_assets",
     "1300": "equity",
@@ -115,7 +114,7 @@ _GARBLED_KEYWORDS: dict[str, str] = {
 _TEXT_LINE_CODE_MAP: dict[str, tuple[tuple[str, ...], tuple[str, ...] | None]] = {
     "revenue": (("2110",), ("выручка от реализации, без ндс", "выручка", "revenue")),
     "net_profit": (
-        ("2400", "2300"),
+        ("2400",),
         (
             "чистая прибыль",
             "чистая прибыль общества",

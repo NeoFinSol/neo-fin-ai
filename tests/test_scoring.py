@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from src.analysis import pdf_extractor
 from src.analysis.scoring import (
     WEIGHTS,
     annualize_metrics_for_period,
@@ -211,6 +212,31 @@ def test_calculate_score_with_context_includes_methodology_and_guardrails():
     assert methodology["benchmark_profile"] == "retail_demo"
     assert methodology["period_basis"] == "reported"
     assert "missing_core:revenue" in methodology["guardrails"]
+
+
+def test_calculate_score_with_context_uses_canonical_2400_for_ros_characterization():
+    tables = [
+        {
+            "rows": [
+                ["2300", "9 000", ""],
+                ["2400", "1 000", ""],
+                ["2110", "100 000", ""],
+            ],
+            "flavor": "stream",
+        }
+    ]
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+    metrics = {key: entry.value for key, entry in metadata.items()}
+
+    result = calculate_score_with_context(
+        metrics,
+        filename="issuer-report.pdf",
+        text="Annual report",
+    )
+
+    assert metrics["net_profit"] == 1000.0
+    assert result["ratios_en"]["ros"] == pytest.approx(0.01)
+    assert result["score_payload"]["normalized_scores"]["ros"] == pytest.approx(0.1)
 
 
 def test_calculate_score_with_context_uses_debt_only_leverage_for_retail():

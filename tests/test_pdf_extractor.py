@@ -1485,6 +1485,59 @@ def test_scanned_form_pnl_code_pair_is_preferred_for_revenue_and_net_profit():
     assert metadata["net_profit"].value == 134850.0
 
 
+def test_table_line_code_net_profit_prefers_2400_over_2300_when_2300_comes_first():
+    tables = [
+        {
+            "rows": [
+                ["2300", "9 000", ""],
+                ["2400", "1 000", ""],
+                ["2110", "100 000", ""],
+            ],
+            "flavor": "stream",
+        }
+    ]
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+
+    assert metadata["revenue"].value == 100000.0
+    assert metadata["net_profit"].value == 1000.0
+    assert metadata["net_profit"].source == "table"
+
+
+def test_table_line_code_net_profit_is_absent_when_only_2300_is_present():
+    tables = [
+        {
+            "rows": [
+                ["2300", "9 000", ""],
+                ["2110", "100 000", ""],
+            ],
+            "flavor": "stream",
+        }
+    ]
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+
+    assert metadata["revenue"].value == 100000.0
+    assert metadata["net_profit"].value is None
+
+
+def test_table_line_code_net_profit_accepts_explicit_2400():
+    tables = [
+        {
+            "rows": [
+                ["2400", "1 250", ""],
+                ["2110", "100 000", ""],
+            ],
+            "flavor": "stream",
+        }
+    ]
+
+    metadata = pdf_extractor.parse_financial_statements_with_metadata(tables, "")
+
+    assert metadata["revenue"].value == 100000.0
+    assert metadata["net_profit"].value == 1250.0
+
+
 def test_scanned_russian_same_line_receivables_is_extracted():
     text = "\n".join(
         [

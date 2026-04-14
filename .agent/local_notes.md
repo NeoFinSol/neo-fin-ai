@@ -2,6 +2,38 @@
 
 ## Активные проблемы
 
+### BUG-002 remediation: `2300` no longer routes to `net_profit`
+**Статус**: ✅ Решено (2026-04-14)
+**Дата**: 2026-04-14
+**Проблема**:
+- `2300` (profit before tax) ошибочно считался direct evidence для `net_profit`
+- table/code path позволял раннему `2300` победить позже встречающийся canonical `2400`
+- `only-2300` case порождал surrogate `net_profit` вместо fail-closed absence
+
+**Решение:**
+- из `src/analysis/extractor/rules.py` удалён canonical routing `2300 -> net_profit`
+- `_TEXT_LINE_CODE_MAP` в canonical rules и mirrored legacy helper переведены на `2400`-only semantics
+- добавлены targeted regressions:
+  - `2300 before 2400`
+  - `only 2300`
+  - explicit `2400`
+  - debug trace на empty candidate set / no hidden competition
+  - downstream scoring characterization на canonical `ROS`
+
+**Памятка:**
+- direct line-code signal для `net_profit` в этой волне только `2400`
+- `2300` не должен:
+  - создавать `net_profit`
+  - спасать missing `net_profit`
+  - входить в candidate set
+  - влиять на ranking / winner selection
+- если в будущем понадобится поддержка прибыли до налогообложения, это отдельная метрика/волна, а не reintroduction `2300 -> net_profit`
+
+**Верификация:**
+- targeted red/green regression cycle выполнен
+- `python -m pytest tests/test_pdf_extractor.py tests/test_extractor_guardrail_debug.py tests/test_scoring.py -q` → `93 passed`
+- post-fix search по `src/analysis/extractor/*.py` больше не находит `2300`
+
 ### Post-push lint follow-up: isort can fail on single-line import ordering in tests
 **Статус**: ✅ Решено (2026-04-14)
 **Дата**: 2026-04-14
