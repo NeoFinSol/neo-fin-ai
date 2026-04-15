@@ -44,6 +44,7 @@ class AIService:
         self._default_provider: Optional[AIProviderName] = None
         self._providers: dict[AIProviderName, Any] = {}
         self._circuit_breakers: dict[AIProviderName, CircuitBreaker] = {}
+        self._ollama_session: Optional[Any] = None  # shared aiohttp.ClientSession
         self._configure()
 
     @staticmethod
@@ -164,6 +165,14 @@ class AIService:
             return {}
         return self._circuit_breakers[resolved_provider].get_status()
 
+    async def _get_ollama_session(self) -> Any:
+        """Return a shared aiohttp.ClientSession for Ollama, creating it if needed."""
+        import aiohttp
+
+        if self._ollama_session is None or self._ollama_session.closed:
+            self._ollama_session = aiohttp.ClientSession()
+        return self._ollama_session
+
     async def close(self) -> None:
         """Close provider-specific runtime resources such as shared HTTP sessions."""
         seen_agents: set[int] = set()
@@ -180,6 +189,10 @@ class AIService:
                 continue
 
             await close_method()
+
+        if self._ollama_session and not self._ollama_session.closed:
+            await self._ollama_session.close()
+            self._ollama_session = None
 
     async def _invoke_with_provider(
         self,
@@ -371,8 +384,6 @@ class AIService:
         Returns:
             Optional[str]: Generated text or None
         """
-        import aiohttp
-
         url = app_settings.llm_url or os.getenv(
             "LLM_URL", "http://localhost:11434/api/generate"
         )
@@ -405,14 +416,14 @@ class AIService:
             payload["keep_alive"] = input["keep_alive"]
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload, timeout=timeout) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data.get("response", "")
-                    else:
-                        logger.error("Ollama returned status %s", response.status)
-                        return None
+            session = await self._get_ollama_session()
+            async with session.post(url, json=payload, timeout=timeout) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get("response", "")
+                else:
+                    logger.error("Ollama returned status %s", response.status)
+                    return None
         except Exception as exc:
             logger.error("Ollama invocation failed: %s", exc)
             return None

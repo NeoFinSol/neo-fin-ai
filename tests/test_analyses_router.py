@@ -3,6 +3,7 @@ Unit tests for GET /analyses and GET /analyses/{task_id} router.
 Feature: analysis-history-visualization
 Requirements: 1.6, 1.7, 2.3, 2.4
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -36,7 +37,12 @@ def _mock_analysis(task_id: str = "abc-123") -> MagicMock:
     obj.result = {
         "filename": "report.pdf",
         "data": {
-            "score": {"score": 72.5, "risk_level": "medium", "factors": [], "normalized_scores": {}},
+            "score": {
+                "score": 72.5,
+                "risk_level": "medium",
+                "factors": [],
+                "normalized_scores": {},
+            },
             "metrics": {},
             "ratios": {},
         },
@@ -49,7 +55,9 @@ async def _auth_ok():
 
 
 async def _auth_deny():
-    raise HTTPException(status_code=401, detail="Missing API key. Provide it via X-API-Key header.")
+    raise HTTPException(
+        status_code=401, detail="Missing API key. Provide it via X-API-Key header."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -57,13 +65,18 @@ async def _auth_deny():
 # Requirements: 1.6, 2.4
 # ---------------------------------------------------------------------------
 
+
 class TestAnalysesAuth:
     """Missing API key → 401."""
 
     def test_list_without_api_key_returns_401(self):
         app.dependency_overrides[get_api_key] = _auth_deny
         try:
-            with patch("src.routers.analyses.get_analyses_list", new_callable=AsyncMock, return_value=([], 0)):
+            with patch(
+                "src.routers.analyses.get_analyses_list",
+                new_callable=AsyncMock,
+                return_value=([], 0),
+            ):
                 with TestClient(app, raise_server_exceptions=False) as client:
                     response = client.get("/analyses")
         finally:
@@ -73,7 +86,11 @@ class TestAnalysesAuth:
     def test_detail_without_api_key_returns_401(self):
         app.dependency_overrides[get_api_key] = _auth_deny
         try:
-            with patch("src.routers.analyses.get_analysis", new_callable=AsyncMock, return_value=None):
+            with patch(
+                "src.routers.analyses.get_analysis",
+                new_callable=AsyncMock,
+                return_value=None,
+            ):
                 with TestClient(app, raise_server_exceptions=False) as client:
                     response = client.get("/analyses/some-task-id")
         finally:
@@ -86,13 +103,18 @@ class TestAnalysesAuth:
 # Requirement: 2.3
 # ---------------------------------------------------------------------------
 
+
 class TestAnalysesDetail:
     """Unknown task_id → 404."""
 
     def test_unknown_task_id_returns_404(self):
         app.dependency_overrides[get_api_key] = _auth_ok
         try:
-            with patch("src.routers.analyses.get_analysis", new_callable=AsyncMock, return_value=None):
+            with patch(
+                "src.routers.analyses.get_analysis",
+                new_callable=AsyncMock,
+                return_value=None,
+            ):
                 with TestClient(app) as client:
                     response = client.get("/analyses/nonexistent-id")
         finally:
@@ -120,7 +142,10 @@ class TestAnalysesTypedSummaryFallback:
         analysis.score = 88.0
         analysis.risk_level = "low"
         analysis.filename = "typed.pdf"
-        analysis.result = {"filename": "old.pdf", "data": {"score": {"score": 11.0, "risk_level": "high"}}}
+        analysis.result = {
+            "filename": "old.pdf",
+            "data": {"score": {"score": 11.0, "risk_level": "high"}},
+        }
 
         app.dependency_overrides[get_api_key] = _auth_ok
         try:
@@ -146,6 +171,7 @@ class TestAnalysesTypedSummaryFallback:
 # Requirements: 1.6, 1.7
 # ---------------------------------------------------------------------------
 
+
 class TestAnalysesValidation:
     """Invalid query params → 422."""
 
@@ -167,6 +193,7 @@ class TestAnalysesValidation:
             app.dependency_overrides.pop(get_api_key, None)
         assert response.status_code == 422
 
+
 # ---------------------------------------------------------------------------
 # Property 1: Структура ответа GET /analyses
 # Feature: analysis-history-visualization, Property 1: структура ответа GET /analyses
@@ -184,9 +211,13 @@ def _analysis_strategy():
     return st.builds(
         lambda tid, score, risk, filename: _build_mock(tid, score, risk, filename),
         tid=st.uuids().map(str),
-        score=st.one_of(st.none(), st.floats(min_value=0.0, max_value=100.0, allow_nan=False)),
+        score=st.one_of(
+            st.none(), st.floats(min_value=0.0, max_value=100.0, allow_nan=False)
+        ),
         risk=st.one_of(st.none(), st.sampled_from(["low", "medium", "high"])),
-        filename=st.one_of(st.none(), st.text(min_size=1, max_size=50).filter(lambda s: s.strip())),
+        filename=st.one_of(
+            st.none(), st.text(min_size=1, max_size=50).filter(lambda s: s.strip())
+        ),
     )
 
 
@@ -195,14 +226,23 @@ def _build_mock(tid: str, score, risk, filename) -> MagicMock:
     obj.task_id = tid
     obj.status = "completed"
     obj.created_at = datetime(2024, 3, 1, 10, 0, 0, tzinfo=timezone.utc)
-    obj.result = {
-        "filename": filename,
-        "data": {
-            "score": {"score": score, "risk_level": risk, "factors": [], "normalized_scores": {}},
-            "metrics": {},
-            "ratios": {},
-        },
-    } if score is not None or risk is not None or filename is not None else None
+    obj.result = (
+        {
+            "filename": filename,
+            "data": {
+                "score": {
+                    "score": score,
+                    "risk_level": risk,
+                    "factors": [],
+                    "normalized_scores": {},
+                },
+                "metrics": {},
+                "ratios": {},
+            },
+        }
+        if score is not None or risk is not None or filename is not None
+        else None
+    )
     return obj
 
 
@@ -242,9 +282,18 @@ def test_analyses_list_response_structure(analyses):
     assert body["total"] == total
 
     # Per-item structure
-    required_fields = {"task_id", "status", "created_at", "score", "risk_level", "filename"}
+    required_fields = {
+        "task_id",
+        "status",
+        "created_at",
+        "score",
+        "risk_level",
+        "filename",
+    }
     for item in body["items"]:
-        assert required_fields.issubset(item.keys()), f"Missing fields in item: {item.keys()}"
+        assert required_fields.issubset(
+            item.keys()
+        ), f"Missing fields in item: {item.keys()}"
         assert isinstance(item["task_id"], str)
         assert isinstance(item["status"], str)
         assert isinstance(item["created_at"], str)
@@ -337,28 +386,49 @@ from hypothesis.strategies import composite as _composite
 _status_strategy = st.sampled_from(["completed", "processing", "failed"])
 
 _metrics_strategy = st.dictionaries(
-    keys=st.text(min_size=1, max_size=20, alphabet=st.characters(whitelist_categories=("Ll", "Lu", "Nd"), whitelist_characters="_")),
-    values=st.one_of(st.floats(min_value=-1e6, max_value=1e6, allow_nan=False, allow_infinity=False), st.integers(min_value=-1000000, max_value=1000000)),
+    keys=st.text(
+        min_size=1,
+        max_size=20,
+        alphabet=st.characters(
+            whitelist_categories=("Ll", "Lu", "Nd"), whitelist_characters="_"
+        ),
+    ),
+    values=st.one_of(
+        st.floats(min_value=-1e6, max_value=1e6, allow_nan=False, allow_infinity=False),
+        st.integers(min_value=-1000000, max_value=1000000),
+    ),
     max_size=5,
 )
 
 _result_strategy = st.one_of(
     st.none(),
-    st.fixed_dictionaries({
-        "filename": st.one_of(st.none(), st.text(min_size=1, max_size=30)),
-        "data": st.fixed_dictionaries({
-            "text": st.text(max_size=50),
-            "metrics": _metrics_strategy,
-            "ratios": _metrics_strategy,
-            "score": st.fixed_dictionaries({
-                "score": st.floats(min_value=0.0, max_value=100.0, allow_nan=False),
-                "risk_level": st.sampled_from(["low", "medium", "high", "critical"]),
-                "factors": st.just([]),
-                "normalized_scores": st.just({}),
-            }),
-            "nlp": st.just({"risks": [], "key_factors": [], "recommendations": []}),
-        }),
-    }),
+    st.fixed_dictionaries(
+        {
+            "filename": st.one_of(st.none(), st.text(min_size=1, max_size=30)),
+            "data": st.fixed_dictionaries(
+                {
+                    "text": st.text(max_size=50),
+                    "metrics": _metrics_strategy,
+                    "ratios": _metrics_strategy,
+                    "score": st.fixed_dictionaries(
+                        {
+                            "score": st.floats(
+                                min_value=0.0, max_value=100.0, allow_nan=False
+                            ),
+                            "risk_level": st.sampled_from(
+                                ["low", "medium", "high", "critical"]
+                            ),
+                            "factors": st.just([]),
+                            "normalized_scores": st.just({}),
+                        }
+                    ),
+                    "nlp": st.just(
+                        {"risks": [], "key_factors": [], "recommendations": []}
+                    ),
+                }
+            ),
+        }
+    ),
 )
 
 
@@ -405,10 +475,122 @@ def test_get_analysis_detail_roundtrip(analysis):
     # data must equal the inner analysis payload from DB result["data"]
     masked_result = _mask(analysis.result or {}, False) or None
     expected_data = (
-        masked_result.get("data")
-        if isinstance(masked_result, dict)
-        else None
+        masked_result.get("data") if isinstance(masked_result, dict) else None
     )
     if expected_data == {}:
         expected_data = None
     assert body["data"] == expected_data
+
+
+# ---------------------------------------------------------------------------
+# Wave 5B — CONTRACT-001: extraction_metadata must survive masking
+# ---------------------------------------------------------------------------
+
+
+class TestExtractionMetadataSurvivesMasking:
+    """extraction_metadata inside data must not be stripped by mask_analysis_data."""
+
+    def test_extraction_metadata_preserved_in_demo_mode(self):
+        from src.utils.masking import mask_analysis_data
+
+        data = {
+            "filename": "report.pdf",
+            "data": {
+                "metrics": {"revenue": 1_000_000.0},
+                "ratios": {"ros": 0.05},
+                "text": "some text",
+                "extraction_metadata": {
+                    "revenue": {
+                        "confidence": 0.9,
+                        "source": "table_exact",
+                        "evidence_version": "v2",
+                    },
+                    "net_profit": {
+                        "confidence": 0.7,
+                        "source": "text_keyword",
+                        "evidence_version": "v2",
+                    },
+                },
+            },
+        }
+
+        result = mask_analysis_data(data, demo_mode=True)
+
+        # extraction_metadata must be present and unchanged
+        assert "extraction_metadata" in result["data"]
+        em = result["data"]["extraction_metadata"]
+        assert em["revenue"]["confidence"] == 0.9
+        assert em["revenue"]["source"] == "table_exact"
+        assert em["net_profit"]["confidence"] == 0.7
+
+    def test_extraction_metadata_preserved_in_non_demo_mode(self):
+        from src.utils.masking import mask_analysis_data
+
+        data = {
+            "data": {
+                "metrics": {"revenue": 500_000.0},
+                "extraction_metadata": {
+                    "revenue": {"confidence": 0.8, "source": "ocr"}
+                },
+            }
+        }
+
+        result = mask_analysis_data(data, demo_mode=False)
+        assert result["data"]["extraction_metadata"]["revenue"]["confidence"] == 0.8
+
+    def test_metrics_are_masked_but_extraction_metadata_is_not(self):
+        from src.utils.masking import mask_analysis_data
+
+        data = {
+            "data": {
+                "metrics": {"revenue": 1_234_567.0},
+                "extraction_metadata": {"revenue": {"confidence": 0.95}},
+            }
+        }
+
+        result = mask_analysis_data(data, demo_mode=True)
+
+        # metrics value must be masked
+        assert result["data"]["metrics"]["revenue"] != 1_234_567.0
+        assert isinstance(result["data"]["metrics"]["revenue"], str)
+
+        # extraction_metadata must be untouched
+        assert result["data"]["extraction_metadata"]["revenue"]["confidence"] == 0.95
+
+    def test_detail_endpoint_returns_extraction_metadata(self):
+        """GET /analyses/{task_id} must include extraction_metadata in data."""
+        analysis = _mock_analysis("task-with-meta")
+        analysis.result = {
+            "filename": "report.pdf",
+            "data": {
+                "score": {
+                    "score": 72.5,
+                    "risk_level": "medium",
+                    "factors": [],
+                    "normalized_scores": {},
+                },
+                "metrics": {"revenue": 1_000_000.0},
+                "ratios": {},
+                "extraction_metadata": {
+                    "revenue": {"confidence": 0.9, "source": "table_exact"},
+                },
+            },
+        }
+
+        app.dependency_overrides[get_api_key] = _auth_ok
+        try:
+            with patch(
+                "src.routers.analyses.get_analysis",
+                new_callable=AsyncMock,
+                return_value=analysis,
+            ):
+                with patch.dict("os.environ", {"DEMO_MODE": "0"}, clear=False):
+                    with TestClient(app) as client:
+                        response = client.get("/analyses/task-with-meta")
+        finally:
+            app.dependency_overrides.pop(get_api_key, None)
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert "extraction_metadata" in data
+        assert data["extraction_metadata"]["revenue"]["confidence"] == 0.9

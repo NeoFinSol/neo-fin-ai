@@ -422,6 +422,6 @@ class AppSettings(BaseSettings):
 
 try:
     app_settings = AppSettings()
-except ValueError as e:
-    logging.warning(f"Settings validation warning: {e}. Some features may be disabled.")
-    app_settings = AppSettings(_case_sensitive=False)
+except Exception as e:
+    logging.warning("Failed to load AppSettings: %s. Using defaults where possible.", e)
+    app_settings = AppSettings()
