@@ -1,7 +1,6 @@
 """Unified AI service interface with automatic provider selection."""
 
 import asyncio
-import logging
 import os
 import time
 from typing import Any, Literal, Optional

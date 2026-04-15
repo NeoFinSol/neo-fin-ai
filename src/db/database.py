@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import declarative_base
 
-from src.core.security import get_safe_db_url_for_logging
 from src.models.settings import app_settings
+from src.utils.security_utils import get_safe_db_url_for_logging
 
 # DATABASE_URL is read from environment variable via app_settings.
 # Validation is deferred to get_engine() to allow module imports during testing.

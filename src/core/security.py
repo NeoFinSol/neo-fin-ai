@@ -6,7 +6,9 @@ including credential redaction and secure random generation.
 """
 
 import re
-from typing import Optional
+
+# Re-export from utils so existing imports from core.security keep working
+from src.utils.security_utils import get_safe_db_url_for_logging  # noqa: F401
 
 
 def redact_url(url: str, replacement: str = "***REDACTED***") -> str:
@@ -83,30 +85,3 @@ def redact_credentials(text: str, replacement: str = "***REDACTED***") -> str:
         return text
     except re.error:
         return "***REDACT_FAILED***"
-
-
-def get_safe_db_url_for_logging(db_url: str) -> str:
-    """
-    Get a safe version of database URL for logging.
-
-    Returns only the host and database name, removing all credentials.
-
-    Args:
-        db_url: The database URL
-
-    Returns:
-        str: Safe URL with only host and database, e.g. 'postgresql://host:port/db'
-    """
-    if not db_url:
-        return "***"
-
-    try:
-        # Remove credentials completely
-        # Pattern: scheme://user:pass@host:port/db -> scheme://host:port/db
-        pattern = r"^(.+://)[^@]+(@.+)$"
-        match = re.match(pattern, db_url)
-        if match:
-            return f"{match.group(1)}***REDACTED***{match.group(2)}"
-        return "***REDACTED***"
-    except Exception:
-        return "***URL_PARSE_ERROR***"
