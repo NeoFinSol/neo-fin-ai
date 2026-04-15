@@ -129,7 +129,7 @@ class TestUploadPdf:
             "src.routers.pdf_tasks.create_analysis", new_callable=AsyncMock
         ) as mock_create:
             with patch(
-                "src.routers.pdf_tasks.tempfile.NamedTemporaryFile"
+                "src.utils.upload_validation.tempfile.NamedTemporaryFile"
             ) as mock_temp:
                 mock_temp_instance = MagicMock()
                 mock_temp_instance.name = "/tmp/test.pdf"
@@ -159,7 +159,7 @@ class TestUploadPdf:
 
         with patch("src.routers.pdf_tasks.create_analysis", new_callable=AsyncMock):
             with patch(
-                "src.routers.pdf_tasks.tempfile.NamedTemporaryFile"
+                "src.utils.upload_validation.tempfile.NamedTemporaryFile"
             ) as mock_temp:
                 mock_temp_instance = MagicMock()
                 mock_temp_instance.name = "/tmp/test.pdf"
@@ -204,7 +204,7 @@ class TestUploadPdf:
 
         with patch("src.routers.pdf_tasks.create_analysis", new_callable=AsyncMock):
             with patch(
-                "src.routers.pdf_tasks.tempfile.NamedTemporaryFile"
+                "src.utils.upload_validation.tempfile.NamedTemporaryFile"
             ) as mock_temp:
                 mock_temp_instance = MagicMock()
                 mock_temp_instance.name = str(shared_dir / "test.pdf")
@@ -264,7 +264,7 @@ class TestUploadPdf:
                     "src.routers.pdf_tasks._cleanup_temp_file", new_callable=AsyncMock
                 ) as mock_cleanup:
                     with patch(
-                        "src.routers.pdf_tasks.tempfile.NamedTemporaryFile"
+                        "src.utils.upload_validation.tempfile.NamedTemporaryFile"
                     ) as mock_temp:
                         mock_temp_instance = MagicMock()
                         mock_temp_instance.name = "/tmp/test.pdf"
@@ -315,7 +315,9 @@ class TestUploadPdf:
             b"x" * (MAX_FILE_SIZE + 1),  # Second read exceeds limit
         ]
 
-        with patch("src.routers.pdf_tasks.tempfile.NamedTemporaryFile") as mock_temp:
+        with patch(
+            "src.utils.upload_validation.tempfile.NamedTemporaryFile"
+        ) as mock_temp:
             mock_temp_instance = MagicMock()
             mock_temp_instance.name = "/tmp/test.pdf"
             mock_temp.return_value = mock_temp_instance
@@ -344,13 +346,15 @@ class TestUploadPdf:
             b"x" * (MAX_FILE_SIZE + 1),
         ]
 
-        with patch("src.routers.pdf_tasks.tempfile.NamedTemporaryFile") as mock_temp:
+        with patch(
+            "src.utils.upload_validation.tempfile.NamedTemporaryFile"
+        ) as mock_temp:
             mock_temp_instance = MagicMock()
             mock_temp_instance.name = "/tmp/test.pdf"
             mock_temp.return_value = mock_temp_instance
 
-            with patch("src.routers.pdf_tasks.os.path.exists", return_value=True):
-                with patch("src.routers.pdf_tasks.os.remove") as mock_remove:
+            with patch("src.utils.upload_validation.os.path.exists", return_value=True):
+                with patch("src.utils.upload_validation.os.remove") as mock_remove:
                     with pytest.raises(HTTPException):
                         await upload_pdf(mock_file, mock_background)
 
@@ -372,7 +376,9 @@ class TestUploadPdf:
             b"",
         ]
 
-        with patch("src.routers.pdf_tasks.tempfile.NamedTemporaryFile") as mock_temp:
+        with patch(
+            "src.utils.upload_validation.tempfile.NamedTemporaryFile"
+        ) as mock_temp:
             mock_temp_instance = MagicMock()
             mock_temp_instance.name = "/tmp/test.pdf"
             mock_temp_instance.flush.return_value = None
@@ -411,7 +417,7 @@ class TestUploadPdf:
             mock_create.side_effect = Exception("Database error")
 
             with patch(
-                "src.routers.pdf_tasks.tempfile.NamedTemporaryFile"
+                "src.utils.upload_validation.tempfile.NamedTemporaryFile"
             ) as mock_temp:
                 mock_temp_instance = MagicMock()
                 mock_temp_instance.name = "/tmp/test.pdf"
@@ -444,13 +450,15 @@ class TestUploadPdf:
             b"x" * (MAX_FILE_SIZE + 1),
         ]
 
-        with patch("src.routers.pdf_tasks.tempfile.NamedTemporaryFile") as mock_temp:
+        with patch(
+            "src.utils.upload_validation.tempfile.NamedTemporaryFile"
+        ) as mock_temp:
             mock_temp_instance = MagicMock()
             mock_temp_instance.name = "/tmp/test.pdf"
             mock_temp.return_value = mock_temp_instance
 
-            with patch("src.routers.pdf_tasks.os.path.exists", return_value=True):
-                with patch("src.routers.pdf_tasks.os.remove") as mock_remove:
+            with patch("src.utils.upload_validation.os.path.exists", return_value=True):
+                with patch("src.utils.upload_validation.os.remove") as mock_remove:
                     mock_remove.side_effect = Exception("Remove failed")
 
                     with pytest.raises(HTTPException):
@@ -480,7 +488,7 @@ class TestUploadPdf:
             mock_create.side_effect = Exception("Database error")
 
             with patch(
-                "src.routers.pdf_tasks.tempfile.NamedTemporaryFile"
+                "src.utils.upload_validation.tempfile.NamedTemporaryFile"
             ) as mock_temp:
                 mock_temp_instance = MagicMock()
                 mock_temp_instance.name = "/tmp/test.pdf"
@@ -502,7 +510,9 @@ class TestUploadPdf:
         mock_file.file = MagicMock()
         mock_file.file.read.side_effect = [b"%PDF-", b" content", b""]
 
-        with patch("src.routers.pdf_tasks.tempfile.NamedTemporaryFile") as mock_temp:
+        with patch(
+            "src.utils.upload_validation.tempfile.NamedTemporaryFile"
+        ) as mock_temp:
             mock_temp_instance = MagicMock()
             mock_temp_instance.name = "/tmp/test.pdf"
             mock_temp.return_value = mock_temp_instance

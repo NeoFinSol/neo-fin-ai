@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
 from uuid import uuid4
 
 from fastapi import (
@@ -43,6 +42,7 @@ from src.models.schemas import (
 from src.models.settings import app_settings
 from src.tasks import process_multi_analysis, request_multi_session_cancellation
 from src.utils.file_utils import ensure_directory
+from src.utils.upload_validation import save_uploaded_pdf, validate_upload_content_type
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/multi-analysis", tags=["multi-analysis"])
@@ -93,19 +93,14 @@ async def start_multi_analysis(
     session_id = ""
     try:
         for file, label in zip(files, periods):
-            tmp = tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=".pdf",
-                dir=_task_storage_dir(),
+            # Validate label first so Pydantic 422 fires before file I/O
+            period_input = PeriodInput(period_label=label, file_path="__pending__")
+            validate_upload_content_type(file)
+            tmp_path = await save_uploaded_pdf(file, storage_dir=_task_storage_dir())
+            temp_paths.append(tmp_path)
+            period_inputs.append(
+                PeriodInput(period_label=period_input.period_label, file_path=tmp_path)
             )
-            temp_paths.append(tmp.name)
-            try:
-                content = await file.read()
-                tmp.write(content)
-            finally:
-                tmp.close()
-
-            period_inputs.append(PeriodInput(period_label=label, file_path=tmp.name))
 
         session_id = str(uuid4())
         await create_multi_session(session_id)

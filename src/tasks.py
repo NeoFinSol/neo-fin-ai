@@ -499,43 +499,32 @@ async def process_pdf(
         cleanup_temp_file(file_path)
 
 
-async def _try_llm_extraction(
-    text: str,
+async def _get_extraction_fallback(
     tables: list,
-    task_logger: logging.Logger,
-    ai_provider: str | None = None,
-    debug_trace: bool = False,
-) -> dict:
-    """Attempt LLM-based metric extraction with fallback to regex/camelot.
-
-    Returns dict with keys:
-      metadata: dict[str, ExtractionMetadata] — merged result
-      llm_merge_trace: LLMMergeTrace | None — structured LLM merge trace
-      extractor_debug: ExtractionDebugTrace | None — pipeline debug data (when debug_trace)
-    """
-
+    text: str,
+    *,
+    debug_trace: bool,
+) -> tuple[dict, object]:
+    """Parse document with the deterministic extractor; return (metadata, debug)."""
     if debug_trace:
         debug_data = await asyncio.to_thread(
             parse_financial_statements_debug, tables, text
         )
-        fallback = dict(debug_data.metadata)
-        extractor_debug = debug_data
-    else:
-        fallback = await asyncio.to_thread(
-            parse_financial_statements_with_metadata, tables, text
-        )
-        extractor_debug = None
+        return dict(debug_data.metadata), debug_data
+    fallback = await asyncio.to_thread(
+        parse_financial_statements_with_metadata, tables, text
+    )
+    return fallback, None
 
-    if not ai_service.is_provider_available(ai_provider):
-        task_logger.warning("LLM extraction skipped: reason=%s", "llm_unavailable")
-        return {
-            "metadata": fallback,
-            "llm_merge_trace": None,
-            "extractor_debug": extractor_debug,
-        }
 
+async def _call_llm_extraction(
+    text: str,
+    ai_provider: str | None,
+    task_logger: logging.Logger,
+) -> object | None:
+    """Invoke LLM extraction; return result or None on any failure."""
     try:
-        extraction_run = await extract_with_llm(
+        return await extract_with_llm(
             text,
             ai_service,
             chunk_size=app_settings.llm_chunk_size,
@@ -547,47 +536,32 @@ async def _try_llm_extraction(
         task_logger.warning(
             "LLM extraction failed: reason=%s error=%s", "llm_error", repr(exc)
         )
-        return {
-            "metadata": fallback,
-            "llm_merge_trace": None,
-            "extractor_debug": extractor_debug,
-        }
+        return None
 
-    if extraction_run.metrics is None:
-        task_logger.warning(
-            "LLM extraction returned None: reason=%s",
-            extraction_run.failure_reason or "llm_error",
-        )
-        return {
-            "metadata": fallback,
-            "llm_merge_trace": None,
-            "extractor_debug": extractor_debug,
-        }
 
-    llm_result = extraction_run.metrics
-
+def _merge_llm_with_fallback(
+    llm_result: dict,
+    fallback: dict,
+    task_logger: logging.Logger,
+) -> tuple[dict, "LLMMergeTrace | None"]:
+    """Merge LLM metrics with fallback; build RejectionTrace and log summary."""
     non_null = sum(1 for m in llm_result.values() if m.value is not None)
-
-    result = {}
+    result: dict = {}
     llm_contributed: list[str] = []
     llm_rejected: list[RejectionTrace] = []
+
     for key, fallback_meta in fallback.items():
         llm_meta = llm_result.get(key)
         if should_prefer_llm_metric(
-            llm_meta,
-            fallback_meta,
-            threshold=CONFIDENCE_THRESHOLD,
+            llm_meta, fallback_meta, threshold=CONFIDENCE_THRESHOLD
         ):
             result[key] = llm_meta
             llm_contributed.append(key)
             continue
-
         result[key] = fallback_meta
         if llm_meta is not None and llm_meta.value is not None:
             reason = _llm_rejection_reason(
-                llm_meta,
-                fallback_meta,
-                threshold=CONFIDENCE_THRESHOLD,
+                llm_meta, fallback_meta, threshold=CONFIDENCE_THRESHOLD
             )
             fallback_norm = extractor_semantics.normalize_legacy_metadata(fallback_meta)
             llm_norm = extractor_semantics.normalize_legacy_metadata(llm_meta)
@@ -610,10 +584,7 @@ async def _try_llm_extraction(
             )
 
     llm_merge_trace = (
-        LLMMergeTrace(
-            contributed=llm_contributed,
-            rejected=llm_rejected,
-        )
+        LLMMergeTrace(contributed=llm_contributed, rejected=llm_rejected)
         if (llm_contributed or llm_rejected)
         else None
     )
@@ -640,12 +611,168 @@ async def _try_llm_extraction(
             "LLM extraction rejected for existing fallback metrics: %s",
             [r.metric_key for r in llm_rejected],
         )
+    return result, llm_merge_trace
 
+
+async def _try_llm_extraction(
+    text: str,
+    tables: list,
+    task_logger: logging.Logger,
+    ai_provider: str | None = None,
+    debug_trace: bool = False,
+) -> dict:
+    """Attempt LLM-based metric extraction with fallback to regex/camelot.
+
+    Returns dict with keys:
+      metadata: dict[str, ExtractionMetadata] — merged result
+      llm_merge_trace: LLMMergeTrace | None — structured LLM merge trace
+      extractor_debug: ExtractionDebugTrace | None — pipeline debug data (when debug_trace)
+    """
+    fallback, extractor_debug = await _get_extraction_fallback(
+        tables, text, debug_trace=debug_trace
+    )
+
+    if not ai_service.is_provider_available(ai_provider):
+        task_logger.warning("LLM extraction skipped: reason=%s", "llm_unavailable")
+        return {
+            "metadata": fallback,
+            "llm_merge_trace": None,
+            "extractor_debug": extractor_debug,
+        }
+
+    extraction_run = await _call_llm_extraction(text, ai_provider, task_logger)
+    if extraction_run is None or extraction_run.metrics is None:
+        if extraction_run is not None:
+            task_logger.warning(
+                "LLM extraction returned None: reason=%s",
+                extraction_run.failure_reason or "llm_error",
+            )
+        return {
+            "metadata": fallback,
+            "llm_merge_trace": None,
+            "extractor_debug": extractor_debug,
+        }
+
+    merged, llm_merge_trace = _merge_llm_with_fallback(
+        extraction_run.metrics, fallback, task_logger
+    )
     return {
-        "metadata": result,
+        "metadata": merged,
         "llm_merge_trace": llm_merge_trace,
         "extractor_debug": extractor_debug,
     }
+
+
+async def _extract_document_text(
+    file_path: str,
+    logger: logging.Logger,
+) -> tuple[str, bool]:
+    """Extract text from PDF; return (text, scanned)."""
+    scanned = await asyncio.to_thread(is_scanned_pdf, file_path)
+    if scanned:
+        text = await asyncio.to_thread(extract_text_from_scanned, file_path)
+        if not is_clean_financial_text(text):
+            logger.warning(
+                "OCR text quality is poor (%d chars) — financial keywords not found",
+                len(text),
+            )
+    else:
+        text = await asyncio.to_thread(extract_text, file_path)
+    return text, scanned
+
+
+async def _extract_document_tables(
+    file_path: str,
+    scanned: bool,
+    logger: logging.Logger,
+) -> list:
+    """Extract tables from PDF; returns [] for scanned documents."""
+    if scanned:
+        logger.info("Skipping camelot table extraction for scanned/OCR PDF")
+        return []
+    return await asyncio.to_thread(extract_tables, file_path)
+
+
+async def _parse_and_merge_metadata(
+    text: str,
+    tables: list,
+    logger: logging.Logger,
+    *,
+    ai_provider: str | None,
+    debug_trace: bool,
+) -> tuple[dict, object, object]:
+    """Run LLM merge or deterministic parse; return (metadata, llm_trace, extractor_debug)."""
+    if app_settings.llm_extraction_enabled:
+        llm_result = await _try_llm_extraction(
+            text, tables, logger, ai_provider=ai_provider, debug_trace=debug_trace
+        )
+        return (
+            llm_result["metadata"],
+            llm_result.get("llm_merge_trace"),
+            llm_result.get("extractor_debug"),
+        )
+    if debug_trace:
+        debug_data = await asyncio.to_thread(
+            parse_financial_statements_debug, tables, text
+        )
+        return dict(debug_data.metadata), None, debug_data
+    metadata = await asyncio.to_thread(
+        parse_financial_statements_with_metadata, tables, text
+    )
+    return metadata, None, None
+
+
+_MIN_REGEX_MONETARY_VALUE = 1000.0
+_MONETARY_METRIC_KEYS = frozenset(
+    {
+        "revenue",
+        "net_profit",
+        "total_assets",
+        "liabilities",
+        "equity",
+        "current_assets",
+        "short_term_liabilities",
+        "accounts_receivable",
+        "inventory",
+        "cash_and_equivalents",
+    }
+)
+
+
+def _apply_regex_fallback(
+    metrics_filtered: dict,
+    text: str,
+    logger: logging.Logger,
+) -> None:
+    """Fill missing critical metrics from regex extraction (in-place)."""
+    logger.warning("Critical metrics missing, using regex fallback")
+    regex_metrics = extract_metrics_regex(text)
+    regex_blocklist: set[str] = set()
+    if (
+        metrics_filtered.get("revenue") is None
+        and metrics_filtered.get("net_profit") is not None
+        and metrics_filtered.get("total_assets") is not None
+    ):
+        regex_blocklist.add("revenue")
+
+    for key, value in regex_metrics.items():
+        if value is None or key in regex_blocklist:
+            if key in regex_blocklist:
+                logger.info(
+                    "Skipping regex fallback for %s because deterministic parser"
+                    " kept stronger balance/P&L signals",
+                    key,
+                )
+            continue
+        if key in _MONETARY_METRIC_KEYS and abs(value) < _MIN_REGEX_MONETARY_VALUE:
+            logger.debug(
+                "Skipping regex fallback for %s due to low absolute value: %s",
+                key,
+                value,
+            )
+            continue
+        if metrics_filtered.get(key) is None:
+            metrics_filtered[key] = value
 
 
 async def _run_extraction_phase(
@@ -657,48 +784,11 @@ async def _run_extraction_phase(
     """Run text and table extraction from PDF."""
     start = time.monotonic()
 
-    scanned = await asyncio.to_thread(is_scanned_pdf, file_path)
-    if scanned:
-        text = await asyncio.to_thread(extract_text_from_scanned, file_path)
-        if not is_clean_financial_text(text):
-            logger.warning(
-                "OCR text quality is poor (%d chars) — financial keywords not found",
-                len(text),
-            )
-    else:
-        text = await asyncio.to_thread(extract_text, file_path)
-
-    if scanned:
-        tables = []
-        logger.info("Skipping camelot table extraction for scanned/OCR PDF")
-    else:
-        tables = await asyncio.to_thread(extract_tables, file_path)
-
-    llm_merge_trace = None
-    extractor_debug = None
-
-    if app_settings.llm_extraction_enabled:
-        llm_result = await _try_llm_extraction(
-            text,
-            tables,
-            logger,
-            ai_provider=ai_provider,
-            debug_trace=debug_trace,
-        )
-        metadata = llm_result["metadata"]
-        llm_merge_trace = llm_result.get("llm_merge_trace")
-        extractor_debug = llm_result.get("extractor_debug")
-    else:
-        if debug_trace:
-            debug_data = await asyncio.to_thread(
-                parse_financial_statements_debug, tables, text
-            )
-            metadata = dict(debug_data.metadata)
-            extractor_debug = debug_data
-        else:
-            metadata = await asyncio.to_thread(
-                parse_financial_statements_with_metadata, tables, text
-            )
+    text, scanned = await _extract_document_text(file_path, logger)
+    tables = await _extract_document_tables(file_path, scanned, logger)
+    metadata, llm_merge_trace, extractor_debug = await _parse_and_merge_metadata(
+        text, tables, logger, ai_provider=ai_provider, debug_trace=debug_trace
+    )
 
     metadata, issuer_override_traces = apply_issuer_metric_overrides(
         metadata,
@@ -710,50 +800,10 @@ async def _run_extraction_phase(
     # NOTE: scale factor is already applied inside parse_financial_statements_with_metadata.
     # Do NOT call _detect_scale_factor here again — that would double-scale all values.
 
-    # Regex fallback for critical metrics
     if (
         not metrics_filtered.get("revenue") or not metrics_filtered.get("total_assets")
     ) and text:
-        logger.warning("Critical metrics missing, using regex fallback")
-        regex_metrics = extract_metrics_regex(text)
-        regex_blocklist: set[str] = set()
-        if (
-            metrics_filtered.get("revenue") is None
-            and metrics_filtered.get("net_profit") is not None
-            and metrics_filtered.get("total_assets") is not None
-        ):
-            regex_blocklist.add("revenue")
-        min_monetary_abs = 1000.0
-        monetary_keys = {
-            "revenue",
-            "net_profit",
-            "total_assets",
-            "liabilities",
-            "equity",
-            "current_assets",
-            "short_term_liabilities",
-            "accounts_receivable",
-            "inventory",
-            "cash_and_equivalents",
-        }
-        for key, value in regex_metrics.items():
-            if value is None:
-                continue
-            if key in regex_blocklist:
-                logger.info(
-                    "Skipping regex fallback for %s because deterministic parser kept stronger balance/P&L signals",
-                    key,
-                )
-                continue
-            if key in monetary_keys and abs(value) < min_monetary_abs:
-                logger.debug(
-                    "Skipping regex fallback for %s due to low absolute value: %s",
-                    key,
-                    value,
-                )
-                continue
-            if value is not None and metrics_filtered.get(key) is None:
-                metrics_filtered[key] = value
+        _apply_regex_fallback(metrics_filtered, text, logger)
 
     logger.info(
         "PDF extraction completed",
@@ -785,6 +835,7 @@ async def _run_scoring_phase(
         filename=filename,
         text=text,
         extraction_metadata=extraction_metadata,
+        profile=app_settings.scoring_profile,
     )
 
     logger.info(

@@ -1,9 +1,7 @@
 import asyncio
 import logging
 import os
-import tempfile
 import uuid
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import (
@@ -19,7 +17,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from src.core.ai_service import ai_service
 from src.core.auth import get_api_key
-from src.core.constants import MAGIC_HEADER_SIZE, MAX_FILE_SIZE, PDF_MAGIC_HEADER
 from src.core.task_queue import dispatch_pdf_task
 from src.db.crud import (
     create_analysis,
@@ -32,6 +29,11 @@ from src.models.settings import app_settings
 from src.tasks import process_pdf, request_analysis_cancellation
 from src.utils.file_utils import ensure_directory
 from src.utils.masking import mask_analysis_data
+from src.utils.upload_validation import (
+    save_uploaded_pdf,
+    validate_pdf_magic,
+    validate_upload_content_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,41 +42,23 @@ router = APIRouter(tags=["pdf"])
 
 def _validate_pdf_file(content: bytes) -> bool:
     """Validate PDF file by checking magic header."""
-    if not content or len(content) < 5:
-        return False
-    return content[:5] == PDF_MAGIC_HEADER
+    return validate_pdf_magic(content)
 
 
 def _validate_upload_content_type(file: UploadFile) -> None:
-    if file.content_type not in ("application/pdf", "application/octet-stream"):
-        raise HTTPException(status_code=400, detail="PDF file expected")
+    validate_upload_content_type(file)
 
 
 async def _cleanup_temp_file(file_path: str) -> None:
-    """
-    Safely cleanup temporary file.
-
-    Uses asyncio.to_thread for sync file operations to avoid blocking.
-    Handles race conditions where file may already be deleted.
-    """
+    """Safely remove a temporary file without raising on missing file."""
     try:
         if file_path and os.path.exists(file_path):
             await asyncio.to_thread(os.remove, file_path)
             logger.debug("Cleaned up temporary file: %s", file_path)
     except FileNotFoundError:
-        # File already deleted - this is fine
         logger.debug("Temporary file already deleted: %s", file_path)
     except Exception as exc:
         logger.warning("Failed to delete temporary file %s: %s", file_path, exc)
-
-
-def _close_temp_file_quietly(temp_file) -> None:
-    if temp_file is None:
-        return
-    try:
-        temp_file.close()
-    except Exception:
-        logger.debug("Failed to close temporary file", exc_info=True)
 
 
 def _analysis_runtime_status(analysis) -> str:
@@ -89,58 +73,9 @@ def _task_storage_dir() -> str | None:
     return ensure_directory(app_settings.task_storage_dir)
 
 
-async def _read_upload_header(file: UploadFile) -> bytes:
-    first_chunk = await asyncio.to_thread(file.file.read, MAGIC_HEADER_SIZE)
-    if not first_chunk:
-        raise HTTPException(status_code=400, detail="Empty file")
-    if not _validate_pdf_file(first_chunk):
-        raise HTTPException(status_code=400, detail="Invalid PDF file format")
-    return first_chunk
-
-
-def _create_upload_temp_file():
-    return tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix=".pdf",
-        dir=_task_storage_dir(),
-    )
-
-
-async def _write_upload_chunks(
-    file: UploadFile, temp_file, *, first_chunk: bytes
-) -> str:
-    temp_file.write(first_chunk)
-    total_size = len(first_chunk)
-    chunk_size = 8192
-
-    while True:
-        chunk = await asyncio.to_thread(file.file.read, chunk_size)
-        if not chunk:
-            break
-
-        total_size += len(chunk)
-        if total_size > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024)} MB",
-            )
-        temp_file.write(chunk)
-
-    temp_file.flush()
-    return temp_file.name
-
-
 async def _save_uploaded_pdf(file: UploadFile) -> str:
-    first_chunk = await _read_upload_header(file)
-    temp_file = _create_upload_temp_file()
-
-    try:
-        return await _write_upload_chunks(file, temp_file, first_chunk=first_chunk)
-    except Exception:
-        await _cleanup_temp_file(temp_file.name)
-        raise
-    finally:
-        _close_temp_file_quietly(temp_file)
+    """Save uploaded PDF via shared upload_validation helper."""
+    return await save_uploaded_pdf(file, storage_dir=_task_storage_dir())
 
 
 def _resolve_requested_provider(ai_provider: str | None) -> str | None:

@@ -3,7 +3,6 @@ import math
 from typing import Any, TypedDict
 
 from src.analysis.ratios import RATIO_KEY_MAP, calculate_ratios, translate_ratios
-from src.models.settings import app_settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +22,27 @@ _LEVERAGE_BASIS_TOTAL = "total_liabilities"
 _LEVERAGE_BASIS_DEBT_ONLY = "debt_only"
 _LEVERAGE_TOTAL_RU = "Финансовый рычаг (обязательства/капитал)"
 _LEVERAGE_DEBT_ONLY_RU = "Финансовый рычаг (долг/капитал)"
-_RETAIL_PEER_CONTEXT = [
-    "Large food retail may operate with current ratio below 1; Walmart current ratio ~0.79 (Jan 2026 reference).",
-]
+
+# Score cap constants for data-quality guardrails (P2.1)
+_SCORE_CAP_MISSING_CORE: float = 39.99
+_SCORE_CAP_MISSING_SUPPORTING: float = 54.99
+_SCORE_CAP_LOW_CONFIDENCE: float = 59.99
+_MIN_CONFIDENCE_FOR_FULL_SCORE: float = 0.4
+
+# Per-profile peer context and leverage basis (P3 — OCP)
+# Adding a new profile only requires entries in these two dicts.
+_PROFILE_PEER_CONTEXT: dict[str, list[str]] = {
+    "retail_demo": [
+        "Large food retail may operate with current ratio below 1;"
+        " Walmart current ratio ~0.79 (Jan 2026 reference).",
+    ],
+}
+_PROFILE_LEVERAGE_BASIS: dict[str, str] = {
+    "retail_demo": _LEVERAGE_BASIS_DEBT_ONLY,
+}
+
+_RETAIL_PEER_CONTEXT = _PROFILE_PEER_CONTEXT["retail_demo"]
+
 _RETAIL_KEYWORDS = (
     "магнит",
     "x5",
@@ -162,9 +179,7 @@ _ANOMALY_LIMITS: dict[str, tuple[float, float]] = {
 
 
 def _resolve_scoring_profile(profile: str | None = None) -> str:
-    resolved_profile = (
-        (profile or app_settings.scoring_profile or "auto").strip().lower()
-    )
+    resolved_profile = (profile or "auto").strip().lower()
     if resolved_profile == "auto":
         return "generic"
     if resolved_profile not in BENCHMARKS_BY_PROFILE:
@@ -222,6 +237,7 @@ def resolve_scoring_methodology(
     ratios_en: dict[str, Any] | None = None,
     filename: str | None = None,
     text: str | None = None,
+    profile: str | None = None,
 ) -> dict[str, Any]:
     """Resolve benchmark profile and period basis from document context."""
     context = _normalize_scoring_context(filename, text)
@@ -230,6 +246,7 @@ def resolve_scoring_methodology(
         metrics,
         resolved_ratios,
         context,
+        profile_override=profile,
     )
     period_basis, period_reasons = _detect_period_basis(metrics, context)
     return {
@@ -241,9 +258,7 @@ def resolve_scoring_methodology(
         "leverage_basis": _LEVERAGE_BASIS_TOTAL,
         "ifrs16_adjusted": False,
         "adjustments": [],
-        "peer_context": (
-            list(_RETAIL_PEER_CONTEXT) if benchmark_profile == "retail_demo" else []
-        ),
+        "peer_context": list(_PROFILE_PEER_CONTEXT.get(benchmark_profile, [])),
     }
 
 
@@ -268,6 +283,7 @@ def calculate_score_with_context(
     filename: str | None = None,
     text: str | None = None,
     extraction_metadata: dict[str, Any] | None = None,
+    profile: str | None = None,
 ) -> ScoreComputationResult:
     """Run document-aware scoring with retail/interim auto-detection."""
     base_ratios_ru = calculate_ratios(metrics)
@@ -277,6 +293,7 @@ def calculate_score_with_context(
         ratios_en=base_ratios_en,
         filename=filename,
         text=text,
+        profile=profile,
     )
     scoring_metrics = annualize_metrics_for_period(metrics, methodology["period_basis"])
     ratios_ru = calculate_ratios(scoring_metrics)
@@ -402,13 +419,13 @@ def apply_data_quality_guardrails(
     capped_score = current_score
     applied_guardrails: list[str] = []
     if missing_core:
-        capped_score = min(capped_score, 39.99)
+        capped_score = min(capped_score, _SCORE_CAP_MISSING_CORE)
         applied_guardrails = [f"missing_core:{key}" for key in missing_core]
     elif missing_supporting:
-        capped_score = min(capped_score, 54.99)
+        capped_score = min(capped_score, _SCORE_CAP_MISSING_SUPPORTING)
         applied_guardrails = [f"missing_supporting:{key}" for key in missing_supporting]
-    elif confidence_score < 0.4:
-        capped_score = min(capped_score, 59.99)
+    elif confidence_score < _MIN_CONFIDENCE_FOR_FULL_SCORE:
+        capped_score = min(capped_score, _SCORE_CAP_LOW_CONFIDENCE)
         applied_guardrails = ["low_confidence"]
 
     if capped_score != current_score:
@@ -486,7 +503,14 @@ def _detect_benchmark_profile(
     metrics: dict[str, Any],
     ratios_en: dict[str, Any],
     context: str,
+    profile_override: str | None = None,
 ) -> tuple[str, list[str]]:
+    # Explicit override from caller (e.g. app_settings.scoring_profile)
+    if profile_override:
+        resolved = _resolve_scoring_profile(profile_override)
+        if resolved != "generic":
+            return resolved, [f"profile_override:{resolved}"]
+
     for keyword in _RETAIL_KEYWORDS:
         if keyword in context:
             return "retail_demo", ["retail_keyword"]
@@ -568,6 +592,79 @@ def _normalize_methodology(methodology: dict[str, Any] | None) -> dict[str, Any]
     return normalized
 
 
+def _resolve_leverage_basis(
+    methodology: dict[str, Any],
+    debt_only_leverage: float | None,
+) -> tuple[str, bool]:
+    """Return (leverage_basis, use_debt_only) for the given profile."""
+    profile_basis = _PROFILE_LEVERAGE_BASIS.get(methodology["benchmark_profile"])
+    if profile_basis is not None and debt_only_leverage is not None:
+        return profile_basis, True
+    return _LEVERAGE_BASIS_TOTAL, False
+
+
+def _apply_leverage_to_ratios(
+    ratios_ru: dict[str, Any],
+    ratios_en: dict[str, Any],
+    methodology: dict[str, Any],
+    *,
+    total_leverage: float | None,
+    debt_only_leverage: float | None,
+) -> str:
+    """Populate leverage fields in ratios and methodology; return resolved basis."""
+    leverage_basis, use_debt_only = _resolve_leverage_basis(
+        methodology, debt_only_leverage
+    )
+    active_leverage = debt_only_leverage if use_debt_only else total_leverage
+    if use_debt_only:
+        methodology["adjustments"] = _merge_unique_strings(
+            methodology["adjustments"], ["leverage_debt_only"]
+        )
+    methodology["leverage_basis"] = leverage_basis
+    ratios_ru["Финансовый рычаг"] = active_leverage
+    ratios_en["financial_leverage_total"] = total_leverage
+    ratios_en["financial_leverage_debt_only"] = debt_only_leverage
+    ratios_en["financial_leverage"] = active_leverage
+    return leverage_basis
+
+
+def _apply_interest_sign_correction(
+    metrics: dict[str, Any],
+    methodology: dict[str, Any],
+) -> None:
+    """Add sign-correction adjustment when interest_expense is negative."""
+    interest_expense = _to_number(metrics.get("interest_expense"))
+    if interest_expense is not None and interest_expense < 0:
+        methodology["adjustments"] = _merge_unique_strings(
+            methodology["adjustments"], ["interest_coverage_sign_corrected"]
+        )
+
+
+def _apply_ifrs16_flag(
+    methodology: dict[str, Any],
+    metrics: dict[str, Any],
+    leverage_basis: str,
+    issuer_adjustments: list[str],
+) -> None:
+    """Set ifrs16_adjusted flag based on lease metrics and leverage basis."""
+    has_lease_metrics = any(
+        metrics.get(key) is not None
+        for key in ("short_term_lease_liabilities", "long_term_lease_liabilities")
+    )
+    methodology["ifrs16_adjusted"] = bool(
+        leverage_basis == _LEVERAGE_BASIS_DEBT_ONLY
+        or has_lease_metrics
+        or issuer_adjustments
+    )
+
+
+def _apply_profile_peer_context(methodology: dict[str, Any]) -> None:
+    """Populate peer_context from the profile lookup table."""
+    peer_context = _PROFILE_PEER_CONTEXT.get(methodology["benchmark_profile"])
+    if peer_context is not None:
+        methodology["peer_context"] = _merge_unique_strings([], peer_context)
+
+
 def _apply_scoring_methodology_adjustments(
     ratios_ru: dict[str, Any],
     ratios_en: dict[str, Any],
@@ -582,52 +679,24 @@ def _apply_scoring_methodology_adjustments(
     total_leverage = _to_number(adjusted_ratios_ru.get(_LEVERAGE_TOTAL_RU))
     debt_only_leverage = _to_number(adjusted_ratios_ru.get(_LEVERAGE_DEBT_ONLY_RU))
 
-    leverage_basis = _LEVERAGE_BASIS_TOTAL
-    active_leverage = total_leverage
-    if (
-        adjusted_methodology["benchmark_profile"] == "retail_demo"
-        and debt_only_leverage is not None
-    ):
-        leverage_basis = _LEVERAGE_BASIS_DEBT_ONLY
-        active_leverage = debt_only_leverage
-        adjusted_methodology["adjustments"] = _merge_unique_strings(
-            adjusted_methodology["adjustments"],
-            ["leverage_debt_only"],
-        )
-
-    adjusted_methodology["leverage_basis"] = leverage_basis
-    adjusted_ratios_ru["Финансовый рычаг"] = active_leverage
-    adjusted_ratios_en["financial_leverage_total"] = total_leverage
-    adjusted_ratios_en["financial_leverage_debt_only"] = debt_only_leverage
-    adjusted_ratios_en["financial_leverage"] = active_leverage
-
-    interest_expense = _to_number(metrics.get("interest_expense"))
-    if interest_expense is not None and interest_expense < 0:
-        adjusted_methodology["adjustments"] = _merge_unique_strings(
-            adjusted_methodology["adjustments"],
-            ["interest_coverage_sign_corrected"],
-        )
+    leverage_basis = _apply_leverage_to_ratios(
+        adjusted_ratios_ru,
+        adjusted_ratios_en,
+        adjusted_methodology,
+        total_leverage=total_leverage,
+        debt_only_leverage=debt_only_leverage,
+    )
+    _apply_interest_sign_correction(metrics, adjusted_methodology)
 
     issuer_adjustments = _extract_issuer_adjustment_codes(extraction_metadata)
     adjusted_methodology["adjustments"] = _merge_unique_strings(
-        adjusted_methodology["adjustments"],
-        issuer_adjustments,
+        adjusted_methodology["adjustments"], issuer_adjustments
     )
 
-    has_lease_metrics = any(
-        metrics.get(key) is not None
-        for key in ("short_term_lease_liabilities", "long_term_lease_liabilities")
+    _apply_ifrs16_flag(
+        adjusted_methodology, metrics, leverage_basis, issuer_adjustments
     )
-    adjusted_methodology["ifrs16_adjusted"] = bool(
-        leverage_basis == _LEVERAGE_BASIS_DEBT_ONLY
-        or has_lease_metrics
-        or issuer_adjustments
-    )
-    if adjusted_methodology["benchmark_profile"] == "retail_demo":
-        adjusted_methodology["peer_context"] = _merge_unique_strings(
-            [],
-            _RETAIL_PEER_CONTEXT,
-        )
+    _apply_profile_peer_context(adjusted_methodology)
 
     return adjusted_ratios_ru, adjusted_ratios_en, adjusted_methodology
 
