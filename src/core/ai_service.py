@@ -8,6 +8,7 @@ from typing import Any, Literal, Optional
 from src.core.agent import agent as qwen_agent
 from src.core.gigachat_agent import gigachat_agent
 from src.core.huggingface_agent import huggingface_agent
+from src.core.ollama_agent import ollama_agent
 from src.models.settings import app_settings
 from src.utils.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from src.utils.logging_config import get_logger, metrics
@@ -43,7 +44,6 @@ class AIService:
         self._default_provider: Optional[AIProviderName] = None
         self._providers: dict[AIProviderName, Any] = {}
         self._circuit_breakers: dict[AIProviderName, CircuitBreaker] = {}
-        self._ollama_session: Optional[Any] = None  # shared aiohttp.ClientSession
         self._configure()
 
     @staticmethod
@@ -123,7 +123,7 @@ class AIService:
             logger.info("Qwen AI service configured")
 
         if app_settings.use_local_llm:
-            self._register_provider("ollama", None)
+            self._register_provider("ollama", ollama_agent)
             logger.info("Local LLM (Ollama) will be used")
 
         if not self._providers:
@@ -164,14 +164,6 @@ class AIService:
             return {}
         return self._circuit_breakers[resolved_provider].get_status()
 
-    async def _get_ollama_session(self) -> Any:
-        """Return a shared aiohttp.ClientSession for Ollama, creating it if needed."""
-        import aiohttp
-
-        if self._ollama_session is None or self._ollama_session.closed:
-            self._ollama_session = aiohttp.ClientSession()
-        return self._ollama_session
-
     async def close(self) -> None:
         """Close provider-specific runtime resources such as shared HTTP sessions."""
         seen_agents: set[int] = set()
@@ -189,19 +181,12 @@ class AIService:
 
             await close_method()
 
-        if self._ollama_session and not self._ollama_session.closed:
-            await self._ollama_session.close()
-            self._ollama_session = None
-
     async def _invoke_with_provider(
         self,
         provider: AIProviderName,
         input: dict,
         timeout: Optional[int],
     ) -> Optional[str]:
-        if provider == "ollama":
-            return await self._invoke_ollama(input, timeout=timeout)
-
         agent = self._providers[provider]
         return await agent.invoke(input, timeout=timeout)
 
@@ -353,79 +338,11 @@ class AIService:
         """
         Legacy wrapper for invoke(use_retry=True) for backward compatibility.
 
-        This method exists for compatibility with tests and legacy code.
         New code should use invoke(use_retry=True) directly.
-
-        Args:
-            input: Input dictionary with tool_input and optional system prompt
-            timeout: Request timeout in seconds (default: AI_TIMEOUT env)
-            max_retries: Ignored (uses AI_RETRY_COUNT from env)
-            retry_delay: Ignored (uses AI_RETRY_BACKOFF from env)
-
-        Returns:
-            Optional[str]: AI response or None (on failure/timeout/circuit open)
+        max_retries and retry_delay are accepted but ignored — retry behaviour
+        is controlled by AI_RETRY_COUNT and AI_RETRY_BACKOFF env vars.
         """
-        # Ignore max_retries and retry_delay for now (use env vars)
         return await self.invoke(input=input, timeout=timeout, use_retry=True)
-
-    async def _invoke_ollama(
-        self,
-        input: dict,
-        timeout: Optional[int] = None,
-    ) -> Optional[str]:
-        """
-        Invoke local LLM via Ollama HTTP API.
-
-        Args:
-            input: Input dictionary with prompt
-            timeout: Request timeout in seconds
-
-        Returns:
-            Optional[str]: Generated text or None
-        """
-        url = app_settings.llm_url or os.getenv(
-            "LLM_URL", "http://localhost:11434/api/generate"
-        )
-        model = app_settings.llm_model or os.getenv("LLM_MODEL", "llama3")
-
-        prompt = input.get("prompt", "") or input.get("tool_input", "")
-        # Handle case where tool_input might be a dict with prompt key
-        if isinstance(prompt, dict):
-            prompt = prompt.get("prompt", "")
-
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            # Our pipelines expect the final content in `response`, not in
-            # model-specific reasoning channels such as `thinking`.
-            "think": input.get("think", False),
-        }
-
-        if input.get("system"):
-            payload["system"] = input["system"]
-
-        if input.get("format") is not None:
-            payload["format"] = input["format"]
-
-        if input.get("options") is not None:
-            payload["options"] = input["options"]
-
-        if input.get("keep_alive") is not None:
-            payload["keep_alive"] = input["keep_alive"]
-
-        try:
-            session = await self._get_ollama_session()
-            async with session.post(url, json=payload, timeout=timeout) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("response", "")
-                else:
-                    logger.error("Ollama returned status %s", response.status)
-                    return None
-        except Exception as exc:
-            logger.error("Ollama invocation failed: %s", exc)
-            return None
 
 
 # Global AI service instance
