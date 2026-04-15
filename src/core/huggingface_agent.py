@@ -3,7 +3,7 @@ from typing import Optional
 
 import aiohttp
 
-from src.core.base_agent import BaseAIAgent
+from src.core.base_agent import BaseAIAgent, ConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class HuggingFaceAgent(BaseAIAgent):
     ) -> None:
         """Configure agent with Hugging Face credentials."""
         if not token or not token.strip():
-            raise ValueError("Hugging Face token is required")
+            raise ConfigurationError("Hugging Face token is required")
 
         self._token = token.strip()
         self._model = model.strip()
@@ -37,7 +37,7 @@ class HuggingFaceAgent(BaseAIAgent):
     def _ensure_configured(self) -> None:
         """Ensure agent is configured."""
         if not self._configured or not self._token:
-            raise ValueError(
+            raise ConfigurationError(
                 "Hugging Face agent not configured. Call set_config(token) first"
             )
 

@@ -8,7 +8,7 @@ from typing import Optional
 import aiohttp
 from aiohttp import ClientError, ClientTimeout, ContentTypeError
 
-from src.core.base_agent import BaseAIAgent
+from src.core.base_agent import BaseAIAgent, ConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +82,10 @@ class GigaChatAgent(BaseAIAgent):
             ValueError: If client_id or client_secret is missing/empty
         """
         if not client_id or not client_id.strip():
-            raise ValueError("GigaChat Client ID is required")
+            raise ConfigurationError("GigaChat Client ID is required")
 
         if not client_secret or not client_secret.strip():
-            raise ValueError("GigaChat Client Secret is required")
+            raise ConfigurationError("GigaChat Client Secret is required")
 
         self._client_id = client_id.strip()
         self._client_secret = client_secret.strip()
@@ -97,7 +97,7 @@ class GigaChatAgent(BaseAIAgent):
     def _ensure_configured(self) -> None:
         """Ensure agent is configured before making requests."""
         if not self._configured or not self._client_id or not self._client_secret:
-            raise ValueError(
+            raise ConfigurationError(
                 "GigaChat agent not configured. Call set_config(client_id, client_secret) first"
             )
 
@@ -182,7 +182,7 @@ class GigaChatAgent(BaseAIAgent):
             Optional[str]: Agent response or None
 
         Raises:
-            ValueError: If agent is not configured
+            ConfigurationError: If agent is not configured
         """
         self._ensure_configured()
 
@@ -215,7 +215,7 @@ class GigaChatAgent(BaseAIAgent):
             Optional[str]: API response or None
 
         Raises:
-            ValueError: If agent is not configured
+            ConfigurationError: If agent is not configured
         """
         self._ensure_configured()
 

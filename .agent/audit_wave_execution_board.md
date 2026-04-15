@@ -91,14 +91,14 @@ Stop the current wave and re-plan if any of these becomes true:
 
 ### Wave 4A / 4B — AI Contract Repair
 
-- **Status:** pending
+- **Status:** implemented (2026-04-15)
 - **Findings:** `ARCH-003`, `ARCH-004`, `ARCH-005`, `ARCH-007`, `TEST-003`
-- **Goal:** verify whether the AI configuration/error family is actually broken at runtime or only ugly in design
-- **Expected repair shape if confirmed:**
-  - one canonical `ConfigurationError`
-  - public configuration contract
-  - no direct dependence on private `._configured`
-  - targeted provider/service tests
+- **What landed:**
+  - duplicate `ConfigurationError` in `agent.py` removed — imported from `base_agent`
+  - `GigaChatAgent` and `HuggingFaceAgent` now raise `ConfigurationError` instead of `ValueError`
+  - public `is_configured` property added to `BaseAIAgent`
+  - `ai_service._configure()` uses `is_configured` instead of `._configured`
+  - `tests/test_wave4_ai_contract.py` — 27 regression tests on unified error hierarchy and public contract
 
 ### Wave 5A / 5B — Runtime / Settings / Metadata Reliability
 
@@ -143,12 +143,7 @@ Stop the current wave and re-plan if any of these becomes true:
 
 ## Recommended Next Move
 
-Start with **Wave 4A — AI Contract Repair**.
-
-Why this is next:
-- Wave 3A/3B closed; upload boundary is now hardened
-- SOLID/Clean Code pack complete — no more DIP/LSP/SRP debt in core pipeline
-- Wave 4A is the next highest-value unresolved correctness issue
+Start with **Wave 5A — Runtime / Settings / Metadata Reliability**.
 
 ## Strong Parts That Must Be Preserved
 

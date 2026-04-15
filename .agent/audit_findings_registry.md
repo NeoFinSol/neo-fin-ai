@@ -121,28 +121,32 @@
 
 #### `ARCH-003` — duplicate `ConfigurationError` identity
 
-- **Status:** `pending_verification`
-- **Working claim:** multiple error classes with the same intent break substitutability and catch behavior
+- **Status:** `fixed` (2026-04-15)
+- **Files touched:** `src/core/agent.py`, `src/core/base_agent.py`
+- **Outcome:** duplicate class removed from `agent.py`; canonical class lives in `base_agent.py`
 
 #### `ARCH-004` — concrete agents raise the wrong error family
 
-- **Status:** `pending_verification`
-- **Working claim:** some providers raise `ValueError` where callers expect configuration errors
+- **Status:** `fixed` (2026-04-15)
+- **Files touched:** `src/core/gigachat_agent.py`, `src/core/huggingface_agent.py`
+- **Outcome:** both agents now raise `ConfigurationError` instead of `ValueError`
 
 #### `ARCH-005` — AI service depends on private configuration state
 
-- **Status:** `pending_verification`
-- **Working claim:** callers reach into `._configured` instead of using a public contract
+- **Status:** `fixed` (2026-04-15)
+- **Files touched:** `src/core/base_agent.py`, `src/core/ai_service.py`
+- **Outcome:** public `is_configured` property added; `ai_service._configure()` uses it
 
 #### `ARCH-007` — AI provider configuration contract is not unified
 
-- **Status:** `pending_verification`
-- **Working claim:** provider/service readiness behavior is inconsistent enough to justify one cohesive remediation pack
+- **Status:** `fixed` (2026-04-15)
+- **Outcome:** all three providers now share the same `ConfigurationError` + `is_configured` contract
 
 #### `TEST-003` — AI contract/regression coverage is incomplete
 
-- **Status:** `needs_recheck`
-- **Working note:** in the current wave plan this item travels with the AI contract family; re-check exact audit wording before implementation
+- **Status:** `fixed` (2026-04-15)
+- **Files touched:** `tests/test_wave4_ai_contract.py` (new), `tests/test_core_gigachat_agent.py`, `tests/test_core_ai_service.py`
+- **Outcome:** 27 new contract tests; existing tests updated to use `ConfigurationError` and `is_configured`
 
 ### Wave 5 — Runtime / Settings / Metadata
 
