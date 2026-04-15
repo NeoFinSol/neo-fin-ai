@@ -35,6 +35,11 @@ class BaseAIAgent:
         self._session: Optional[aiohttp.ClientSession] = None
         self.model: Optional[str] = None
 
+    @property
+    def is_configured(self) -> bool:
+        """Return True when the agent has been successfully configured."""
+        return self._configured
+
     def _ensure_configured(self) -> None:
         """Ensure agent is configured before making requests."""
         if not self._configured:

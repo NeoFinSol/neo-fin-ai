@@ -1,9 +1,11 @@
 """Tests for core/gigachat_agent.py — GigaChat API agent."""
+
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.core.base_agent import ConfigurationError
 from src.core.gigachat_agent import GigaChatAgent
 
 
@@ -37,27 +39,29 @@ class TestGigaChatAgentSetConfig:
 
     def test_empty_client_id_raises(self):
         agent = GigaChatAgent()
-        with pytest.raises(ValueError, match="Client ID is required"):
+        with pytest.raises(ConfigurationError, match="Client ID is required"):
             agent.set_config("", "secret")
 
     def test_none_client_id_raises(self):
         agent = GigaChatAgent()
-        with pytest.raises(ValueError, match="Client ID is required"):
+        with pytest.raises(ConfigurationError, match="Client ID is required"):
             agent.set_config(None, "secret")
 
     def test_empty_client_secret_raises(self):
         agent = GigaChatAgent()
-        with pytest.raises(ValueError, match="Client Secret is required"):
+        with pytest.raises(ConfigurationError, match="Client Secret is required"):
             agent.set_config("cid", "")
 
     def test_none_client_secret_raises(self):
         agent = GigaChatAgent()
-        with pytest.raises(ValueError, match="Client Secret is required"):
+        with pytest.raises(ConfigurationError, match="Client Secret is required"):
             agent.set_config("cid", None)
 
     def test_custom_urls(self):
         agent = GigaChatAgent()
-        agent.set_config("cid", "csec", auth_url="https://auth.test/", chat_url="https://chat.test/")
+        agent.set_config(
+            "cid", "csec", auth_url="https://auth.test/", chat_url="https://chat.test/"
+        )
         assert agent._auth_url == "https://auth.test"
         assert agent._chat_url == "https://chat.test"
 
@@ -65,7 +69,7 @@ class TestGigaChatAgentSetConfig:
 class TestGigaChatAgentEnsureConfigured:
     def test_raises_when_not_configured(self):
         agent = GigaChatAgent()
-        with pytest.raises(ValueError, match="not configured"):
+        with pytest.raises(ConfigurationError, match="not configured"):
             agent._ensure_configured()
 
     def test_no_error_when_configured(self):
@@ -78,6 +82,7 @@ class TestGigaChatAgentGetAccessToken:
     @pytest.mark.asyncio
     async def test_returns_cached_token(self):
         import time
+
         agent = GigaChatAgent()
         agent.set_config("cid", "csec")
         agent._auth_token = "cached-token"
@@ -93,7 +98,9 @@ class TestGigaChatAgentGetAccessToken:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"access_token": "new-token", "expires_in": 3600})
+        mock_response.json = AsyncMock(
+            return_value={"access_token": "new-token", "expires_in": 3600}
+        )
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=False)
 
@@ -103,8 +110,9 @@ class TestGigaChatAgentGetAccessToken:
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
         mock_connector = MagicMock()
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("aiohttp.TCPConnector", return_value=mock_connector):
+        with patch("aiohttp.ClientSession", return_value=mock_session), patch(
+            "aiohttp.TCPConnector", return_value=mock_connector
+        ):
             result = await agent._get_access_token()
             assert result == "new-token"
             assert agent._auth_token == "new-token"
@@ -126,8 +134,9 @@ class TestGigaChatAgentGetAccessToken:
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
         mock_connector = MagicMock()
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("aiohttp.TCPConnector", return_value=mock_connector):
+        with patch("aiohttp.ClientSession", return_value=mock_session), patch(
+            "aiohttp.TCPConnector", return_value=mock_connector
+        ):
             with pytest.raises(ValueError, match="authentication failed"):
                 await agent._get_access_token()
 
@@ -138,7 +147,9 @@ class TestGigaChatAgentGetAccessToken:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"expires_in": 3600})  # no access_token
+        mock_response.json = AsyncMock(
+            return_value={"expires_in": 3600}
+        )  # no access_token
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=False)
 
@@ -148,20 +159,23 @@ class TestGigaChatAgentGetAccessToken:
         mock_session.__aexit__ = AsyncMock(return_value=False)
 
         mock_connector = MagicMock()
-        with patch("aiohttp.ClientSession", return_value=mock_session), \
-             patch("aiohttp.TCPConnector", return_value=mock_connector):
+        with patch("aiohttp.ClientSession", return_value=mock_session), patch(
+            "aiohttp.TCPConnector", return_value=mock_connector
+        ):
             with pytest.raises(ValueError, match="No access_token"):
                 await agent._get_access_token()
 
     @pytest.mark.asyncio
     async def test_raises_on_connection_error(self):
         import aiohttp
+
         agent = GigaChatAgent()
         agent.set_config("cid", "csec")
 
         mock_connector = MagicMock()
-        with patch("aiohttp.TCPConnector", return_value=mock_connector), \
-             patch("aiohttp.ClientSession", side_effect=aiohttp.ClientError("conn failed")):
+        with patch("aiohttp.TCPConnector", return_value=mock_connector), patch(
+            "aiohttp.ClientSession", side_effect=aiohttp.ClientError("conn failed")
+        ):
             with pytest.raises(ValueError, match="auth connection error"):
                 await agent._get_access_token()
 
@@ -170,7 +184,7 @@ class TestGigaChatAgentInvoke:
     @pytest.mark.asyncio
     async def test_invoke_not_configured_raises(self):
         agent = GigaChatAgent()
-        with pytest.raises(ValueError, match="not configured"):
+        with pytest.raises(ConfigurationError, match="not configured"):
             await agent.invoke({"tool_input": "test"})
 
     @pytest.mark.asyncio
@@ -199,7 +213,7 @@ class TestGigaChatAgentRequest:
     @pytest.mark.asyncio
     async def test_request_not_configured_raises(self):
         agent = GigaChatAgent()
-        with pytest.raises(ValueError, match="not configured"):
+        with pytest.raises(ConfigurationError, match="not configured"):
             await agent.request("hello")
 
     @pytest.mark.asyncio
@@ -207,14 +221,18 @@ class TestGigaChatAgentRequest:
         agent = GigaChatAgent()
         agent.set_config("cid", "csec")
 
-        with patch.object(agent, "_get_access_token", new_callable=AsyncMock) as mock_token:
+        with patch.object(
+            agent, "_get_access_token", new_callable=AsyncMock
+        ) as mock_token:
             mock_token.return_value = "access-token"
 
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(return_value={
-                "choices": [{"message": {"role": "assistant", "content": "Hello!"}}]
-            })
+            mock_response.json = AsyncMock(
+                return_value={
+                    "choices": [{"message": {"role": "assistant", "content": "Hello!"}}]
+                }
+            )
             mock_response.__aenter__ = AsyncMock(return_value=mock_response)
             mock_response.__aexit__ = AsyncMock(return_value=False)
 
@@ -224,8 +242,9 @@ class TestGigaChatAgentRequest:
             mock_session.__aexit__ = AsyncMock(return_value=False)
 
             mock_connector = MagicMock()
-            with patch("aiohttp.ClientSession", return_value=mock_session), \
-                 patch("aiohttp.TCPConnector", return_value=mock_connector):
+            with patch("aiohttp.ClientSession", return_value=mock_session), patch(
+                "aiohttp.TCPConnector", return_value=mock_connector
+            ):
                 result = await agent.request("hello")
                 assert result == "Hello!"
 
@@ -235,7 +254,9 @@ class TestGigaChatAgentRequest:
         agent.set_config("cid", "csec")
         agent._auth_token = "old-token"
 
-        with patch.object(agent, "_get_access_token", new_callable=AsyncMock) as mock_token:
+        with patch.object(
+            agent, "_get_access_token", new_callable=AsyncMock
+        ) as mock_token:
             mock_token.return_value = "access-token"
 
             mock_response = AsyncMock()
@@ -250,8 +271,9 @@ class TestGigaChatAgentRequest:
             mock_session.__aexit__ = AsyncMock(return_value=False)
 
             mock_connector = MagicMock()
-            with patch("aiohttp.ClientSession", return_value=mock_session), \
-                 patch("aiohttp.TCPConnector", return_value=mock_connector):
+            with patch("aiohttp.ClientSession", return_value=mock_session), patch(
+                "aiohttp.TCPConnector", return_value=mock_connector
+            ):
                 result = await agent.request("hello", retries=1)
                 assert result is None
                 assert agent._auth_token is None
@@ -261,7 +283,9 @@ class TestGigaChatAgentRequest:
         agent = GigaChatAgent()
         agent.set_config("cid", "csec")
 
-        with patch.object(agent, "_get_access_token", new_callable=AsyncMock) as mock_token:
+        with patch.object(
+            agent, "_get_access_token", new_callable=AsyncMock
+        ) as mock_token:
             mock_token.return_value = "access-token"
 
             mock_response = AsyncMock()
@@ -276,8 +300,9 @@ class TestGigaChatAgentRequest:
             mock_session.__aexit__ = AsyncMock(return_value=False)
 
             mock_connector = MagicMock()
-            with patch("aiohttp.ClientSession", return_value=mock_session), \
-                 patch("aiohttp.TCPConnector", return_value=mock_connector):
+            with patch("aiohttp.ClientSession", return_value=mock_session), patch(
+                "aiohttp.TCPConnector", return_value=mock_connector
+            ):
                 result = await agent.request("hello", retries=1)
                 assert result is None
 
@@ -286,14 +311,18 @@ class TestGigaChatAgentRequest:
         agent = GigaChatAgent()
         agent.set_config("cid", "csec")
 
-        with patch.object(agent, "_get_access_token", new_callable=AsyncMock) as mock_token:
+        with patch.object(
+            agent, "_get_access_token", new_callable=AsyncMock
+        ) as mock_token:
             mock_token.return_value = "access-token"
 
             mock_response = AsyncMock()
             mock_response.status = 200
-            mock_response.json = AsyncMock(return_value={
-                "choices": [{"message": {"role": "assistant", "content": "Sure!"}}]
-            })
+            mock_response.json = AsyncMock(
+                return_value={
+                    "choices": [{"message": {"role": "assistant", "content": "Sure!"}}]
+                }
+            )
             mock_response.__aenter__ = AsyncMock(return_value=mock_response)
             mock_response.__aexit__ = AsyncMock(return_value=False)
 
@@ -303,23 +332,29 @@ class TestGigaChatAgentRequest:
             mock_session.__aexit__ = AsyncMock(return_value=False)
 
             mock_connector = MagicMock()
-            with patch("aiohttp.ClientSession", return_value=mock_session), \
-                 patch("aiohttp.TCPConnector", return_value=mock_connector):
+            with patch("aiohttp.ClientSession", return_value=mock_session), patch(
+                "aiohttp.TCPConnector", return_value=mock_connector
+            ):
                 result = await agent.request("hello", system="Be concise")
                 assert result == "Sure!"
 
     @pytest.mark.asyncio
     async def test_request_client_error_returns_none_after_retries(self):
         import aiohttp
+
         agent = GigaChatAgent()
         agent.set_config("cid", "csec")
 
-        with patch.object(agent, "_get_access_token", new_callable=AsyncMock) as mock_token:
+        with patch.object(
+            agent, "_get_access_token", new_callable=AsyncMock
+        ) as mock_token:
             mock_token.return_value = "access-token"
 
             mock_connector = MagicMock()
-            with patch("aiohttp.TCPConnector", return_value=mock_connector), \
-                 patch("aiohttp.ClientSession", side_effect=aiohttp.ClientError("network error")):
+            with patch("aiohttp.TCPConnector", return_value=mock_connector), patch(
+                "aiohttp.ClientSession",
+                side_effect=aiohttp.ClientError("network error"),
+            ):
                 result = await agent.request("hello", retries=2)
                 assert result is None
 
@@ -328,11 +363,14 @@ class TestGigaChatAgentRequest:
         agent = GigaChatAgent()
         agent.set_config("cid", "csec")
 
-        with patch.object(agent, "_get_access_token", new_callable=AsyncMock) as mock_token:
+        with patch.object(
+            agent, "_get_access_token", new_callable=AsyncMock
+        ) as mock_token:
             mock_token.return_value = "access-token"
 
             mock_connector = MagicMock()
-            with patch("aiohttp.TCPConnector", return_value=mock_connector), \
-                 patch("aiohttp.ClientSession", side_effect=asyncio.TimeoutError()):
+            with patch("aiohttp.TCPConnector", return_value=mock_connector), patch(
+                "aiohttp.ClientSession", side_effect=asyncio.TimeoutError()
+            ):
                 with pytest.raises(asyncio.TimeoutError):
                     await agent.request("hello", retries=1)

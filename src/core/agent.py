@@ -5,7 +5,7 @@ from typing import Optional
 import aiohttp
 from aiohttp import ClientError, ContentTypeError
 
-from src.core.base_agent import AIAgentError, BaseAIAgent
+from src.core.base_agent import AIAgentError, BaseAIAgent, ConfigurationError
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +13,6 @@ DEFAULT_TIMEOUT = 120  # seconds
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0  # seconds
 RETRY_BACKOFF = 2.0  # multiplier
-
-
-class ConfigurationError(AIAgentError):
-    """Raised when agent is not properly configured."""
-
-    pass
 
 
 class Agent(BaseAIAgent):

@@ -91,7 +91,7 @@ class AIService:
         self._circuit_breakers = {}
 
         if app_settings.use_gigachat:
-            if not gigachat_agent._configured:
+            if not gigachat_agent.is_configured:
                 gigachat_agent.set_config(
                     client_id=app_settings.gigachat_client_id,
                     client_secret=app_settings.gigachat_client_secret,
@@ -102,7 +102,7 @@ class AIService:
             logger.info("GigaChat AI service configured")
 
         if app_settings.use_huggingface:
-            if not huggingface_agent._configured:
+            if not huggingface_agent.is_configured:
                 huggingface_agent.set_config(
                     token=app_settings.hf_token,
                     model=app_settings.hf_model,
@@ -114,7 +114,7 @@ class AIService:
             )
 
         if app_settings.use_qwen:
-            if not qwen_agent._configured:
+            if not qwen_agent.is_configured:
                 qwen_agent.set_config(
                     auth_token=app_settings.qwen_api_key,
                     url=app_settings.qwen_api_url,

@@ -1,5 +1,24 @@
 # Project Log
 
+## 2026-04-15 — fix(ai): unify AI agent error hierarchy and public configuration contract
+
+**Контекст:** Wave 4A/4B — AI Contract Repair (ARCH-003, ARCH-004, ARCH-005, ARCH-007, TEST-003)
+
+**Что сделано:**
+- `src/core/agent.py` — удалён дубликат `ConfigurationError`; теперь импортируется из `base_agent`
+- `src/core/base_agent.py` — добавлено публичное свойство `is_configured`
+- `src/core/gigachat_agent.py` — `ValueError` → `ConfigurationError` в `set_config` и `_ensure_configured`
+- `src/core/huggingface_agent.py` — `ValueError` → `ConfigurationError` в `set_config` и `_ensure_configured`
+- `src/core/ai_service.py` — `._configured` → `.is_configured` в `_configure()`
+- `tests/test_wave4_ai_contract.py` — 27 новых тестов на единую иерархию и публичный контракт
+- `tests/test_core_gigachat_agent.py`, `tests/test_core_ai_service.py` — обновлены под новый контракт
+
+**Верификация:** `111 passed, 1 skipped`
+
+**Следующий шаг:** Wave 5A — Runtime / Settings / Metadata Reliability
+
+---
+
 ## 2026-04-15 — refactor(solid): SOLID & Clean Code remediation pack
 
 **Контекст:**

@@ -29,7 +29,7 @@ class TestAIServiceInit:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = False
             mock_settings.use_local_llm = False
-            mock_gc._configured = True
+            mock_gc.is_configured = True
             svc = AIService()
             assert svc.provider == "gigachat"
             assert svc.is_configured is True
@@ -46,7 +46,7 @@ class TestAIServiceInit:
             mock_settings.gigachat_client_secret = "csec"
             mock_settings.gigachat_auth_url = "https://auth.url"
             mock_settings.gigachat_chat_url = "https://chat.url"
-            mock_gc._configured = False
+            mock_gc.is_configured = False
             svc = AIService()
             mock_gc.set_config.assert_called_once()
 
@@ -58,7 +58,7 @@ class TestAIServiceInit:
             mock_settings.use_huggingface = True
             mock_settings.use_qwen = False
             mock_settings.use_local_llm = False
-            mock_hf._configured = True
+            mock_hf.is_configured = True
             svc = AIService()
             assert svc.provider == "huggingface"
 
@@ -70,7 +70,7 @@ class TestAIServiceInit:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
-            mock_qwen._configured = True
+            mock_qwen.is_configured = True
             svc = AIService()
             assert svc.provider == "qwen"
 
@@ -108,7 +108,7 @@ class TestAIServiceInvoke:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
-            mock_agent._configured = True
+            mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(return_value="response text")
             svc = AIService()
             result = await svc.invoke({"tool_input": "hello"})
@@ -143,7 +143,7 @@ class TestAIServiceInvoke:
             mock_settings.gigachat_client_secret = "csec"
             mock_settings.gigachat_auth_url = "https://auth.url"
             mock_settings.gigachat_chat_url = "https://chat.url"
-            mock_gc._configured = True
+            mock_gc.is_configured = True
             mock_gc.invoke = AsyncMock(return_value="gigachat response")
             svc = AIService()
 
@@ -170,7 +170,7 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
-            mock_agent._configured = True
+            mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(return_value="ok")
             svc = AIService()
             result = await svc.invoke_with_retry({"tool_input": "test"}, max_retries=3)
@@ -186,7 +186,7 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
-            mock_agent._configured = True
+            mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(side_effect=asyncio.TimeoutError())
             svc = AIService()
             # New behavior: returns None instead of raising (graceful degradation)
@@ -205,7 +205,7 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
-            mock_agent._configured = True
+            mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(side_effect=RuntimeError("boom"))
             svc = AIService()
             # New behavior: returns None instead of raising (graceful degradation)
@@ -223,7 +223,7 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
-            mock_agent._configured = True
+            mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(
                 side_effect=[RuntimeError("first fail"), "success"]
             )
@@ -249,7 +249,7 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
-            mock_agent._configured = True
+            mock_agent.is_configured = True
             svc = AIService()
             breaker = svc._circuit_breakers["qwen"]
             breaker.record_failure = AsyncMock()
