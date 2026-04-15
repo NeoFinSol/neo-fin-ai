@@ -27,12 +27,114 @@ Base = declarative_base()
 # Logger for database operations
 logger = logging.getLogger(__name__)
 
+# Pool size bounds (A2.2 — named constants instead of magic numbers)
+_DB_POOL_SIZE_MIN: int = 1
+_DB_POOL_SIZE_DEFAULT: int = 5
+_DB_POOL_SIZE_MAX: int = 50
+_DB_MAX_OVERFLOW_MIN: int = 0
+_DB_MAX_OVERFLOW_DEFAULT: int = 10
+_DB_MAX_OVERFLOW_MAX: int = 100
+_DB_TEST_URL_DEFAULT: str = (
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin_test"
+)
+
+
+def _resolve_database_url() -> str:
+    """Determine the effective DB URL based on environment (testing/CI/production)."""
+    is_testing = os.getenv("TESTING", "0") == "1"
+    is_ci = os.getenv("CI", "0") == "1"
+
+    if not DATABASE_URL and not (is_testing or is_ci):
+        raise RuntimeError(
+            "DATABASE_URL environment variable is required. "
+            "Please set it in your .env file or environment. "
+            "For testing, set TESTING=1 or CI=1."
+        )
+
+    db_url = os.getenv("DATABASE_URL") or DATABASE_URL
+    test_db_url = os.getenv("TEST_DATABASE_URL")
+
+    if is_testing and test_db_url:
+        return test_db_url
+    if is_testing and not db_url:
+        return _DB_TEST_URL_DEFAULT
+    return db_url
+
+
+def _clamp_pool_settings(pool_size: int, max_overflow: int) -> tuple[int, int]:
+    """Validate and clamp pool settings to safe bounds; log warnings on adjustment."""
+    if pool_size < _DB_POOL_SIZE_MIN:
+        logger.warning(
+            "DB_POOL_SIZE=%d is too low, using %d", pool_size, _DB_POOL_SIZE_DEFAULT
+        )
+        pool_size = _DB_POOL_SIZE_DEFAULT
+    elif pool_size > _DB_POOL_SIZE_MAX:
+        logger.warning(
+            "DB_POOL_SIZE=%d is too high, using %d", pool_size, _DB_POOL_SIZE_MAX
+        )
+        pool_size = _DB_POOL_SIZE_MAX
+
+    if max_overflow < _DB_MAX_OVERFLOW_MIN:
+        logger.warning(
+            "DB_MAX_OVERFLOW=%d is negative, using %d",
+            max_overflow,
+            _DB_MAX_OVERFLOW_DEFAULT,
+        )
+        max_overflow = _DB_MAX_OVERFLOW_DEFAULT
+    elif max_overflow > _DB_MAX_OVERFLOW_MAX:
+        logger.warning(
+            "DB_MAX_OVERFLOW=%d is too high, using %d",
+            max_overflow,
+            _DB_MAX_OVERFLOW_MAX,
+        )
+        max_overflow = _DB_MAX_OVERFLOW_MAX
+
+    return pool_size, max_overflow
+
+
+def _make_session_maker(engine: AsyncEngine) -> async_sessionmaker:
+    """Create an async session maker bound to the given engine."""
+    return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+def _create_engine_with_pool(db_url: str, **pool_kwargs) -> AsyncEngine:
+    """
+    Create async engine with pool settings; falls back to default pool on TypeError.
+
+    asyncpg may not support all SQLAlchemy pool kwargs — the TypeError fallback
+    lets the driver use its own internal pooling instead.
+    """
+    try:
+        engine = create_async_engine(
+            db_url,
+            echo=False,  # Disable SQL logging to prevent credential leakage
+            future=True,
+            **pool_kwargs,
+        )
+        logger.info("Database engine created successfully")
+        return engine
+    except TypeError as exc:
+        # Pool kwargs not supported by this asyncpg version — use defaults
+        logger.warning(
+            "Pool kwargs not supported by asyncpg (%s), using default pooling",
+            type(exc).__name__,
+        )
+        engine = create_async_engine(db_url, echo=False, future=True)
+        logger.info("Database engine created with default pool settings")
+        return engine
+    except Exception as exc:
+        logger.error(
+            "DB engine creation failed: error_type=%s | db=%s",
+            type(exc).__name__,
+            get_safe_db_url_for_logging(db_url),
+            exc_info=True,
+        )
+        raise RuntimeError("Failed to create database engine") from exc
+
 
 def get_engine() -> AsyncEngine:
     """
     Get or create async engine (lazy initialization).
-
-    Validates DATABASE_URL presence unless TESTING or CI environment variable is set.
 
     Returns:
         AsyncEngine: SQLAlchemy async engine instance
@@ -42,102 +144,31 @@ def get_engine() -> AsyncEngine:
     """
     global _engine, AsyncSessionLocal
 
-    if _engine is None:
-        # Check DATABASE_URL - allow bypass for testing
-        is_testing = os.getenv("TESTING", "0") == "1"
-        is_ci = os.getenv("CI", "0") == "1"
+    if _engine is not None:
+        return _engine
 
-        if not DATABASE_URL and not (is_testing or is_ci):
-            raise RuntimeError(
-                "DATABASE_URL environment variable is required. "
-                "Please set it in your .env file or environment. "
-                "For testing, set TESTING=1 or CI=1."
-            )
+    db_url = _resolve_database_url()
 
-        # Use default for testing if DATABASE_URL not set
-        db_url = os.getenv("DATABASE_URL") or DATABASE_URL
-        test_db_url = os.getenv("TEST_DATABASE_URL")
-        if is_testing and test_db_url:
-            db_url = test_db_url
-        elif is_testing and not db_url:
-            db_url = "postgresql+asyncpg://postgres:postgres@localhost:5432/neofin_test"
+    pool_size, max_overflow = _clamp_pool_settings(
+        app_settings.db_pool_size, app_settings.db_max_overflow
+    )
+    logger.info(
+        "Database pool configured: pool_size=%d, max_overflow=%d, timeout=%ds, recycle=%ds",
+        pool_size,
+        app_settings.db_max_overflow,
+        app_settings.db_pool_timeout,
+        app_settings.db_pool_recycle,
+    )
 
-        # Connection pool settings from app_settings
-        pool_size = app_settings.db_pool_size
-        max_overflow = app_settings.db_max_overflow
-        pool_timeout = app_settings.db_pool_timeout
-        pool_recycle = app_settings.db_pool_recycle
-        pool_pre_ping = app_settings.db_pool_pre_ping
-
-        # Validate pool settings to prevent misconfiguration
-        if pool_size < 1:
-            logger.warning("DB_POOL_SIZE=%d is too low, using 5", pool_size)
-            pool_size = 5
-        elif pool_size > 50:
-            logger.warning("DB_POOL_SIZE=%d is too high, using 50", pool_size)
-            pool_size = 50
-
-        if max_overflow < 0:
-            logger.warning("DB_MAX_OVERFLOW=%d is negative, using 10", max_overflow)
-            max_overflow = 10
-        elif max_overflow > 100:
-            logger.warning("DB_MAX_OVERFLOW=%d is too high, using 100", max_overflow)
-            max_overflow = 100
-
-        logger.info(
-            "Database pool configured: pool_size=%d, max_overflow=%d, timeout=%ds, recycle=%ds",
-            pool_size,
-            max_overflow,
-            pool_timeout,
-            pool_recycle,
-        )
-
-        try:
-            # For asyncpg, pool settings are handled by the driver itself
-            # SQLAlchemy 2.0+ supports these parameters for async engines
-            # If asyncpg doesn't support pool kwargs, it will raise TypeError
-            _engine = create_async_engine(
-                db_url,
-                echo=False,  # Disable SQL logging to prevent credential leakage
-                future=True,
-                # Pool settings - SQLAlchemy 2.0+ passes these to asyncpg
-                # If these cause TypeError, asyncpg will use its internal pooling
-                pool_size=pool_size,
-                max_overflow=max_overflow,
-                pool_timeout=pool_timeout,
-                pool_recycle=pool_recycle,
-                pool_pre_ping=pool_pre_ping,
-            )
-            AsyncSessionLocal = async_sessionmaker(
-                _engine, class_=AsyncSession, expire_on_commit=False
-            )
-            logger.info("Database engine created successfully")
-        except TypeError as e:
-            # Pool kwargs not supported by this asyncpg version - use defaults
-            logger.warning(
-                "Pool kwargs not supported by asyncpg (%s), using default pooling",
-                type(e).__name__,
-            )
-            _engine = create_async_engine(
-                db_url,
-                echo=False,
-                future=True,
-            )
-            AsyncSessionLocal = async_sessionmaker(
-                _engine, class_=AsyncSession, expire_on_commit=False
-            )
-            logger.info("Database engine created with default pool settings")
-        except Exception as e:
-            # Log error without exposing credentials
-            # Use get_safe_db_url_for_logging to ensure no credentials leak
-            logger.error(
-                "DB engine creation failed: error_type=%s | db=%s",
-                type(e).__name__,
-                get_safe_db_url_for_logging(db_url),
-                exc_info=True,
-            )
-            raise RuntimeError("Failed to create database engine") from e
-
+    _engine = _create_engine_with_pool(
+        db_url,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
+        pool_timeout=app_settings.db_pool_timeout,
+        pool_recycle=app_settings.db_pool_recycle,
+        pool_pre_ping=app_settings.db_pool_pre_ping,
+    )
+    AsyncSessionLocal = _make_session_maker(_engine)
     return _engine
 
 
