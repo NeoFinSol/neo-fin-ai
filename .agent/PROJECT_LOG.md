@@ -1,5 +1,47 @@
 # Project Log
 
+## 2026-04-15 — refactor(solid): SOLID & Clean Code remediation pack
+
+**Контекст:**
+- после ultra-deep audit и immediate hardening wave накопился SOLID/Clean Code debt
+- проведён полный аудит кода на SOLID и Clean Code принципы
+- составлен и выполнен план из 10 пунктов (P1.1–P5.3)
+
+**Что сделано:**
+
+- **Wave 3A/3B (BUG-003, TEST-004)** — upload validation parity:
+  - создан `src/utils/upload_validation.py` с `validate_pdf_magic`, `validate_upload_content_type`, `save_uploaded_pdf`
+  - `multi_analysis.py` переведён на shared helper — content-type, magic header, size limit теперь проверяются
+  - 10 новых тестов в `TestMultiAnalysisUploadValidation`
+
+- **P1.1 (DIP)** — `multi_analysis.py` больше не импортирует приватные функции из `pdf_tasks.py`; оба роутера используют `upload_validation`
+
+- **P1.2 (LSP)** — `AnalysisAlreadyExistsError` переведён с `IntegrityError` на `Exception`; domain exception больше не притворяется DB exception
+
+- **P2.1 (Clean Code)** — именованные константы `_SCORE_CAP_MISSING_CORE`, `_SCORE_CAP_MISSING_SUPPORTING`, `_SCORE_CAP_LOW_CONFIDENCE`, `_MIN_CONFIDENCE_FOR_FULL_SCORE` вместо магических чисел в `apply_data_quality_guardrails`
+
+- **P2.2 (Clean Code)** — `FILE_CHUNK_SIZE`/`MAGIC_HEADER_SIZE` из constants вместо литералов `8192`/`8` в upload path
+
+- **P2.3 (Clean Code)** — удалён неиспользуемый `from pathlib import Path` в `pdf_tasks.py`
+
+- **P3 (OCP)** — hardcoded `"retail_demo"` заменён на data-driven `_PROFILE_PEER_CONTEXT` и `_PROFILE_LEVERAGE_BASIS`; новый профиль добавляется только через эти словари
+
+- **P4 (DIP)** — `app_settings` убран из `scoring.py`; `_resolve_scoring_profile` больше не читает settings; `calculate_score_with_context` получил параметр `profile`; settings передаются явно из `tasks.py`
+
+- **P5.1 (SRP)** — `_run_extraction_phase` (~80 строк) декомпозирована: `_extract_document_text`, `_extract_document_tables`, `_parse_and_merge_metadata`, `_apply_regex_fallback`; оркестратор 25 строк
+
+- **P5.2 (SRP)** — `_try_llm_extraction` (~90 строк) декомпозирована: `_get_extraction_fallback`, `_call_llm_extraction`, `_merge_llm_with_fallback`; оркестратор 20 строк
+
+- **P5.3 (SRP)** — `_apply_scoring_methodology_adjustments` (~55 строк) декомпозирована: `_resolve_leverage_basis`, `_apply_leverage_to_ratios`, `_apply_interest_sign_correction`, `_apply_ifrs16_flag`, `_apply_profile_peer_context`; оркестратор 20 строк
+
+**Верификация:**
+- `python -m pytest tests/test_tasks.py tests/test_llm_extractor.py tests/test_llm_extractor_properties.py tests/test_scoring.py tests/test_tasks_coverage.py tests/test_routers_pdf_tasks.py tests/test_multi_analysis_router.py tests/test_crud_analyses.py tests/test_analysis_ratios.py --tb=no -q` → `213 passed`
+
+**Следующий шаг:**
+- Wave 4A — AI Contract Repair (`ARCH-003`, `ARCH-004`, `ARCH-005`, `ARCH-007`, `TEST-003`)
+
+---
+
 ## 2026-04-14 — fix(extractor): stop treating line code 2300 as net profit
 
 **Контекст:**

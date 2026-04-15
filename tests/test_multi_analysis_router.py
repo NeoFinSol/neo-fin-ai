@@ -36,6 +36,7 @@ from src.app import app
 # Fixtures
 # =============================================================================
 
+
 @pytest.fixture(scope="function")
 def client(monkeypatch):
     """Create test client for FastAPI app with mocked auth settings."""
@@ -43,7 +44,7 @@ def client(monkeypatch):
     with patch("src.core.auth.app_settings") as mock_settings:
         mock_settings.dev_mode = True
         mock_settings.api_key = None
-        
+
         with TestClient(app) as test_client:
             yield test_client
 
@@ -61,8 +62,12 @@ def limiter_disabled():
 @pytest.fixture(scope="function")
 def mock_multi_session_crud():
     """Mock CRUD functions for multi_analysis_sessions table."""
-    with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock) as mock_create:
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+    with patch(
+        "src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock
+    ) as mock_create:
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_create.return_value = None
             mock_get.return_value = None
             yield mock_create, mock_get
@@ -90,12 +95,16 @@ def no_rate_limit(monkeypatch):
 # Unit Tests: POST /multi-analysis
 # =============================================================================
 
+
 class TestPostMultiAnalysis:
     """Tests for POST /multi-analysis endpoint."""
 
     def _make_multipart(self, labels: list[str]) -> tuple[list, list]:
         """Build multipart payload using the encoding our current httpx/TestClient stack accepts."""
-        files = [("files", (f"{label}.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")) for label in labels]
+        files = [
+            ("files", (f"{label}.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf"))
+            for label in labels
+        ]
         data = {"periods": labels}
         return files, data
 
@@ -105,9 +114,14 @@ class TestPostMultiAnalysis:
         """
         files, data = self._make_multipart(["2023"])
 
-        with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock) as mock_create:
+        with patch(
+            "src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock
+        ) as mock_create:
             mock_create.return_value = None
-            with patch("src.routers.multi_analysis.process_multi_analysis", new_callable=AsyncMock):
+            with patch(
+                "src.routers.multi_analysis.process_multi_analysis",
+                new_callable=AsyncMock,
+            ):
                 with patch("src.routers.multi_analysis.uuid4", return_value="abc123"):
                     response = client.post("/multi-analysis", files=files, data=data)
 
@@ -120,8 +134,13 @@ class TestPostMultiAnalysis:
         """POST with 3 valid periods should return 202."""
         files, data = self._make_multipart(["2021", "2022", "2023"])
 
-        with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
-            with patch("src.routers.multi_analysis.process_multi_analysis", new_callable=AsyncMock):
+        with patch(
+            "src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock
+        ):
+            with patch(
+                "src.routers.multi_analysis.process_multi_analysis",
+                new_callable=AsyncMock,
+            ):
                 with patch("src.routers.multi_analysis.uuid4", return_value="def456"):
                     response = client.post("/multi-analysis", files=files, data=data)
 
@@ -132,7 +151,9 @@ class TestPostMultiAnalysis:
         """
         Test 2.4: POST with 6 periods should return 422.
         """
-        files, data = self._make_multipart(["2019", "2020", "2021", "2022", "2023", "2024"])
+        files, data = self._make_multipart(
+            ["2019", "2020", "2021", "2022", "2023", "2024"]
+        )
 
         response = client.post("/multi-analysis", files=files, data=data)
 
@@ -143,7 +164,9 @@ class TestPostMultiAnalysis:
         files = [("files", ("a.pdf", io.BytesIO(b"%PDF"), "application/pdf"))]
         data = {"periods": ["2022", "2023"]}
 
-        with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
+        with patch(
+            "src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock
+        ):
             response = client.post("/multi-analysis", files=files, data=data)
 
         assert response.status_code == 422
@@ -185,17 +208,18 @@ class TestPostMultiAnalysis:
 
         temp_a = MagicMock()
         temp_a.name = "/tmp/period-a.pdf"
-        temp_b = MagicMock()
-        temp_b.name = "/tmp/period-b.pdf"
 
-        with patch("src.routers.multi_analysis.tempfile.NamedTemporaryFile", side_effect=[temp_a, temp_b]):
+        with patch(
+            "src.utils.upload_validation.tempfile.NamedTemporaryFile",
+            side_effect=[temp_a],
+        ):
             with patch("src.routers.multi_analysis.os.remove") as mock_remove:
                 response = client.post("/multi-analysis", files=files, data=data)
 
         assert response.status_code == 422
-        assert mock_remove.call_count == 2
+        # Only the first file was saved before label validation failed
+        assert mock_remove.call_count == 1
         mock_remove.assert_any_call("/tmp/period-a.pdf")
-        mock_remove.assert_any_call("/tmp/period-b.pdf")
 
     def test_post_multi_analysis_returns_canonical_db_error_and_cleans_temp_files(self):
         files, data = self._make_multipart(["2022", "2023"])
@@ -209,14 +233,21 @@ class TestPostMultiAnalysis:
             mock_settings.dev_mode = True
             mock_settings.api_key = None
             with TestClient(app, raise_server_exceptions=False) as client:
-                with patch("src.routers.multi_analysis.tempfile.NamedTemporaryFile", side_effect=[temp_a, temp_b]):
+                with patch(
+                    "src.utils.upload_validation.tempfile.NamedTemporaryFile",
+                    side_effect=[temp_a, temp_b],
+                ):
                     with patch(
                         "src.routers.multi_analysis.create_multi_session",
                         new_callable=AsyncMock,
                         side_effect=SQLAlchemyError("db down"),
                     ):
-                        with patch("src.routers.multi_analysis.os.remove") as mock_remove:
-                            response = client.post("/multi-analysis", files=files, data=data)
+                        with patch(
+                            "src.routers.multi_analysis.os.remove"
+                        ) as mock_remove:
+                            response = client.post(
+                                "/multi-analysis", files=files, data=data
+                            )
 
         assert response.status_code == 503
         assert response.json() == {
@@ -233,63 +264,186 @@ class TestPostMultiAnalysis:
     def test_post_multi_analysis_dispatches_to_celery_runtime(self, client):
         files, data = self._make_multipart(["2022", "2023"])
 
-        with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
+        with patch(
+            "src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock
+        ):
             with patch("src.core.task_queue.celery_app", MagicMock()):
-                with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
-                    with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
-                        with patch("src.core.task_queue.run_multi_analysis_task.apply_async") as mock_apply_async:
-                            with patch("src.routers.multi_analysis.uuid4", return_value="celery-session"):
-                                response = client.post("/multi-analysis", files=files, data=data)
+                with patch.object(
+                    __import__(
+                        "src.core.task_queue", fromlist=["app_settings"]
+                    ).app_settings,
+                    "task_runtime",
+                    "celery",
+                ):
+                    with patch.object(
+                        __import__(
+                            "src.core.task_queue", fromlist=["app_settings"]
+                        ).app_settings,
+                        "task_queue_broker_url",
+                        "redis://broker",
+                    ):
+                        with patch(
+                            "src.core.task_queue.run_multi_analysis_task.apply_async"
+                        ) as mock_apply_async:
+                            with patch(
+                                "src.routers.multi_analysis.uuid4",
+                                return_value="celery-session",
+                            ):
+                                response = client.post(
+                                    "/multi-analysis", files=files, data=data
+                                )
 
         assert response.status_code == 202
-        assert response.json() == {"session_id": "celery-session", "status": "processing"}
+        assert response.json() == {
+            "session_id": "celery-session",
+            "status": "processing",
+        }
         mock_apply_async.assert_called_once()
         assert mock_apply_async.call_args.kwargs["task_id"] == "celery-session"
 
-    def test_post_multi_analysis_uses_shared_storage_dir_in_celery_runtime(self, client, tmp_path):
+    def test_post_multi_analysis_uses_shared_storage_dir_in_celery_runtime(
+        self, client, tmp_path
+    ):
         files, data = self._make_multipart(["2022", "2023"])
         shared_dir = tmp_path / "task-storage"
-        temp_a = SimpleNamespace(name=str(shared_dir / "period-a.pdf"), write=lambda *_: None, close=lambda: None)
-        temp_b = SimpleNamespace(name=str(shared_dir / "period-b.pdf"), write=lambda *_: None, close=lambda: None)
+        temp_a = SimpleNamespace(
+            name=str(shared_dir / "period-a.pdf"),
+            write=lambda *_: None,
+            flush=lambda: None,
+            close=lambda: None,
+        )
+        temp_b = SimpleNamespace(
+            name=str(shared_dir / "period-b.pdf"),
+            write=lambda *_: None,
+            flush=lambda: None,
+            close=lambda: None,
+        )
 
-        with patch("src.routers.multi_analysis.tempfile.NamedTemporaryFile", side_effect=[temp_a, temp_b]) as mock_temp:
-            with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
+        with patch(
+            "src.utils.upload_validation.tempfile.NamedTemporaryFile",
+            side_effect=[temp_a, temp_b],
+        ) as mock_temp:
+            with patch(
+                "src.routers.multi_analysis.create_multi_session",
+                new_callable=AsyncMock,
+            ):
                 with patch("src.core.task_queue.celery_app", MagicMock()):
-                    with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
-                        with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
-                            with patch("src.core.task_queue.run_multi_analysis_task.apply_async"):
-                                with patch.object(__import__("src.routers.multi_analysis", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
-                                    with patch.object(__import__("src.routers.multi_analysis", fromlist=["app_settings"]).app_settings, "task_storage_dir", str(shared_dir)):
-                                        with patch("src.routers.multi_analysis.uuid4", return_value="shared-dir-session"):
-                                            response = client.post("/multi-analysis", files=files, data=data)
+                    with patch.object(
+                        __import__(
+                            "src.core.task_queue", fromlist=["app_settings"]
+                        ).app_settings,
+                        "task_runtime",
+                        "celery",
+                    ):
+                        with patch.object(
+                            __import__(
+                                "src.core.task_queue", fromlist=["app_settings"]
+                            ).app_settings,
+                            "task_queue_broker_url",
+                            "redis://broker",
+                        ):
+                            with patch(
+                                "src.core.task_queue.run_multi_analysis_task.apply_async"
+                            ):
+                                with patch.object(
+                                    __import__(
+                                        "src.routers.multi_analysis",
+                                        fromlist=["app_settings"],
+                                    ).app_settings,
+                                    "task_runtime",
+                                    "celery",
+                                ):
+                                    with patch.object(
+                                        __import__(
+                                            "src.routers.multi_analysis",
+                                            fromlist=["app_settings"],
+                                        ).app_settings,
+                                        "task_storage_dir",
+                                        str(shared_dir),
+                                    ):
+                                        with patch(
+                                            "src.routers.multi_analysis.uuid4",
+                                            return_value="shared-dir-session",
+                                        ):
+                                            response = client.post(
+                                                "/multi-analysis",
+                                                files=files,
+                                                data=data,
+                                            )
 
         assert response.status_code == 202
         assert shared_dir.is_dir()
         assert mock_temp.call_args_list[0].kwargs["dir"] == str(shared_dir)
         assert mock_temp.call_args_list[1].kwargs["dir"] == str(shared_dir)
 
-    def test_post_multi_analysis_dispatch_failure_returns_503_and_marks_session_failed(self):
+    def test_post_multi_analysis_dispatch_failure_returns_503_and_marks_session_failed(
+        self,
+    ):
         files, data = self._make_multipart(["2022", "2023"])
-        temp_a = SimpleNamespace(name="/tmp/period-a.pdf", write=lambda *_: None, close=lambda: None)
-        temp_b = SimpleNamespace(name="/tmp/period-b.pdf", write=lambda *_: None, close=lambda: None)
+        temp_a = SimpleNamespace(
+            name="/tmp/period-a.pdf",
+            write=lambda *_: None,
+            flush=lambda: None,
+            close=lambda: None,
+        )
+        temp_b = SimpleNamespace(
+            name="/tmp/period-b.pdf",
+            write=lambda *_: None,
+            flush=lambda: None,
+            close=lambda: None,
+        )
 
         with patch("src.core.auth.app_settings") as mock_settings:
             mock_settings.dev_mode = True
             mock_settings.api_key = None
             with TestClient(app) as client:
-                with patch("src.routers.multi_analysis.tempfile.NamedTemporaryFile", side_effect=[temp_a, temp_b]):
-                    with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
-                        with patch("src.routers.multi_analysis.update_multi_session", new_callable=AsyncMock) as mock_update:
-                            with patch("src.routers.multi_analysis.os.remove") as mock_remove:
-                                with patch("src.core.task_queue.celery_app", MagicMock()):
-                                    with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_runtime", "celery"):
-                                        with patch.object(__import__("src.core.task_queue", fromlist=["app_settings"]).app_settings, "task_queue_broker_url", "redis://broker"):
+                with patch(
+                    "src.utils.upload_validation.tempfile.NamedTemporaryFile",
+                    side_effect=[temp_a, temp_b],
+                ):
+                    with patch(
+                        "src.routers.multi_analysis.create_multi_session",
+                        new_callable=AsyncMock,
+                    ):
+                        with patch(
+                            "src.routers.multi_analysis.update_multi_session",
+                            new_callable=AsyncMock,
+                        ) as mock_update:
+                            with patch(
+                                "src.routers.multi_analysis.os.remove"
+                            ) as mock_remove:
+                                with patch(
+                                    "src.core.task_queue.celery_app", MagicMock()
+                                ):
+                                    with patch.object(
+                                        __import__(
+                                            "src.core.task_queue",
+                                            fromlist=["app_settings"],
+                                        ).app_settings,
+                                        "task_runtime",
+                                        "celery",
+                                    ):
+                                        with patch.object(
+                                            __import__(
+                                                "src.core.task_queue",
+                                                fromlist=["app_settings"],
+                                            ).app_settings,
+                                            "task_queue_broker_url",
+                                            "redis://broker",
+                                        ):
                                             with patch(
                                                 "src.core.task_queue.run_multi_analysis_task.apply_async",
                                                 side_effect=RuntimeError("broker down"),
                                             ):
-                                                with patch("src.routers.multi_analysis.uuid4", return_value="failed-session"):
-                                                    response = client.post("/multi-analysis", files=files, data=data)
+                                                with patch(
+                                                    "src.routers.multi_analysis.uuid4",
+                                                    return_value="failed-session",
+                                                ):
+                                                    response = client.post(
+                                                        "/multi-analysis",
+                                                        files=files,
+                                                        data=data,
+                                                    )
 
         assert response.status_code == 503
         assert response.json() == {
@@ -314,13 +468,14 @@ class TestPostMultiAnalysis:
 # Unit Tests: GET /multi-analysis/{session_id}
 # =============================================================================
 
+
 class TestGetMultiAnalysisStatus:
     """Tests for GET /multi-analysis/{session_id} endpoint."""
 
     def test_get_multi_analysis_processing(self, client):
         """
         Test 2.2: GET existing session in "processing" status.
-        
+
         Expected:
         - status_code: 200
         - status: "processing"
@@ -331,12 +486,14 @@ class TestGetMultiAnalysisStatus:
         mock_session.progress = {"completed": 2, "total": 5}
         mock_session.result = None
         mock_session.cancel_requested_at = None
-        
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = mock_session
-            
+
             response = client.get("/multi-analysis/test-session-id")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "processing"
@@ -393,32 +550,39 @@ class TestGetMultiAnalysisStatus:
                 },
             ]
         }
-        
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = mock_session
-            
+
             response = client.get("/multi-analysis/test-session-id")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "completed"
         assert len(data["periods"]) == 2
-        assert data["periods"][0]["score_methodology"]["benchmark_profile"] == "retail_demo"
+        assert (
+            data["periods"][0]["score_methodology"]["benchmark_profile"]
+            == "retail_demo"
+        )
         assert data["periods"][0]["score_methodology"]["leverage_basis"] == "debt_only"
 
     def test_get_multi_analysis_not_found(self, client):
         """
         Test 2.3: GET non-existent session should return 404.
-        
+
         Expected:
         - status_code: 404
         - detail: "Session not found"
         """
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = None
-            
+
             response = client.get("/multi-analysis/non-existent-id")
-        
+
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
@@ -428,12 +592,14 @@ class TestGetMultiAnalysisStatus:
         mock_session.status = "failed"
         mock_session.progress = {"completed": 1, "total": 3}
         mock_session.cancel_requested_at = None
-        
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = mock_session
-            
+
             response = client.get("/multi-analysis/failed-session")
-        
+
         assert response.status_code == 422
 
     def test_get_multi_analysis_cancelling(self, client):
@@ -443,7 +609,9 @@ class TestGetMultiAnalysisStatus:
         mock_session.result = None
         mock_session.cancel_requested_at = object()
 
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = mock_session
 
             response = client.get("/multi-analysis/cancelling-session")
@@ -462,7 +630,9 @@ class TestGetMultiAnalysisStatus:
         mock_session.result = {"error": "Task cancelled by user"}
         mock_session.cancel_requested_at = object()
 
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = mock_session
 
             response = client.get("/multi-analysis/cancelled-session")
@@ -479,9 +649,14 @@ class TestGetMultiAnalysisStatus:
         mock_session.status = "processing"
         mock_session.cancel_requested_at = None
 
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = mock_session
-            with patch("src.routers.multi_analysis.request_multi_session_cancellation", new_callable=AsyncMock) as mock_request:
+            with patch(
+                "src.routers.multi_analysis.request_multi_session_cancellation",
+                new_callable=AsyncMock,
+            ) as mock_request:
                 response = client.delete("/multi-analysis/session-123")
 
         assert response.status_code == 200
@@ -493,15 +668,20 @@ class TestGetMultiAnalysisStatus:
 # Property-Based Tests (hypothesis)
 # =============================================================================
 
+
 class TestPropertyValidation:
     """Property-based tests for multi-analysis validation."""
 
     @given(st.text(min_size=0, max_size=50))
-    @settings(max_examples=50, deadline=None, suppress_health_check=[HealthCheck.filter_too_much])
+    @settings(
+        max_examples=50,
+        deadline=None,
+        suppress_health_check=[HealthCheck.filter_too_much],
+    )
     def test_property_6_period_label_length(self, label_text):
         """
         Property 6: period_label length validation.
-        
+
         For ANY text input:
         - If len(label) > 20 → 422
         - If 1 ≤ len(label) ≤ 20 → accepted (if other validation passes)
@@ -509,7 +689,7 @@ class TestPropertyValidation:
         """
         # Skip rate limiting by testing Pydantic validation directly
         from src.models.schemas import PeriodInput
-        
+
         normalized = label_text.strip()
 
         if len(normalized) == 0 or len(normalized) > 20:
@@ -528,21 +708,25 @@ class TestPropertyValidation:
     def test_property_7_period_count(self, period_labels):
         """
         Property 7: Number of periods validation.
-        
+
         For ANY list of period labels:
         - If len < 1 or len > 5 → 422
         - If 1 ≤ len ≤ 5 → accepted
         """
         from src.models.schemas import MultiAnalysisRequest
-        
+
         if len(period_labels) < 1 or len(period_labels) > 5:
             # Should fail validation
             with pytest.raises(Exception):  # ValidationError
-                MultiAnalysisRequest(periods=[{"period_label": l} for l in period_labels])
+                MultiAnalysisRequest(
+                    periods=[{"period_label": l} for l in period_labels]
+                )
         else:
             # Should be accepted (or fail for other valid reasons like length)
             try:
-                MultiAnalysisRequest(periods=[{"period_label": l[:20]} for l in period_labels if l])
+                MultiAnalysisRequest(
+                    periods=[{"period_label": l[:20]} for l in period_labels if l]
+                )
             except Exception:
                 pass  # Some may fail for length reasons
 
@@ -554,18 +738,20 @@ class TestChronologicalSorting:
         st.lists(
             st.one_of(
                 st.integers(min_value=2000, max_value=2030).map(str),
-                st.builds(lambda q, y: f"Q{q}/{y}", st.integers(1, 4), st.integers(2000, 2030))
+                st.builds(
+                    lambda q, y: f"Q{q}/{y}", st.integers(1, 4), st.integers(2000, 2030)
+                ),
             ),
             min_size=2,
             max_size=5,
-            unique=True
+            unique=True,
         )
     )
     @settings(max_examples=100, deadline=None)
     def test_property_8_chronological_sort(self, period_labels):
         """
         Property 8: Periods are sorted chronologically.
-        
+
         For ANY set of period labels (years and quarters):
         - After processing, periods should be in non-decreasing order
         - Years: 2021 < 2022 < 2023
@@ -579,16 +765,17 @@ class TestChronologicalSorting:
             {"period_label": label, "ratios": {}, "score": 50.0, "risk_level": "medium"}
             for label in period_labels
         ]
-        
+
         # Sort using the production function
         sorted_periods = sort_periods_chronologically(periods)
-        
+
         # Verify order is non-decreasing
         parsed_labels = [parse_period_label(p["period_label"]) for p in sorted_periods]
-        
+
         for i in range(len(parsed_labels) - 1):
-            assert parsed_labels[i] <= parsed_labels[i + 1], \
-                f"Periods not sorted: {parsed_labels[i]} > {parsed_labels[i + 1]}"
+            assert (
+                parsed_labels[i] <= parsed_labels[i + 1]
+            ), f"Periods not sorted: {parsed_labels[i]} > {parsed_labels[i + 1]}"
 
 
 class TestRoundTrip:
@@ -598,14 +785,14 @@ class TestRoundTrip:
         st.lists(
             st.text(min_size=1, max_size=15).filter(lambda x: x.strip()),
             min_size=1,
-            max_size=5
+            max_size=5,
         ).filter(lambda x: len(x) <= 5)
     )
     @settings(max_examples=20, deadline=None)
     def test_property_9_round_trip_preservation(self, period_labels):
         """
         Property 9: Round-trip data preservation.
-        
+
         For ANY valid set of period labels:
         - Create session → Get status → Verify structure
         - session_id is preserved
@@ -625,11 +812,21 @@ class TestRoundTrip:
 
         # Step 1: Create session
         with limiter_disabled():
-            with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
-                with patch("src.routers.multi_analysis.process_multi_analysis", new_callable=AsyncMock):
-                    with patch("src.routers.multi_analysis.uuid4", return_value="roundtrip123"):
+            with patch(
+                "src.routers.multi_analysis.create_multi_session",
+                new_callable=AsyncMock,
+            ):
+                with patch(
+                    "src.routers.multi_analysis.process_multi_analysis",
+                    new_callable=AsyncMock,
+                ):
+                    with patch(
+                        "src.routers.multi_analysis.uuid4", return_value="roundtrip123"
+                    ):
                         with TestClient(app) as client:
-                            create_response = client.post("/multi-analysis", files=files, data=data)
+                            create_response = client.post(
+                                "/multi-analysis", files=files, data=data
+                            )
 
         if create_response.status_code != 202:
             pytest.skip("Validation failed for generated data")
@@ -638,7 +835,10 @@ class TestRoundTrip:
         # Step 2: Mock session data for retrieval
         mock_session = MagicMock()
         mock_session.status = "completed"
-        mock_session.progress = {"completed": len(valid_labels), "total": len(valid_labels)}
+        mock_session.progress = {
+            "completed": len(valid_labels),
+            "total": len(valid_labels),
+        }
         mock_session.cancel_requested_at = None
         mock_session.result = {
             "periods": [
@@ -654,19 +854,23 @@ class TestRoundTrip:
         }
 
         # Step 3: Get session status
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = mock_session
             with TestClient(app) as client:
                 get_response = client.get(f"/multi-analysis/{session_id}")
-        
+
         assert get_response.status_code == 200
         data = get_response.json()
-        
+
         # Verify round-trip properties
         assert data["session_id"] == session_id, "session_id should be preserved"
         assert data["status"] == "completed"
-        assert len(data["periods"]) == len(valid_labels), "All periods should be present"
-        
+        assert len(data["periods"]) == len(
+            valid_labels
+        ), "All periods should be present"
+
         # Verify structure of each period
         for period in data["periods"]:
             assert "period_label" in period
@@ -678,6 +882,7 @@ class TestRoundTrip:
 # =============================================================================
 # Integration-style Tests (mocked background task)
 # =============================================================================
+
 
 class TestMultiAnalysisIntegration:
     """Integration-style tests with mocked background processing."""
@@ -698,28 +903,37 @@ class TestMultiAnalysisIntegration:
         data = {"periods": ["2022", "2023"]}
 
         # Step 1: Create session
-        with patch("src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock):
-            with patch("src.routers.multi_analysis.process_multi_analysis", new_callable=AsyncMock):
+        with patch(
+            "src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock
+        ):
+            with patch(
+                "src.routers.multi_analysis.process_multi_analysis",
+                new_callable=AsyncMock,
+            ):
                 with patch("src.routers.multi_analysis.uuid4", return_value=session_id):
-                    create_response = client.post("/multi-analysis", files=files, data=data)
+                    create_response = client.post(
+                        "/multi-analysis", files=files, data=data
+                    )
 
         assert create_response.status_code == 202
         assert create_response.json()["session_id"] == session_id
-        
+
         # Step 2: Check processing status
         mock_session_processing = MagicMock()
         mock_session_processing.status = "processing"
         mock_session_processing.progress = {"completed": 1, "total": 2}
         mock_session_processing.cancel_requested_at = None
-        
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = mock_session_processing
-            
+
             status_response = client.get(f"/multi-analysis/{session_id}")
-        
+
         assert status_response.status_code == 200
         assert status_response.json()["status"] == "processing"
-        
+
         # Step 3: Check completed status
         mock_session_completed = MagicMock()
         mock_session_completed.status = "completed"
@@ -742,12 +956,220 @@ class TestMultiAnalysisIntegration:
                 },
             ]
         }
-        
-        with patch("src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock) as mock_get:
+
+        with patch(
+            "src.routers.multi_analysis.get_multi_session", new_callable=AsyncMock
+        ) as mock_get:
             mock_get.return_value = mock_session_completed
-            
+
             completed_response = client.get(f"/multi-analysis/{session_id}")
-        
+
         assert completed_response.status_code == 200
         assert completed_response.json()["status"] == "completed"
         assert len(completed_response.json()["periods"]) == 2
+
+
+# =============================================================================
+# Wave 3B — TEST-004: Upload validation parity tests
+# Verifies that multi-analysis upload enforces the same boundary checks as
+# single-upload: content-type, PDF magic header, empty file, size limit.
+# =============================================================================
+
+_VALID_PDF_BYTES = b"%PDF-1.4 fake content"
+_NON_PDF_BYTES = b"NOT_A_PDF_FILE_AT_ALL"
+
+
+class TestMultiAnalysisUploadValidation:
+    """TEST-004: multi-analysis upload boundary must match single-upload validation."""
+
+    # ------------------------------------------------------------------
+    # Content-type validation
+    # ------------------------------------------------------------------
+
+    def test_rejects_non_pdf_content_type_for_first_file(self, client):
+        """HTTP 400 when any file has a non-PDF MIME type."""
+        files = [
+            ("files", ("report.txt", io.BytesIO(_VALID_PDF_BYTES), "text/plain")),
+        ]
+        data = {"periods": ["2023"]}
+
+        response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "PDF file expected"
+
+    def test_rejects_non_pdf_content_type_for_second_file(self, client):
+        """HTTP 400 when the second file has a non-PDF MIME type."""
+        files = [
+            ("files", ("2022.pdf", io.BytesIO(_VALID_PDF_BYTES), "application/pdf")),
+            ("files", ("2023.csv", io.BytesIO(_VALID_PDF_BYTES), "text/csv")),
+        ]
+        data = {"periods": ["2022", "2023"]}
+
+        with patch(
+            "src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock
+        ):
+            response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "PDF file expected"
+
+    def test_accepts_application_octet_stream_content_type(self, client):
+        """application/octet-stream is an allowed MIME type (binary upload)."""
+        files = [
+            (
+                "files",
+                (
+                    "report.pdf",
+                    io.BytesIO(_VALID_PDF_BYTES),
+                    "application/octet-stream",
+                ),
+            ),
+        ]
+        data = {"periods": ["2023"]}
+
+        with patch(
+            "src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock
+        ):
+            with patch(
+                "src.routers.multi_analysis.process_multi_analysis",
+                new_callable=AsyncMock,
+            ):
+                response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 202
+
+    # ------------------------------------------------------------------
+    # PDF magic header validation
+    # ------------------------------------------------------------------
+
+    def test_rejects_file_with_invalid_pdf_magic_header(self, client):
+        """HTTP 400 when file content does not start with %PDF-."""
+        files = [
+            ("files", ("report.pdf", io.BytesIO(_NON_PDF_BYTES), "application/pdf")),
+        ]
+        data = {"periods": ["2023"]}
+
+        response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid PDF file format"
+
+    def test_rejects_empty_file(self, client):
+        """HTTP 400 when an uploaded file is empty."""
+        files = [
+            ("files", ("empty.pdf", io.BytesIO(b""), "application/pdf")),
+        ]
+        data = {"periods": ["2023"]}
+
+        response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Empty file"
+
+    def test_rejects_file_with_truncated_magic_header(self, client):
+        """HTTP 400 when file has fewer than 5 bytes (can't be valid PDF)."""
+        files = [
+            ("files", ("short.pdf", io.BytesIO(b"%PDF"), "application/pdf")),
+        ]
+        data = {"periods": ["2023"]}
+
+        response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 400
+
+    # ------------------------------------------------------------------
+    # File size limit
+    # ------------------------------------------------------------------
+
+    def test_rejects_file_exceeding_size_limit(self, client):
+        """HTTP 400 when a file exceeds MAX_FILE_SIZE."""
+        from src.core.constants import MAX_FILE_SIZE
+
+        oversized = b"%PDF-" + b"x" * (MAX_FILE_SIZE + 1)
+        files = [
+            ("files", ("big.pdf", io.BytesIO(oversized), "application/pdf")),
+        ]
+        data = {"periods": ["2023"]}
+
+        response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 400
+        assert "too large" in response.json()["detail"].lower()
+
+    def test_accepts_file_exactly_at_size_limit(self, client):
+        """File exactly at MAX_FILE_SIZE should not be rejected for size."""
+        from src.core.constants import MAX_FILE_SIZE
+
+        # Build a valid-header file that is exactly MAX_FILE_SIZE bytes
+        header = b"%PDF-1.4 "
+        payload = header + b"x" * (MAX_FILE_SIZE - len(header))
+        assert len(payload) == MAX_FILE_SIZE
+
+        files = [
+            ("files", ("exact.pdf", io.BytesIO(payload), "application/pdf")),
+        ]
+        data = {"periods": ["2023"]}
+
+        with patch(
+            "src.routers.multi_analysis.create_multi_session", new_callable=AsyncMock
+        ):
+            with patch(
+                "src.routers.multi_analysis.process_multi_analysis",
+                new_callable=AsyncMock,
+            ):
+                response = client.post("/multi-analysis", files=files, data=data)
+
+        # Should not be rejected with 400 "too large"
+        assert (
+            response.status_code != 400
+            or "too large" not in response.json().get("detail", "").lower()
+        )
+
+    # ------------------------------------------------------------------
+    # Temp file cleanup on validation failure
+    # ------------------------------------------------------------------
+
+    def test_temp_files_cleaned_up_on_magic_header_failure(self, client):
+        """Saved temp files are removed when a later file fails magic check."""
+        files = [
+            ("files", ("2022.pdf", io.BytesIO(_VALID_PDF_BYTES), "application/pdf")),
+            ("files", ("2023.pdf", io.BytesIO(_NON_PDF_BYTES), "application/pdf")),
+        ]
+        data = {"periods": ["2022", "2023"]}
+
+        first_tmp = MagicMock()
+        first_tmp.name = "/tmp/first.pdf"
+
+        with patch(
+            "src.utils.upload_validation.tempfile.NamedTemporaryFile",
+            side_effect=[first_tmp],
+        ):
+            with patch("src.utils.upload_validation.os.path.exists", return_value=True):
+                with patch("src.utils.upload_validation.os.remove") as mock_remove:
+                    response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 400
+        # The first file was saved; its temp path must be cleaned up
+        mock_remove.assert_any_call("/tmp/first.pdf")
+
+    def test_temp_files_cleaned_up_on_content_type_failure(self, client):
+        """Saved temp files are removed when a later file fails content-type check."""
+        files = [
+            ("files", ("2022.pdf", io.BytesIO(_VALID_PDF_BYTES), "application/pdf")),
+            ("files", ("2023.txt", io.BytesIO(_VALID_PDF_BYTES), "text/plain")),
+        ]
+        data = {"periods": ["2022", "2023"]}
+
+        first_tmp = MagicMock()
+        first_tmp.name = "/tmp/first.pdf"
+
+        with patch(
+            "src.utils.upload_validation.tempfile.NamedTemporaryFile",
+            side_effect=[first_tmp],
+        ):
+            with patch("src.routers.multi_analysis.os.remove") as mock_remove:
+                response = client.post("/multi-analysis", files=files, data=data)
+
+        assert response.status_code == 400
+        mock_remove.assert_any_call("/tmp/first.pdf")
