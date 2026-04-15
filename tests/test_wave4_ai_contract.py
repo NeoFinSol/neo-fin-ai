@@ -7,11 +7,11 @@ across all AI agents and AIService.
 
 import pytest
 
+from src.core.agent import Agent
+from src.core.agent import ConfigurationError as AgentConfigError
 from src.core.base_agent import AIAgentError, BaseAIAgent, ConfigurationError
-from src.core.agent import Agent, ConfigurationError as AgentConfigError
 from src.core.gigachat_agent import GigaChatAgent
 from src.core.huggingface_agent import HuggingFaceAgent
-
 
 # ---------------------------------------------------------------------------
 # ARCH-003: single ConfigurationError identity
