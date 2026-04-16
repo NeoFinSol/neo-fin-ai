@@ -152,9 +152,9 @@
 
 #### `SETTINGS-001` — settings fallback path may silently mask invalid config
 
-- **Status:** `pending_verification`
-- **Likely source:** `src/models/settings.py`
-- **Working claim:** invalid settings may be swallowed into fallback defaults
+- **Status:** `fixed` (2026-04-16)
+- **Files touched:** `src/models/settings.py`, `tests/test_ai_settings_validators.py`
+- **Outcome:** validators added for `ai_timeout [1,600]`, `ai_retry_count [0,10]`, `ai_retry_backoff [0.1,60.0]` — invalid values fall back to defaults with WARNING log
 
 #### `CONTRACT-001` — `extraction_metadata` may be lost in route projection
 
@@ -163,8 +163,9 @@
 
 #### `HC-002` — Ollama session lifecycle is per-call instead of shared
 
-- **Status:** `pending_verification`
-- **Working claim:** session management still needs dedicated runtime verification beyond the CI follow-up path
+- **Status:** `fixed` (2026-04-16)
+- **Files touched:** `src/core/ollama_agent.py`, `tests/test_ollama_agent.py`
+- **Outcome:** singleton `ollama_agent` now created with `timeout=app_settings.ai_timeout`; session is shared via `BaseAIAgent._get_session()`
 
 #### `DOC-006` — docs claim behavior that runtime does not actually have
 
@@ -175,14 +176,16 @@
 
 #### `ARCH-001` — raw SQL in router layer
 
-- **Status:** `pending_verification`
-- **Likely source:** `src/routers/system.py`
-- **Working claim:** direct SQL belongs in CRUD/DB boundary, not routers
+- **Status:** `fixed` (2026-04-16)
+- **Files touched:** `src/db/crud.py` (new `check_database_connectivity()`), `src/routers/system.py`
+- **Outcome:** `SELECT 1` moved to CRUD layer; router no longer imports `sqlalchemy.text` or `get_engine`
 
 #### `ARCH-002` — upward dependency pressure in `src/db/database.py`
 
-- **Status:** `pending_verification`
-- **Working claim:** DB layer imports upward into core, violating layering direction
+- **Status:** `fixed` (2026-04-16)
+- **Files touched:** `src/db/database.py`
+- **Outcome:** `get_engine()` now accepts `config: DatabaseConfig | None = None`; new frozen dataclass `DatabaseConfig.from_settings()` decouples engine init from global `app_settings`
+- **Note:** original audit claim ("imports from core/") was a false positive — actual violation was DIP (direct `app_settings` reads inside `get_engine()`)
 
 ### Wave 7 — Math / Comparative
 
@@ -216,9 +219,10 @@
 
 #### `SEC-002` — WebSocket endpoint lacks authentication
 
-- **Status:** `pending_verification`
-- **Likely file:** `src/routers/websocket.py`
-- **Priority:** highest in this wave
+- **Status:** `fixed` (2026-04-16)
+- **Files touched:** `src/routers/websocket.py`, `tests/test_wave8_websocket_auth.py`
+- **Outcome:** API key auth via `?api_key=` query param; rejected connections closed with code 4001 before `ws_manager.connect()`; `_is_ws_auth_valid()` pure helper with constant-time compare; dev_mode and unconfigured-key bypass consistent with HTTP endpoints
+- **Important invariants:** rejection before `ws_manager.connect()` — no partial state; no credential values in logs; `hmac.compare_digest` prevents timing oracle
 
 #### `SEC-005` — dev-mode security bypass needs explicit classification
 

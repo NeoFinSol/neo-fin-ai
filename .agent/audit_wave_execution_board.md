@@ -102,23 +102,24 @@ Stop the current wave and re-plan if any of these becomes true:
 
 ### Wave 5A / 5B — Runtime / Settings / Metadata Reliability
 
-- **Status:** pending
-- **Findings:** `SETTINGS-001`, `CONTRACT-001`, `HC-002`, `DOC-006`
-- **Goal:** verify runtime-facing reliability issues without mixing them with broad docs cleanup
-- **Focus areas:**
-  - settings fallback behavior
-  - `extraction_metadata` preservation through route responses
-  - Ollama session lifecycle
-  - docs drift only after code truth is clear
+- **Status:** implemented (2026-04-15/16)
+- **Findings:** `SETTINGS-001`, `HC-002`; `CONTRACT-001` deferred; `DOC-006` deferred
+- **What landed:**
+  - `ai_timeout`, `ai_retry_count`, `ai_retry_backoff` validators added to `AppSettings`
+  - `OllamaAgent` singleton uses `app_settings.ai_timeout` for session timeout
+  - stale `self.model` attribute removed from `OllamaAgent.__init__`
+  - `get_logger` replaces `logging.getLogger` in `ollama_agent.py`
 
 ### Wave 6A / 6B — Layering Cleanup
 
-- **Status:** pending
+- **Status:** implemented (2026-04-16)
 - **Findings:** `ARCH-001`, `ARCH-002`
-- **Goal:** remove narrow, provable layering violations without starting a broad architecture rewrite
-- **Focus areas:**
-  - raw SQL in routers
-  - upward dependency pressure in `src/db/database.py`
+- **What landed:**
+  - `check_database_connectivity() -> bool` added to `src/db/crud.py`
+  - `src/routers/system.py` no longer imports `sqlalchemy.text` or `get_engine`
+  - `DatabaseConfig` frozen dataclass added to `src/db/database.py`
+  - `get_engine(config: DatabaseConfig | None = None)` — decoupled from global `app_settings`
+  - `tests/test_wave6_layering_cleanup.py` — 20 tests including 2 PBT suites
 
 ### Wave 7A / 7B — Math / Comparative Coherence
 

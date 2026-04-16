@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 from pathlib import Path
 
@@ -58,6 +57,23 @@ class AppSettings(BaseSettings):
     )
     qwen_api_url: str | None = Field(
         None, alias="QWEN_API_URL", description="URL for Qwen API service"
+    )
+
+    # AI service runtime settings
+    ai_timeout: int = Field(
+        120,
+        alias="AI_TIMEOUT",
+        description="Timeout in seconds for AI service requests",
+    )
+    ai_retry_count: int = Field(
+        2,
+        alias="AI_RETRY_COUNT",
+        description="Number of retry attempts for AI service requests",
+    )
+    ai_retry_backoff: float = Field(
+        2.0,
+        alias="AI_RETRY_BACKOFF",
+        description="Exponential backoff multiplier for AI retries",
     )
 
     # GigaChat AI settings
@@ -136,7 +152,9 @@ class AppSettings(BaseSettings):
     llm_token_budget: int = Field(
         50_000,
         alias="LLM_TOKEN_BUDGET",
-        description="Max total characters to process per PDF (≈ tokens × 4) [1000–200000]",
+        description=(
+            "Max total characters to process per PDF (≈ tokens × 4) [1000–200000]"
+        ),
     )
 
     # Logging settings
@@ -150,6 +168,67 @@ class AppSettings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(env_file=str(ENV_FILE), extra="ignore")
+
+    @field_validator("ai_timeout", mode="before")
+    @classmethod
+    def validate_ai_timeout(cls, v: int | str | None) -> int:
+        """Validate AI timeout; fall back to default on invalid input."""
+        default = 120
+        if v is None:
+            return default
+        try:
+            value = int(v)
+        except (TypeError, ValueError):
+            logging.warning("Invalid AI_TIMEOUT=%r. Using default %d", v, default)
+            return default
+        if not (1 <= value <= 600):
+            logging.warning(
+                "AI_TIMEOUT=%d out of [1, 600]. Using default %d", value, default
+            )
+            return default
+        return value
+
+    @field_validator("ai_retry_count", mode="before")
+    @classmethod
+    def validate_ai_retry_count(cls, v: int | str | None) -> int:
+        """Validate AI retry count; fall back to default on invalid input."""
+        default = 2
+        if v is None:
+            return default
+        try:
+            value = int(v)
+        except (TypeError, ValueError):
+            logging.warning("Invalid AI_RETRY_COUNT=%r. Using default %d", v, default)
+            return default
+        if not (0 <= value <= 10):
+            logging.warning(
+                "AI_RETRY_COUNT=%d out of [0, 10]. Using default %d", value, default
+            )
+            return default
+        return value
+
+    @field_validator("ai_retry_backoff", mode="before")
+    @classmethod
+    def validate_ai_retry_backoff(cls, v: float | str | None) -> float:
+        """Validate AI retry backoff; fall back to default on invalid input."""
+        default = 2.0
+        if v is None:
+            return default
+        try:
+            value = float(v)
+        except (TypeError, ValueError):
+            logging.warning(
+                "Invalid AI_RETRY_BACKOFF=%r. Using default %.1f", v, default
+            )
+            return default
+        if not (0.1 <= value <= 60.0):
+            logging.warning(
+                "AI_RETRY_BACKOFF=%.2f out of [0.1, 60.0]. Using default %.1f",
+                value,
+                default,
+            )
+            return default
+        return value
 
     @field_validator(
         "qwen_api_url",

@@ -149,14 +149,25 @@ class TaskRuntimeError(BaseAppError):
 
 class CircuitBreakerOpenError(BaseAppError):
     """
-    Raised when circuit breaker is open (service temporarily disabled).
+    Raised when a circuit breaker is open and the request is rejected.
 
-    This is not a real error - it's a signal to use fallback.
+    Canonical definition lives here; src/utils/circuit_breaker.py re-exports
+    this class so all callers share the same exception identity.
     """
 
-    def __init__(self, message: str = "Service temporarily unavailable"):
+    def __init__(
+        self,
+        service_name: str,
+        retry_after: int,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        self.service_name = service_name
+        self.retry_after = retry_after
         super().__init__(
-            message=message,
+            message=(
+                f"Circuit breaker open for {service_name}, "
+                f"retry after {retry_after}s"
+            ),
             code="CIRCUIT_BREAKER_OPEN",
-            details={"reason": "Service temporarily disabled due to repeated failures"},
+            details=details,
         )

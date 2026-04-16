@@ -1,5 +1,70 @@
 # Project Log
 
+## 2026-04-16 — feat(ws): add API key authentication to WebSocket endpoint (SEC-002)
+
+**Контекст:** Wave 8A — Security Backlog, finding SEC-002
+
+**Что сделано:**
+- `src/routers/websocket.py`:
+  - `import logging` → `from src.utils.logging_config import get_logger` (проектный стандарт)
+  - добавлен `import hmac`
+  - добавлен `Query` в fastapi imports
+  - добавлена именованная константа `_WS_CLOSE_UNAUTHORIZED: int = 4001` (RFC 6455)
+  - добавлен pure helper `_is_ws_auth_valid(api_key: str | None) -> bool` — guard clauses, `hmac.compare_digest`, `except (UnicodeEncodeError, AttributeError): return False`
+  - `websocket_endpoint` получил параметр `api_key: str | None = Query(default=None, alias="api_key")`
+  - добавлен auth guard: отклонение до `ws_manager.connect()`, WARNING лог с task_id без значения ключа, close(4001)
+  - `logger.error(f"...")` → `logger.error("...", task_id, exc)` (no f-string)
+  - добавлен `-> None` return type
+- `tests/test_wave8_websocket_auth.py` — 25 тестов: unit (9), PBT P1–P4 (4), integration (7), constant (2)
+
+**SOLID/Clean Code verification:**
+- `_is_ws_auth_valid` — 12 строк (≤ 15), guard clauses, нет side effects, нет f-strings
+- `_WS_CLOSE_UNAUTHORIZED` — нет magic number 4001 inline
+- SRP: endpoint делегирует auth decision в helper
+- ISP: helper принимает только `api_key: str | None`
+- Нет утечки ключа в логах
+
+**Верификация:** `25 passed`; `isort --profile black` и `black --check` чистые
+
+---
+
+## 2026-04-16 — refactor(db): Wave 6 layering cleanup — ARCH-001 + ARCH-002
+
+**Контекст:** Wave 6A/6B — Layering Cleanup
+
+**Что сделано:**
+- `src/db/crud.py` — добавлена `check_database_connectivity() -> bool`; выполняет `SELECT 1` через session maker; всегда возвращает `bool`, никогда не бросает
+- `src/routers/system.py` — убраны `from sqlalchemy import text` и `from src.db.database import get_engine`; `_database_is_available()` теперь вызывает `check_database_connectivity()`; убран неиспользуемый `import logging`
+- `src/db/database.py` — добавлен `@dataclass(frozen=True) class DatabaseConfig` с `from_settings()`; `get_engine()` принимает `config: DatabaseConfig | None = None`; все прямые чтения `app_settings.db_*` внутри `get_engine()` заменены на `cfg.*`
+- `tests/test_wave6_layering_cleanup.py` — 20 тестов: ARCH-001 (PBT + import guards + endpoint mocks), ARCH-002 (PBT + frozen dataclass + explicit config)
+- `tests/test_routers_system.py`, `tests/test_routers_system_full.py` — обновлены: `patch("src.routers.system.get_engine", ...)` → `patch("src.routers.system.check_database_connectivity", new_callable=AsyncMock, ...)`
+
+**Верификация:** `74 passed`; `isort --profile black` и `black --check` чистые
+
+**Примечание по ARCH-002:** оригинальный audit claim ("импорт из core/") — false positive. Реальное нарушение: DIP — `get_engine()` читал `app_settings` напрямую вместо получения конфигурации через параметры.
+
+---
+
+## 2026-04-16 — fix(core): audit findings remediation pack F2–F9
+
+**Контекст:** audit-findings-remediation spec (8 findings из двух code review passes)
+
+**Что сделано:**
+- F2 (`database.py`) — `_resolve_database_url()` теперь бросает `RuntimeError` при `CI=1` без `DATABASE_URL` вместо возврата `None`; контракт `-> str` честный
+- F3 (`ollama_agent.py`) — убран stale `self.model = app_settings.llm_model or "llama3"` из `__init__`; `_effective_model()` остаётся единственным source of truth
+- F4 (`ollama_agent.py`) — singleton `ollama_agent = OllamaAgent(timeout=app_settings.ai_timeout)` вместо hardcoded `120`
+- F5 (`settings.py`) — добавлены validators: `ai_timeout [1,600]`, `ai_retry_count [0,10]`, `ai_retry_backoff [0.1,60.0]`; fallback на дефолт с WARNING
+- F6 (`ai_service.py`) — удалён мёртвый `except CircuitBreakerOpenError` и его импорт
+- F7 (`circuit_breaker.py`) — удалён мёртвый метод `_check_state_transition()` (locked variant)
+- F8 (`ollama_agent.py`) — `import logging` → `from src.utils.logging_config import get_logger`
+- F9 (`exceptions/__init__.py`) — `CircuitBreakerOpenError.__init__` теперь принимает `details: Optional[Dict[str, Any]] = None`
+- Новые тест-файлы: `test_ollama_agent.py`, `test_ai_settings_validators.py`, `test_db_database_url.py`, `test_audit_remediation_commit4.py` — включая 3 Hypothesis PBT-сюиты
+- Дополнительно: убраны unused imports (`asyncio`, `Any`, `pytest`, `os`); исправлены длинные строки
+
+**Верификация:** `183 passed`; `isort --profile black` и `black --check` чистые
+
+---
+
 ## 2026-04-15 — fix(ai): unify AI agent error hierarchy and public configuration contract
 
 **Контекст:** Wave 4A/4B — AI Contract Repair (ARCH-003, ARCH-004, ARCH-005, ARCH-007, TEST-003)
