@@ -10,12 +10,12 @@ PBT: Hypothesis property for CircuitBreakerOpenError constructor invariant
 import inspect
 
 import pytest
-from hypothesis import given, settings as h_settings
+from hypothesis import given
+from hypothesis import settings as h_settings
 from hypothesis import strategies as st
 
 from src.exceptions import BaseAppError, CircuitBreakerOpenError
 from src.utils.circuit_breaker import CircuitBreaker
-
 
 # ---------------------------------------------------------------------------
 # F7 — dead _check_state_transition removed

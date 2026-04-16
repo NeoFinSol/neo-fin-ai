@@ -9,7 +9,8 @@ import os
 from unittest.mock import patch
 
 import pytest
-from hypothesis import given, settings as h_settings
+from hypothesis import given
+from hypothesis import settings as h_settings
 from hypothesis import strategies as st
 
 from src.db.database import _DB_TEST_URL_DEFAULT, _resolve_database_url
