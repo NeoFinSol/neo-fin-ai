@@ -1,6 +1,4 @@
 """Tests for core/security.py — credential redaction utilities."""
-import pytest
-
 from src.core.security import (
     get_safe_db_url_for_logging,
     redact_credentials,

@@ -1,6 +1,5 @@
-import asyncio
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 import aiohttp
 from aiohttp import ClientTimeout

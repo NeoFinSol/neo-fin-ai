@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from typing import AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import (
@@ -14,6 +15,34 @@ from sqlalchemy.orm import declarative_base
 
 from src.models.settings import app_settings
 from src.utils.security_utils import get_safe_db_url_for_logging
+
+
+@dataclass(frozen=True)
+class DatabaseConfig:
+    """
+    Immutable snapshot of DB pool configuration.
+
+    Decouples get_engine() from the global app_settings singleton,
+    making the function independently testable.
+    """
+
+    pool_size: int
+    max_overflow: int
+    pool_timeout: int
+    pool_recycle: int
+    pool_pre_ping: bool
+
+    @classmethod
+    def from_settings(cls, settings) -> "DatabaseConfig":
+        """Construct a DatabaseConfig from any settings-like object."""
+        return cls(
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            pool_timeout=settings.db_pool_timeout,
+            pool_recycle=settings.db_pool_recycle,
+            pool_pre_ping=settings.db_pool_pre_ping,
+        )
+
 
 # DATABASE_URL is read from environment variable via app_settings.
 # Validation is deferred to get_engine() to allow module imports during testing.
@@ -58,6 +87,13 @@ def _resolve_database_url() -> str:
         return test_db_url
     if is_testing and not db_url:
         return _DB_TEST_URL_DEFAULT
+
+    # F2 guard: CI=1 path can reach here with db_url=None when DATABASE_URL is absent
+    if not db_url:
+        raise RuntimeError(
+            "DATABASE_URL is not set. "
+            "In CI mode without TEST_DATABASE_URL, provide DATABASE_URL explicitly."
+        )
     return db_url
 
 
@@ -132,9 +168,13 @@ def _create_engine_with_pool(db_url: str, **pool_kwargs) -> AsyncEngine:
         raise RuntimeError("Failed to create database engine") from exc
 
 
-def get_engine() -> AsyncEngine:
+def get_engine(config: DatabaseConfig | None = None) -> AsyncEngine:
     """
     Get or create async engine (lazy initialization).
+
+    Args:
+        config: Optional pool configuration.
+            Defaults to DatabaseConfig.from_settings(app_settings).
 
     Returns:
         AsyncEngine: SQLAlchemy async engine instance
@@ -148,25 +188,25 @@ def get_engine() -> AsyncEngine:
         return _engine
 
     db_url = _resolve_database_url()
+    cfg = config or DatabaseConfig.from_settings(app_settings)
 
-    pool_size, max_overflow = _clamp_pool_settings(
-        app_settings.db_pool_size, app_settings.db_max_overflow
-    )
+    pool_size, max_overflow = _clamp_pool_settings(cfg.pool_size, cfg.max_overflow)
     logger.info(
-        "Database pool configured: pool_size=%d, max_overflow=%d, timeout=%ds, recycle=%ds",
+        "Database pool configured: pool_size=%d, max_overflow=%d, "
+        "timeout=%ds, recycle=%ds",
         pool_size,
-        app_settings.db_max_overflow,
-        app_settings.db_pool_timeout,
-        app_settings.db_pool_recycle,
+        max_overflow,
+        cfg.pool_timeout,
+        cfg.pool_recycle,
     )
 
     _engine = _create_engine_with_pool(
         db_url,
         pool_size=pool_size,
         max_overflow=max_overflow,
-        pool_timeout=app_settings.db_pool_timeout,
-        pool_recycle=app_settings.db_pool_recycle,
-        pool_pre_ping=app_settings.db_pool_pre_ping,
+        pool_timeout=cfg.pool_timeout,
+        pool_recycle=cfg.pool_recycle,
+        pool_pre_ping=cfg.pool_pre_ping,
     )
     AsyncSessionLocal = _make_session_maker(_engine)
     return _engine

@@ -29,13 +29,15 @@ Usage:
 """
 
 import asyncio
-import logging
 import os
 import time
 from contextlib import asynccontextmanager
 from enum import Enum
 from typing import Optional
 
+from src.exceptions import (  # noqa: F401 — re-export canonical class
+    CircuitBreakerOpenError,
+)
 from src.utils.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -51,17 +53,6 @@ class CircuitState(Enum):
     CLOSED = "closed"  # Normal operation, requests allowed
     OPEN = "open"  # Circuit tripped, requests blocked
     HALF_OPEN = "half_open"  # Testing if service recovered
-
-
-class CircuitBreakerOpenError(Exception):
-    """Raised when circuit breaker is open and request is rejected."""
-
-    def __init__(self, service_name: str, retry_after: int):
-        self.service_name = service_name
-        self.retry_after = retry_after
-        super().__init__(
-            f"Circuit breaker open for {service_name}, retry after {retry_after}s"
-        )
 
 
 class CircuitBreaker:
@@ -126,25 +117,15 @@ class CircuitBreaker:
         remaining = self.recovery_timeout - elapsed
         return max(0, int(remaining))
 
-    def _check_state_transition(self) -> None:
-        """Check if state should transition (must be called with lock held)."""
-        if self._state == CircuitState.OPEN and self._last_failure_time:
-            elapsed = time.monotonic() - self._last_failure_time
-            if elapsed >= self.recovery_timeout:
-                self._state = CircuitState.HALF_OPEN
-                self._logger.warning(
-                    "Circuit breaker for %s transitioned to HALF_OPEN (testing recovery)",
-                    self.name,
-                )
-
     def _check_state_transition_unlocked(self) -> None:
-        """Check if state should transition without acquiring lock (for read-only properties)."""
+        """Check if state should transition without lock (for read-only properties)."""
         if self._state == CircuitState.OPEN and self._last_failure_time:
             elapsed = time.monotonic() - self._last_failure_time
             if elapsed >= self.recovery_timeout:
                 self._state = CircuitState.HALF_OPEN
                 self._logger.warning(
-                    "Circuit breaker for %s transitioned to HALF_OPEN (testing recovery)",
+                    "Circuit breaker for %s transitioned to HALF_OPEN"
+                    " (testing recovery)",
                     self.name,
                 )
 

@@ -1,7 +1,6 @@
 """Unified AI service interface with automatic provider selection."""
 
 import asyncio
-import os
 import time
 from typing import Any, Literal, Optional
 
@@ -10,16 +9,11 @@ from src.core.gigachat_agent import gigachat_agent
 from src.core.huggingface_agent import huggingface_agent
 from src.core.ollama_agent import ollama_agent
 from src.models.settings import app_settings
-from src.utils.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from src.utils.circuit_breaker import CircuitBreaker
 from src.utils.logging_config import get_logger, metrics
 from src.utils.retry_utils import retry_with_timeout
 
 logger = get_logger(__name__)
-
-# Configuration from environment
-AI_TIMEOUT = int(os.getenv("AI_TIMEOUT", "120"))
-AI_RETRY_COUNT = int(os.getenv("AI_RETRY_COUNT", "2"))
-AI_RETRY_BACKOFF = float(os.getenv("AI_RETRY_BACKOFF", "2.0"))
 
 SUPPORTED_AI_PROVIDERS = ("gigachat", "huggingface", "qwen", "ollama")
 AIProviderName = Literal["gigachat", "huggingface", "qwen", "ollama"]
@@ -225,13 +219,13 @@ class AIService:
 
         Args:
             input: Input dictionary with tool_input and optional system prompt
-            timeout: Request timeout in seconds (default: AI_TIMEOUT env)
+            timeout: Request timeout in seconds (default: app_settings.ai_timeout)
             use_retry: Enable retry logic (default: True)
 
         Returns:
             Optional[str]: AI response or None (on failure/timeout/circuit open)
         """
-        actual_timeout = timeout or AI_TIMEOUT
+        actual_timeout = timeout or app_settings.ai_timeout
 
         resolved_provider = self._resolve_provider(provider)
 
@@ -272,12 +266,12 @@ class AIService:
                 )
 
             # Execute with or without retry
-            if use_retry and AI_RETRY_COUNT > 0:
+            if use_retry and app_settings.ai_retry_count > 0:
                 result = await retry_with_timeout(
                     ai_operation,
                     timeout=actual_timeout,
-                    max_retries=AI_RETRY_COUNT,
-                    backoff_multiplier=AI_RETRY_BACKOFF,
+                    max_retries=app_settings.ai_retry_count,
+                    backoff_multiplier=app_settings.ai_retry_backoff,
                     fallback=lambda: _TIMEOUT_RETRY_EXHAUSTED,
                     operation_name=f"AI invocation ({resolved_provider})",
                 )
@@ -310,12 +304,6 @@ class AIService:
             metrics.record_ai_failure()
             return None
 
-        except CircuitBreakerOpenError:
-            # Should not happen since we check is_available above, but handle anyway
-            logger.warning("AI invocation blocked by circuit breaker")
-            metrics.record_ai_failure()
-            return None
-
         except Exception as exc:
             duration_ms = (time.monotonic() - start_time) * 1000
             logger.error(
@@ -332,15 +320,13 @@ class AIService:
         self,
         input: dict,
         timeout: Optional[int] = None,
-        max_retries: Optional[int] = None,
-        retry_delay: Optional[float] = None,
     ) -> Optional[str]:
         """
         Legacy wrapper for invoke(use_retry=True) for backward compatibility.
 
         New code should use invoke(use_retry=True) directly.
-        max_retries and retry_delay are accepted but ignored — retry behaviour
-        is controlled by AI_RETRY_COUNT and AI_RETRY_BACKOFF env vars.
+        Retry behaviour is controlled by app_settings.ai_retry_count and
+        app_settings.ai_retry_backoff (env vars AI_RETRY_COUNT / AI_RETRY_BACKOFF).
         """
         return await self.invoke(input=input, timeout=timeout, use_retry=True)
 

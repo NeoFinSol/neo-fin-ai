@@ -7,15 +7,15 @@ identically to all other providers — no special-casing in the service layer.
 
 from __future__ import annotations
 
-import logging
 from typing import Optional
 
 import aiohttp
 
 from src.core.base_agent import BaseAIAgent
 from src.models.settings import app_settings
+from src.utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _build_ollama_payload(input: dict, model: str) -> dict:
@@ -49,8 +49,6 @@ class OllamaAgent(BaseAIAgent):
         super().__init__(timeout=timeout)
         # Mark as always configured — Ollama is available when the URL is set.
         self._configured = True
-        # Override the base model attribute with Ollama default
-        self.model = app_settings.llm_model or "llama3"
 
     @property
     def url(self) -> str:
@@ -80,4 +78,4 @@ class OllamaAgent(BaseAIAgent):
 
 
 # Module-level singleton — registered by AIService._configure()
-ollama_agent = OllamaAgent()
+ollama_agent = OllamaAgent(timeout=app_settings.ai_timeout)

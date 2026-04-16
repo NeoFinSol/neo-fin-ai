@@ -47,7 +47,7 @@ class TestAIServiceInit:
             mock_settings.gigachat_auth_url = "https://auth.url"
             mock_settings.gigachat_chat_url = "https://chat.url"
             mock_gc.is_configured = False
-            svc = AIService()
+            AIService()
             mock_gc.set_config.assert_called_once()
 
     def test_huggingface_provider_selected(self):
@@ -108,6 +108,9 @@ class TestAIServiceInvoke:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
+            mock_settings.ai_timeout = 120
+            mock_settings.ai_retry_count = 0
+            mock_settings.ai_retry_backoff = 2.0
             mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(return_value="response text")
             svc = AIService()
@@ -123,6 +126,9 @@ class TestAIServiceInvoke:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = False
             mock_settings.use_local_llm = True
+            mock_settings.ai_timeout = 120
+            mock_settings.ai_retry_count = 0
+            mock_settings.ai_retry_backoff = 2.0
             mock_ollama_agent.is_configured = True
             mock_ollama_agent.invoke = AsyncMock(return_value="ollama response")
             svc = AIService()
@@ -143,6 +149,9 @@ class TestAIServiceInvoke:
             mock_settings.gigachat_client_secret = "csec"
             mock_settings.gigachat_auth_url = "https://auth.url"
             mock_settings.gigachat_chat_url = "https://chat.url"
+            mock_settings.ai_timeout = 120
+            mock_settings.ai_retry_count = 0
+            mock_settings.ai_retry_backoff = 2.0
             mock_gc.is_configured = True
             mock_gc.invoke = AsyncMock(return_value="gigachat response")
             mock_ollama_agent.is_configured = True
@@ -168,15 +177,18 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
+            mock_settings.ai_timeout = 120
+            mock_settings.ai_retry_count = 0
+            mock_settings.ai_retry_backoff = 2.0
             mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(return_value="ok")
             svc = AIService()
-            result = await svc.invoke_with_retry({"tool_input": "test"}, max_retries=3)
+            result = await svc.invoke_with_retry({"tool_input": "test"})
             assert result == "ok"
 
     @pytest.mark.asyncio
     async def test_retries_on_timeout_then_raises(self):
-        """Test that invoke returns None after retries on timeout (graceful degradation)."""
+        """invoke returns None after timeout (graceful degradation)."""
         with patch("src.core.ai_service.app_settings") as mock_settings, patch(
             "src.core.ai_service.qwen_agent"
         ) as mock_agent:
@@ -184,18 +196,18 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
+            mock_settings.ai_timeout = 120
+            mock_settings.ai_retry_count = 0
+            mock_settings.ai_retry_backoff = 2.0
             mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(side_effect=asyncio.TimeoutError())
             svc = AIService()
-            # New behavior: returns None instead of raising (graceful degradation)
-            result = await svc.invoke_with_retry(
-                {"tool_input": "test"}, max_retries=2, retry_delay=0.01
-            )
+            result = await svc.invoke_with_retry({"tool_input": "test"})
             assert result is None
 
     @pytest.mark.asyncio
     async def test_retries_on_exception_then_raises(self):
-        """Test that invoke returns None after retries on exception (graceful degradation)."""
+        """invoke returns None after exception (graceful degradation)."""
         with patch("src.core.ai_service.app_settings") as mock_settings, patch(
             "src.core.ai_service.qwen_agent"
         ) as mock_agent:
@@ -203,13 +215,13 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
+            mock_settings.ai_timeout = 120
+            mock_settings.ai_retry_count = 0
+            mock_settings.ai_retry_backoff = 2.0
             mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(side_effect=RuntimeError("boom"))
             svc = AIService()
-            # New behavior: returns None instead of raising (graceful degradation)
-            result = await svc.invoke_with_retry(
-                {"tool_input": "test"}, max_retries=2, retry_delay=0.01
-            )
+            result = await svc.invoke_with_retry({"tool_input": "test"})
             assert result is None
 
     @pytest.mark.asyncio
@@ -221,14 +233,15 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
+            mock_settings.ai_timeout = 120
+            mock_settings.ai_retry_count = 0
+            mock_settings.ai_retry_backoff = 2.0
             mock_agent.is_configured = True
             mock_agent.invoke = AsyncMock(
                 side_effect=[RuntimeError("first fail"), "success"]
             )
             svc = AIService()
-            result = await svc.invoke_with_retry(
-                {"tool_input": "test"}, max_retries=3, retry_delay=0.01
-            )
+            result = await svc.invoke_with_retry({"tool_input": "test"})
             assert result is None
             assert mock_agent.invoke.await_count == 1
 
@@ -247,6 +260,9 @@ class TestAIServiceInvokeWithRetry:
             mock_settings.use_huggingface = False
             mock_settings.use_qwen = True
             mock_settings.use_local_llm = False
+            mock_settings.ai_timeout = 120
+            mock_settings.ai_retry_count = 2
+            mock_settings.ai_retry_backoff = 2.0
             mock_agent.is_configured = True
             svc = AIService()
             breaker = svc._circuit_breakers["qwen"]
