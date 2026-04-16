@@ -1,11 +1,9 @@
-import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import text
 
 from src.core.ai_service import ai_service
-from src.db.database import get_engine
+from src.db.crud import check_database_connectivity
 from src.utils.logging_config import get_logger, metrics
 
 logger = get_logger(__name__)
@@ -21,10 +19,7 @@ def _current_utc_timestamp() -> str:
 async def _database_is_available(log_context: str) -> bool:
     """Check database connectivity and log failures for the calling endpoint."""
     try:
-        engine = get_engine()
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
+        return await check_database_connectivity()
     except Exception as e:
         logger.error("%s: %s", log_context, e)
         return False

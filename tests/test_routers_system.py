@@ -1,9 +1,8 @@
 """Tests for routers/system.py — health check endpoints."""
 
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.app import app
@@ -34,17 +33,13 @@ class TestHealthzCheck:
     """Tests for GET /system/healthz."""
 
     def test_healthz_db_healthy_ai_configured(self):
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine), patch(
-            "src.routers.system.ai_service"
-        ) as mock_ai:
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = True
+            mock_ai.is_available = True
             with TestClient(app) as client:
                 response = client.get("/system/healthz")
             assert response.status_code == 200
@@ -55,7 +50,9 @@ class TestHealthzCheck:
 
     def test_healthz_db_unhealthy(self):
         with patch(
-            "src.routers.system.get_engine", side_effect=Exception("DB down")
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=False,
         ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = False
             with TestClient(app) as client:
@@ -66,16 +63,11 @@ class TestHealthzCheck:
             assert data["components"]["database"] == "unhealthy"
 
     def test_healthz_ai_not_configured(self):
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine), patch(
-            "src.routers.system.ai_service"
-        ) as mock_ai:
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = False
             with TestClient(app) as client:
                 response = client.get("/system/healthz")
@@ -84,17 +76,13 @@ class TestHealthzCheck:
             assert data["components"]["ai_service"] == "not_configured"
 
     def test_healthz_has_timestamp(self):
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine), patch(
-            "src.routers.system.ai_service"
-        ) as mock_ai:
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = True
+            mock_ai.is_available = True
             with TestClient(app) as client:
                 response = client.get("/system/healthz")
             data = response.json()
@@ -106,14 +94,11 @@ class TestReadinessCheck:
     """Tests for GET /system/ready."""
 
     def test_ready_when_db_available(self):
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine):
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
             with TestClient(app) as client:
                 response = client.get("/system/ready")
             assert response.status_code == 200
@@ -121,7 +106,9 @@ class TestReadinessCheck:
 
     def test_not_ready_when_db_unavailable(self):
         with patch(
-            "src.routers.system.get_engine", side_effect=Exception("DB unavailable")
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=False,
         ):
             with TestClient(app) as client:
                 response = client.get("/system/ready")
@@ -130,4 +117,3 @@ class TestReadinessCheck:
                 response.json()["detail"]
                 == "Service not ready: database connection failed"
             )
-            assert "DB unavailable" not in response.json()["detail"]

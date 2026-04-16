@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from src.db.database import get_session_maker
@@ -947,3 +947,19 @@ async def cleanup_multi_sessions(
             await session.rollback()
             logger.error("Database error cleaning multi-analysis sessions: %s", e)
             raise
+
+
+async def check_database_connectivity() -> bool:
+    """
+    Execute a lightweight SELECT 1 to verify DB connectivity.
+
+    Returns True if the database is reachable, False on any error.
+    Never raises — callers receive a plain bool health signal.
+    """
+    try:
+        session_maker = get_session_maker()
+        async with session_maker() as session:
+            await session.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False

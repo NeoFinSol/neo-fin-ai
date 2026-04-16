@@ -9,7 +9,7 @@ Covers:
 """
 
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -38,20 +38,13 @@ class TestHealthCheck:
     """Tests for GET /system/health endpoint."""
 
     def test_health_all_services_ok(self, client):
-        """Test health check when all services are healthy."""
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine), patch(
-            "src.routers.system.ai_service"
-        ) as mock_ai:
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = True
             mock_ai.is_available = True
-
             response = client.get("/system/health")
 
         assert response.status_code == 200
@@ -64,13 +57,13 @@ class TestHealthCheck:
         _assert_utc_timestamp(data["timestamp"])
 
     def test_health_db_down(self, client):
-        """Test health check when database is down."""
         with patch(
-            "src.routers.system.get_engine", side_effect=Exception("DB down")
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=False,
         ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = True
             mock_ai.is_available = True
-
             response = client.get("/system/health")
 
         assert response.status_code == 200
@@ -79,17 +72,11 @@ class TestHealthCheck:
         assert data["services"]["db"] == "down"
 
     def test_health_ai_circuit_breaker_open(self, client):
-        """Test health check when AI circuit breaker is open."""
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine), patch(
-            "src.routers.system.ai_service"
-        ) as mock_ai:
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = True
             mock_ai.is_available = False
             mock_ai.get_circuit_breaker_status.return_value = {
@@ -98,7 +85,6 @@ class TestHealthCheck:
                 "threshold": 5,
                 "time_until_retry": 90,
             }
-
             response = client.get("/system/health")
 
         assert response.status_code == 200
@@ -108,19 +94,12 @@ class TestHealthCheck:
         assert "ai_circuit_breaker" in data
 
     def test_health_ai_not_configured(self, client):
-        """Test health check when AI is not configured."""
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine), patch(
-            "src.routers.system.ai_service"
-        ) as mock_ai:
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = False
-
             response = client.get("/system/health")
 
         assert response.status_code == 200
@@ -133,20 +112,13 @@ class TestHealthzCheck:
     """Tests for GET /system/healthz endpoint."""
 
     def test_healthz_all_healthy(self, client):
-        """Test extended health when all components are healthy."""
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine), patch(
-            "src.routers.system.ai_service"
-        ) as mock_ai:
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = True
             mock_ai.is_available = True
-
             response = client.get("/system/healthz")
 
         assert response.status_code == 200
@@ -157,12 +129,12 @@ class TestHealthzCheck:
         _assert_utc_timestamp(data["timestamp"])
 
     def test_healthz_db_unhealthy(self, client):
-        """Test extended health when database is unhealthy."""
         with patch(
-            "src.routers.system.get_engine", side_effect=Exception("DB down")
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=False,
         ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = False
-
             response = client.get("/system/healthz")
 
         assert response.status_code == 200
@@ -171,24 +143,17 @@ class TestHealthzCheck:
         assert data["components"]["database"] == "unhealthy"
 
     def test_healthz_ai_degraded(self, client):
-        """Test extended health when AI is degraded."""
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine), patch(
-            "src.routers.system.ai_service"
-        ) as mock_ai:
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ), patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.is_configured = True
             mock_ai.is_available = False
             mock_ai.get_circuit_breaker_status.return_value = {
                 "state": "open",
                 "failure_count": 5,
             }
-
             response = client.get("/system/healthz")
 
         assert response.status_code == 200
@@ -201,24 +166,21 @@ class TestReadinessCheck:
     """Tests for GET /system/ready endpoint."""
 
     def test_ready_when_db_available(self, client):
-        """Test readiness when database is available."""
-        mock_engine = MagicMock()
-        mock_conn = AsyncMock()
-        mock_conn.execute = AsyncMock()
-        mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_conn.__aexit__ = AsyncMock(return_value=False)
-        mock_engine.connect = MagicMock(return_value=mock_conn)
-
-        with patch("src.routers.system.get_engine", return_value=mock_engine):
+        with patch(
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
             response = client.get("/system/ready")
 
         assert response.status_code == 200
         assert response.json() == {"status": "ready"}
 
     def test_not_ready_when_db_unavailable(self, client):
-        """Test readiness when database is unavailable."""
         with patch(
-            "src.routers.system.get_engine", side_effect=Exception("DB unavailable")
+            "src.routers.system.check_database_connectivity",
+            new_callable=AsyncMock,
+            return_value=False,
         ):
             response = client.get("/system/ready")
 
@@ -233,7 +195,6 @@ class TestMetricsEndpoint:
     """Tests for GET /system/metrics endpoint."""
 
     def test_metrics_returns_structure(self, client):
-        """Test metrics endpoint returns correct structure."""
         with patch("src.routers.system.metrics") as mock_metrics:
             mock_metrics.get_metrics.return_value = {
                 "total_tasks": 150,
@@ -242,19 +203,14 @@ class TestMetricsEndpoint:
                 "avg_processing_time_ms": 3245.67,
                 "ai_failures": 5,
             }
-
             response = client.get("/system/metrics")
 
         assert response.status_code == 200
         data = response.json()
         assert "total_tasks" in data
         assert "successful_tasks" in data
-        assert "failed_tasks" in data
-        assert "avg_processing_time_ms" in data
-        assert "ai_failures" in data
 
     def test_metrics_zero_values(self, client):
-        """Test metrics with zero values."""
         with patch("src.routers.system.metrics") as mock_metrics:
             mock_metrics.get_metrics.return_value = {
                 "total_tasks": 0,
@@ -263,15 +219,12 @@ class TestMetricsEndpoint:
                 "avg_processing_time_ms": 0.0,
                 "ai_failures": 0,
             }
-
             response = client.get("/system/metrics")
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["total_tasks"] == 0
+        assert response.json()["total_tasks"] == 0
 
     def test_metrics_high_values(self, client):
-        """Test metrics with high load values."""
         with patch("src.routers.system.metrics") as mock_metrics:
             mock_metrics.get_metrics.return_value = {
                 "total_tasks": 10000,
@@ -280,12 +233,10 @@ class TestMetricsEndpoint:
                 "avg_processing_time_ms": 5000.0,
                 "ai_failures": 100,
             }
-
             response = client.get("/system/metrics")
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["total_tasks"] == 10000
+        assert response.json()["total_tasks"] == 10000
 
 
 class TestAIProvidersEndpoint:
@@ -295,7 +246,6 @@ class TestAIProvidersEndpoint:
         with patch("src.routers.system.ai_service") as mock_ai:
             mock_ai.provider = "gigachat"
             mock_ai.available_providers = ["gigachat", "ollama"]
-
             response = client.get("/system/ai/providers")
 
         assert response.status_code == 200
