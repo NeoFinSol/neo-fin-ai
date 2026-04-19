@@ -85,6 +85,7 @@ run_ocr.bat
 !tests/test_wave8_websocket_auth.py
 # Math Layer v2 Wave 2 tests (denominator policy hardening)
 !tests/analysis/math/test_registry_denominator_validation.py
+!tests/analysis/math/test_wave2_proof_metric_registration.py
 
 # IDE and tool directories
 .agent/
