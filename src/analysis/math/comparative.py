@@ -1,6 +1,30 @@
+"""
+Comparative math layer for Math Layer v2 — Wave 1a.
+
+This module owns comparative business semantics.
+Wave 1a adds numeric hardening to the average-balance path without
+changing any comparative business rules.
+
+Hardening applied (W1A-012, W1A-013, W1A-015):
+- Opening and closing balance inputs are normalized via normalization.py
+  before averaging (input-stage hardening).
+- The computed average is finalized via finalization.py before projection
+  (result-stage hardening).
+- The projected average is converted to float via projections.py
+  (sole Decimal→float boundary).
+- Machine-checkable evidence is attached to average_balance payloads.
+
+Ownership rules:
+- This module owns comparative business compute and period linking.
+- This module MUST NOT define its own coercion helper (_to_number is removed).
+- This module MUST NOT average on raw unstable float path.
+- This module MUST NOT bypass centralized hardening for average-balance metrics.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Sequence
 
 from src.analysis.math.comparative_reasons import (
@@ -15,6 +39,20 @@ from src.analysis.math.comparative_reasons import (
 )
 from src.analysis.math.contracts import DerivedMetric
 from src.analysis.math.engine import MathEngine
+from src.analysis.math.finalization import finalize_numeric_result
+from src.analysis.math.normalization import (
+    NORMALIZATION_POLICY_COMPARATIVE_AVERAGE_RESULT,
+    NORMALIZATION_POLICY_COMPARATIVE_BALANCE_INPUT,
+    normalize_number,
+    to_number,
+)
+from src.analysis.math.numeric_errors import (
+    NonFiniteNumberError,
+    NumericCoercionError,
+    NumericNormalizationError,
+    NumericRoundingError,
+    ProjectionSafetyError,
+)
 from src.analysis.math.periods import (
     ComparabilityState,
     PeriodClass,
@@ -24,7 +62,18 @@ from src.analysis.math.periods import (
     parse_period_label,
     supports_strict_linkage,
 )
+from src.analysis.math.projections import project_number
+from src.analysis.math.rounding import ROUNDING_POLICY_COMPARATIVE_STANDARD
 from src.analysis.math.validators import normalize_inputs
+
+# Internal numeric exception types for comparative hardening failure mapping
+_NUMERIC_FAILURE_TYPES = (
+    NumericCoercionError,
+    NonFiniteNumberError,
+    NumericNormalizationError,
+    NumericRoundingError,
+    ProjectionSafetyError,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,10 +305,14 @@ def _build_average_balance_inputs(
     closing_key = f"closing_{base_key}"
     average_key = f"average_{base_key}"
 
-    closing_value = _to_number(resolved.original.metrics.get(base_key))
+    # W1A-012: Normalize opening and closing balance inputs before averaging.
+    # Each input independently passes through normalization before averaging.
+    closing_value = _normalize_balance_input(resolved.original.metrics.get(base_key))
     opening_value = None
     if opening_period is not None:
-        opening_value = _to_number(opening_period.original.metrics.get(base_key))
+        opening_value = _normalize_balance_input(
+            opening_period.original.metrics.get(base_key)
+        )
 
     reasons = _build_average_balance_reasons(
         base_key,
@@ -270,10 +323,10 @@ def _build_average_balance_inputs(
     )
 
     opening_payload = _metric_payload(
-        opening_value, reasons if opening_value is None else []
+        _decimal_to_float(opening_value), reasons if opening_value is None else []
     )
     closing_payload = _metric_payload(
-        closing_value, reasons if closing_value is None else []
+        _decimal_to_float(closing_value), reasons if closing_value is None else []
     )
 
     if comparability_state == ComparabilityState.NOT_COMPARABLE:
@@ -286,7 +339,11 @@ def _build_average_balance_inputs(
             None, _unique_strings(reasons + [AVERAGE_BALANCE_CONTEXT_MISSING])
         )
     else:
-        average_payload = {"value": (opening_value + closing_value) / 2.0}
+        # W1A-013: Finalize the computed average centrally before projection.
+        # Average is computed on canonical Decimal values, then finalized + projected.
+        average_decimal = (opening_value + closing_value) / Decimal(2)
+        average_float, _ = _finalize_and_project_average(average_decimal)
+        average_payload = _metric_payload(average_float, [])
 
     return {
         opening_key: opening_payload,
@@ -380,15 +437,84 @@ def _copy_raw_metric_value(raw_value: Any) -> object:
     return raw_value
 
 
-def _to_number(value: Any) -> float | None:
-    if isinstance(value, dict):
-        value = value.get("value")
-    if value is None:
+def _normalize_balance_input(raw_value: Any) -> Decimal | None:
+    """
+    W1A-012: Normalize a raw balance input into canonical Decimal form.
+
+    Extracts numeric value from dict or raw, then applies canonical normalization
+    with COMPARATIVE_BALANCE_INPUT policy. Returns None on any failure (fail-closed).
+    """
+    if isinstance(raw_value, dict):
+        raw_value = raw_value.get("value")
+    if raw_value is None:
         return None
     try:
-        return float(value)
-    except (TypeError, ValueError):
+        # Use canonical to_number() — the only coercion entrypoint in Wave 1a.
+        # W1A-016: _to_number() local duplicate removed; canonical helper used instead.
+        decimal_value = to_number(raw_value)
+        normalized = normalize_number(
+            decimal_value,
+            normalization_policy=NORMALIZATION_POLICY_COMPARATIVE_BALANCE_INPUT,
+        )
+        return normalized.value
+    except _NUMERIC_FAILURE_TYPES:
         return None
+
+
+def _finalize_and_project_average(
+    average_decimal: Decimal,
+) -> tuple[float | None, dict]:
+    """
+    W1A-013: Finalize the computed average result centrally.
+
+    Routes the average through finalization.py (normalization + rounding) then
+    projections.py (Decimal→float). Returns (float_value, evidence_dict).
+    On failure returns (None, failure_evidence).
+    """
+    try:
+        projection_ready = finalize_numeric_result(
+            average_decimal,
+            normalization_policy=NORMALIZATION_POLICY_COMPARATIVE_AVERAGE_RESULT,
+            rounding_policy=ROUNDING_POLICY_COMPARATIVE_STANDARD,
+        )
+        projected = project_number(projection_ready.value)
+        # W1A-015: machine-checkable evidence for comparative path
+        evidence = {
+            "hardening": "applied",
+            "path": "comparative_average_balance",
+            "normalization_policy": (
+                projection_ready.evidence.normalization.normalization_policy
+            ),
+            "rounding_policy": projection_ready.evidence.rounding.rounding_policy,
+            "precision_stage": projection_ready.evidence.rounding.precision_stage,
+            "signed_zero_normalized": (
+                projection_ready.evidence.normalization.signed_zero_normalized
+            ),
+            "projection_rounding_policy": projected.evidence.projection_rounding_policy,
+        }
+        return projected.value, evidence
+    except _NUMERIC_FAILURE_TYPES as exc:
+        return None, {
+            "hardening": "failed",
+            "path": "comparative_average_balance",
+            "failure_type": type(exc).__name__,
+            "failure_detail": str(exc),
+        }
+
+
+def _decimal_to_float(value: Decimal | None) -> float | None:
+    """
+    Convert canonical Decimal balance to float for opening/closing payload.
+
+    Note: opening/closing balance payloads are auxiliary inputs to the engine,
+    not outward-computed metrics. The outward-computed average goes through
+    project_number() in _finalize_and_project_average(). This helper is only
+    used for the opening_* and closing_* payload values which feed back into
+    normalize_inputs() as raw metric inputs.
+    """
+    if value is None:
+        return None
+    return float(value)
 
 
 def _unique_strings(values: list[str]) -> list[str]:

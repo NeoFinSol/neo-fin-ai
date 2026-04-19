@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from src.analysis.math.contracts import DerivedMetric, ValidityState
 
 
 def test_derived_metric_requires_trace_and_inputs() -> None:
     metric = DerivedMetric(
         metric_id="current_ratio",
-        value=1.25,
+        canonical_value=Decimal("1.25"),
+        projected_value=1.25,
         unit="ratio",
         formula_id="current_ratio",
         formula_version="v1",
@@ -17,6 +20,9 @@ def test_derived_metric_requires_trace_and_inputs() -> None:
 
     assert metric.metric_id == "current_ratio"
     assert metric.trace["denominator"] == 100.0
+    # Wave 1b: value is computed from projected_value
+    assert metric.value == 1.25
+    assert metric.value == metric.projected_value
 
 
 def test_derived_metric_without_trace_is_invalid() -> None:

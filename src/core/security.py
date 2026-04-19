@@ -8,7 +8,9 @@ including credential redaction and secure random generation.
 import re
 
 # Re-export from utils so existing imports from core.security keep working
-from src.utils.security_utils import get_safe_db_url_for_logging  # noqa: F401
+from src.utils.security_utils import get_safe_db_url_for_logging
+
+__all__ = ["get_safe_db_url_for_logging", "redact_url", "redact_credentials"]
 
 
 def redact_url(url: str, replacement: str = "***REDACTED***") -> str:

@@ -1,4 +1,27 @@
+"""
+Math engine orchestration layer for Math Layer v2 — Wave 1a.
+
+Responsibilities:
+- Resolve metric definitions from registry
+- Orchestrate formula execution
+- Route raw compute results through finalization + projection boundaries
+- Map internal numeric failures to existing compatible invalid/refusal semantics
+- Build existing outward-compatible DerivedMetric result objects
+- Attach internal finalization evidence to trace
+
+Ownership rules:
+- Engine MUST NOT define its own coercion helper.
+- Engine MUST NOT define its own rounding helper.
+- Engine MUST NOT directly serialize raw floats from compute results.
+- Engine MUST call finalize_numeric_result() then project_number() for every
+  valid numeric compute result.
+- Engine is the canonical mapper from internal numeric failures to outward semantics.
+"""
+
 from __future__ import annotations
+
+import logging
+from decimal import Decimal
 
 from src.analysis.math.contracts import (
     DerivedMetric,
@@ -8,14 +31,35 @@ from src.analysis.math.contracts import (
     TypedInputs,
     ValidityState,
 )
+from src.analysis.math.finalization import finalize_numeric_result
+from src.analysis.math.numeric_errors import (
+    NonFiniteNumberError,
+    NumericCoercionError,
+    NumericNormalizationError,
+    NumericRoundingError,
+    ProjectionSafetyError,
+)
 from src.analysis.math.policies import (
     MISSING_CONFIDENCE_PENALTY_FACTOR,
     DenominatorPolicy,
     SuppressionPolicy,
 )
 from src.analysis.math.precompute import build_precomputed_inputs
+from src.analysis.math.projections import project_number
 from src.analysis.math.registry import REGISTRY, MetricDefinition
+from src.analysis.math.rounding import ROUNDING_POLICY_RATIO_STANDARD
 from src.analysis.math.validators import classify_denominator
+
+logger = logging.getLogger(__name__)
+
+# Internal numeric exception types that engine maps to invalid/refusal semantics
+_NUMERIC_FAILURE_TYPES = (
+    NumericCoercionError,
+    NonFiniteNumberError,
+    NumericNormalizationError,
+    NumericRoundingError,
+    ProjectionSafetyError,
+)
 
 
 class MathEngine:
@@ -64,7 +108,8 @@ def _compute_metric(
 def _build_suppressed_metric(definition: MetricDefinition) -> DerivedMetric:
     return DerivedMetric(
         metric_id=definition.metric_id,
-        value=None,
+        canonical_value=None,
+        projected_value=None,
         unit=MetricUnit.RATIO,
         formula_id=definition.formula_id,
         formula_version=definition.formula_version,
@@ -136,16 +181,25 @@ def _build_computed_metric(
     computation: MetricComputationResult,
 ) -> DerivedMetric:
     confidence, confidence_components = _derive_confidence(trace_inputs)
-    trace_status = "valid" if computation.value is not None else "invalid"
+
+    # W1A-008 / B1-006: Route raw compute result through finalization + projection.
+    # Engine assigns canonical_value (Decimal) and projected_value (float).
+    # value is computed automatically from projected_value.
+    canonical_decimal, projected_float, finalization_trace = _finalize_and_project(
+        definition, computation
+    )
+
+    trace_status = "valid" if projected_float is not None else "invalid"
     return DerivedMetric(
         metric_id=definition.metric_id,
-        value=computation.value,
+        canonical_value=canonical_decimal,
+        projected_value=projected_float,
         unit=MetricUnit.RATIO,
         formula_id=definition.formula_id,
         formula_version=definition.formula_version,
         validity_state=(
             ValidityState.VALID
-            if computation.value is not None
+            if projected_float is not None
             else ValidityState.INVALID
         ),
         inputs_used=trace_inputs,
@@ -163,8 +217,71 @@ def _build_computed_metric(
             },
             "formula_id": definition.formula_id,
             "formula_version": definition.formula_version,
+            # W1A-010: machine-checkable finalization evidence in trace
+            "numeric_finalization": finalization_trace,
         },
     )
+
+
+def _finalize_and_project(
+    definition: MetricDefinition,
+    computation: MetricComputationResult,
+) -> tuple[Decimal | None, float | None, dict]:
+    """
+    Route raw compute result through finalization + projection boundaries.
+
+    Returns (canonical_decimal, projected_float, finalization_evidence_dict).
+
+    W1A-008 / B1-006: Engine calls finalize_numeric_result() then project_number().
+    W1A-009: Maps internal numeric failures to existing compatible invalid/refusal path.
+    W1A-010: Returns machine-checkable evidence dict for trace attachment.
+    B1-001: Returns canonical Decimal for canonical_value assignment.
+    B1-002: Returns projected float for projected_value assignment.
+    """
+    if computation.value is None:
+        return None, None, {"hardening": "skipped_none_value"}
+
+    rounding_policy = getattr(
+        definition, "rounding_policy", ROUNDING_POLICY_RATIO_STANDARD
+    )
+
+    try:
+        projection_ready = finalize_numeric_result(
+            computation.value,
+            rounding_policy=rounding_policy,
+        )
+        projected = project_number(projection_ready.value)
+        evidence = {
+            "hardening": "applied",
+            "normalization_policy": (
+                projection_ready.evidence.normalization.normalization_policy
+            ),
+            "rounding_policy": projection_ready.evidence.rounding.rounding_policy,
+            "precision_stage": projection_ready.evidence.rounding.precision_stage,
+            "signed_zero_normalized": (
+                projection_ready.evidence.normalization.signed_zero_normalized
+            ),
+            "projection_rounding_policy": projected.evidence.projection_rounding_policy,
+        }
+        # Return canonical Decimal truth + projected float + evidence
+        return projection_ready.value, projected.value, evidence
+
+    except _NUMERIC_FAILURE_TYPES as exc:
+        # W1A-009: Map internal numeric failure to existing invalid/refusal semantics.
+        logger.warning(
+            "Numeric finalization failure for metric %s: %s",
+            definition.metric_id,
+            exc,
+        )
+        return (
+            None,
+            None,
+            {
+                "hardening": "failed",
+                "failure_type": type(exc).__name__,
+                "failure_detail": str(exc),
+            },
+        )
 
 
 def _derive_confidence(

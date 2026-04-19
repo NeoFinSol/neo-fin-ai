@@ -26,8 +26,9 @@ class TestCalculateRatios:
 
         assert "Коэффициент текущей ликвидности" in result
         assert "Коэффициент автономии" in result
+        # Wave 1a rounding policy: RATIO_STANDARD rounds to 4 decimal places
         assert result["Коэффициент текущей ликвидности"] == pytest.approx(
-            500000 / 300000
+            500000 / 300000, abs=0.0001
         )
         assert result["Коэффициент автономии"] == pytest.approx(800000 / 2000000)
 

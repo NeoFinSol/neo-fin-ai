@@ -194,6 +194,48 @@ class TestReadinessCheck:
 class TestMetricsEndpoint:
     """Tests for GET /system/metrics endpoint."""
 
+    def test_metrics_requires_auth_without_dev_mode(self):
+        """TD-001: /metrics must require API key when not in dev mode."""
+        with patch("src.core.auth.app_settings") as mock_settings:
+            mock_settings.dev_mode = False
+            mock_settings.api_key = "test-secret-key"
+            with TestClient(app) as auth_client:
+                response = auth_client.get("/system/metrics")
+        assert response.status_code == 401
+
+    def test_metrics_accepts_valid_api_key(self):
+        """TD-001: /metrics must accept valid API key."""
+        with patch("src.core.auth.app_settings") as mock_settings:
+            mock_settings.dev_mode = False
+            mock_settings.api_key = "test-secret-key"
+            with patch("src.routers.system.metrics") as mock_metrics:
+                mock_metrics.get_metrics.return_value = {
+                    "total_tasks": 5,
+                    "successful_tasks": 5,
+                    "failed_tasks": 0,
+                    "avg_processing_time_ms": 100.0,
+                    "ai_failures": 0,
+                }
+                with TestClient(app) as auth_client:
+                    response = auth_client.get(
+                        "/system/metrics",
+                        headers={"X-API-Key": "test-secret-key"},
+                    )
+        assert response.status_code == 200
+        assert "total_tasks" in response.json()
+
+    def test_metrics_rejects_invalid_api_key(self):
+        """TD-001: /metrics must reject invalid API key."""
+        with patch("src.core.auth.app_settings") as mock_settings:
+            mock_settings.dev_mode = False
+            mock_settings.api_key = "test-secret-key"
+            with TestClient(app) as auth_client:
+                response = auth_client.get(
+                    "/system/metrics",
+                    headers={"X-API-Key": "wrong-key"},
+                )
+        assert response.status_code == 401
+
     def test_metrics_returns_structure(self, client):
         with patch("src.routers.system.metrics") as mock_metrics:
             mock_metrics.get_metrics.return_value = {

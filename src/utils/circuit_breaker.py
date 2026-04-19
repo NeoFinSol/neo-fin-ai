@@ -35,10 +35,11 @@ from contextlib import asynccontextmanager
 from enum import Enum
 from typing import Optional
 
-from src.exceptions import (  # noqa: F401 — re-export canonical class
-    CircuitBreakerOpenError,
-)
+from src.exceptions import CircuitBreakerOpenError
 from src.utils.logging_config import get_logger
+
+# Re-export so callers can import CircuitBreakerOpenError from this module.
+__all__ = ["CircuitBreakerOpenError", "CircuitBreaker", "ai_circuit_breaker"]
 
 logger = get_logger(__name__)
 

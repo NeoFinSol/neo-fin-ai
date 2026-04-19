@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from src.analysis.math.comparative import ComparativePeriodInput, run_comparative_math
 from src.analysis.math.contracts import ValidityState
 from src.analysis.math.periods import ComparabilityState
@@ -200,9 +202,10 @@ def test_run_comparative_math_uses_prior_fy_as_opening_for_h1() -> None:
     assert metrics["roa"].validity_state is ValidityState.VALID
     assert metrics["roe"].validity_state is ValidityState.VALID
     assert metrics["asset_turnover"].validity_state is ValidityState.VALID
-    assert metrics["roa"].value == 8.0 / 115.0
-    assert metrics["roe"].value == 8.0 / 57.5
-    assert metrics["asset_turnover"].value == 60.0 / 115.0
+    # Wave 1a rounding policy: RATIO_STANDARD rounds to 4 decimal places
+    assert metrics["roa"].value == pytest.approx(8.0 / 115.0, abs=0.0001)
+    assert metrics["roe"].value == pytest.approx(8.0 / 57.5, abs=0.0001)
+    assert metrics["asset_turnover"].value == pytest.approx(60.0 / 115.0, abs=0.0001)
 
 
 def test_run_comparative_math_keeps_strict_metrics_fail_closed_for_single_period() -> (

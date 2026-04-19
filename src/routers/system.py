@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from src.core.ai_service import ai_service
+from src.core.auth import get_api_key
 from src.db.crud import check_database_connectivity
 from src.utils.logging_config import get_logger, metrics
 
@@ -138,9 +139,13 @@ async def readiness_check() -> dict[str, str]:
 
 
 @router.get("/metrics")
-async def metrics_endpoint():
+async def metrics_endpoint(
+    _api_key: str = Depends(get_api_key),
+) -> dict:
     """
     Application metrics endpoint.
+
+    Requires API key authentication.
 
     Returns metrics in JSON format for monitoring systems.
 

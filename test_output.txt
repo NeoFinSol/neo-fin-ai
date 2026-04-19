@@ -1,0 +1,153 @@
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-8.3.5, pluggy-1.6.0 -- C:\Users\User\AppData\Local\Programs\Python\Python311\python.exe
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: E:\neo-fin-ai
+configfile: pytest.ini
+plugins: anyio-4.12.1, hypothesis-6.151.9, asyncio-0.25.3, cov-6.0.0
+asyncio: mode=Mode.AUTO, asyncio_default_fixture_loop_scope=function
+collecting ... collected 1607 items / 1 skipped
+
+tests/test_admin_cleanup.py::TestAdminCleanupCli::test_main_requires_target PASSED [  0%]
+tests/test_admin_cleanup.py::TestAdminCleanupCli::test_main_runs_analyses_dry_run_by_default PASSED [  0%]
+tests/test_admin_cleanup.py::TestAdminCleanupCli::test_main_runs_execute_for_selected_targets PASSED [  0%]
+tests/test_admin_runtime_recovery.py::TestAdminRuntimeRecoveryCli::test_main_requires_target PASSED [  0%]
+tests/test_admin_runtime_recovery.py::TestAdminRuntimeRecoveryCli::test_main_runs_analyses_dry_run_by_default PASSED [  0%]
+tests/test_admin_runtime_recovery.py::TestAdminRuntimeRecoveryCli::test_main_runs_execute_for_selected_targets PASSED [  0%]
+tests/test_agent.py::TestConfigurationError::test_exception_inheritance PASSED [  0%]
+tests/test_agent.py::TestConfigurationError::test_error_message PASSED   [  0%]
+tests/test_agent.py::TestAgentInitialization::test_default_initialization PASSED [  0%]
+tests/test_agent.py::TestAgentInitialization::test_custom_timeout PASSED [  0%]
+tests/test_agent.py::TestAgentSetConfig::test_valid_config PASSED        [  0%]
+tests/test_agent.py::TestAgentSetConfig::test_config_strips_whitespace PASSED [  0%]
+tests/test_agent.py::TestAgentSetConfig::test_config_removes_trailing_slash PASSED [  0%]
+tests/test_agent.py::TestAgentSetConfig::test_empty_auth_token_raises_error PASSED [  0%]
+tests/test_agent.py::TestAgentSetConfig::test_whitespace_only_auth_token_raises_error PASSED [  0%]
+tests/test_agent.py::TestAgentSetConfig::test_none_auth_token_raises_error PASSED [  0%]
+tests/test_agent.py::TestAgentSetConfig::test_empty_url_raises_error PASSED [  1%]
+tests/test_agent.py::TestAgentSetConfig::test_whitespace_only_url_raises_error PASSED [  1%]
+tests/test_agent.py::TestAgentSetConfig::test_none_url_raises_error PASSED [  1%]
+tests/test_agent.py::TestAgentEnsureConfigured::test_when_configured PASSED [  1%]
+tests/test_agent.py::TestAgentEnsureConfigured::test_when_not_configured PASSED [  1%]
+tests/test_agent.py::TestAgentEnsureConfigured::test_when_url_missing PASSED [  1%]
+tests/test_agent.py::TestAgentEnsureConfigured::test_when_token_missing PASSED [  1%]
+tests/test_agent.py::TestAgentInvoke::test_successful_invoke PASSED      [  1%]
+tests/test_agent.py::TestAgentInvoke::test_invoke_with_custom_timeout PASSED [  1%]
+tests/test_agent.py::TestAgentInvoke::test_invoke_uses_default_values PASSED [  1%]
+tests/test_agent.py::TestAgentInvoke::test_invoke_timeout PASSED         [  1%]
+tests/test_agent.py::TestAgentInvoke::test_invoke_not_configured PASSED  [  1%]
+tests/test_agent.py::TestAgentRequest::test_request_not_configured PASSED [  1%]
+tests/test_agent.py::TestAgentRequest::test_request_integration_skip SKIPPED [  1%]
+tests/test_agent.py::TestGlobalAgent::test_global_agent_exists PASSED    [  1%]
+tests/test_agent.py::TestGlobalAgent::test_global_agent_default_state PASSED [  1%]
+tests/test_ai_settings_validators.py::TestAiTimeoutValidator::test_at_min PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiTimeoutValidator::test_at_max PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiTimeoutValidator::test_below_min_returns_default PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiTimeoutValidator::test_negative_returns_default PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiTimeoutValidator::test_above_max_returns_default PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiTimeoutValidator::test_non_numeric_string_returns_default PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiTimeoutValidator::test_none_returns_default PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiTimeoutValidator::test_valid_mid_range PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiTimeoutValidator::test_string_numeric_accepted PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiRetryCountValidator::test_at_min_zero PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiRetryCountValidator::test_at_max PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiRetryCountValidator::test_below_min_returns_default PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiRetryCountValidator::test_above_max_returns_default PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiRetryCountValidator::test_non_numeric_string_returns_default PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiRetryCountValidator::test_none_returns_default PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiRetryCountValidator::test_valid_mid_range PASSED [  2%]
+tests/test_ai_settings_validators.py::TestAiRetryCountValidator::test_string_numeric_accepted PASSED [  3%]
+tests/test_ai_settings_validators.py::TestAiRetryBackoffValidator::test_at_min PASSED [  3%]
+tests/test_ai_settings_validators.py::TestAiRetryBackoffValidator::test_at_max PASSED [  3%]
+tests/test_ai_settings_validators.py::TestAiRetryBackoffValidator::test_below_min_returns_default PASSED [  3%]
+tests/test_ai_settings_validators.py::TestAiRetryBackoffValidator::test_negative_returns_default PASSED [  3%]
+tests/test_ai_settings_validators.py::TestAiRetryBackoffValidator::test_above_max_returns_default PASSED [  3%]
+tests/test_ai_settings_validators.py::TestAiRetryBackoffValidator::test_non_numeric_string_returns_default PASSED [  3%]
+tests/test_ai_settings_validators.py::TestAiRetryBackoffValidator::test_none_returns_default PASSED [  3%]
+tests/test_ai_settings_validators.py::TestAiRetryBackoffValidator::test_valid_mid_range PASSED [  3%]
+tests/test_ai_settings_validators.py::TestAiRetryBackoffValidator::test_string_numeric_accepted PASSED [  3%]
+tests/test_ai_settings_validators.py::test_ai_timeout_invalid_always_returns_default PASSED [  3%]
+tests/test_ai_settings_validators.py::test_ai_retry_count_invalid_always_returns_default PASSED [  3%]
+tests/test_ai_settings_validators.py::test_ai_retry_backoff_invalid_always_returns_default PASSED [  3%]
+tests/test_analyses_router.py::TestAnalysesAuth::test_list_without_api_key_returns_401 PASSED [  3%]
+tests/test_analyses_router.py::TestAnalysesAuth::test_detail_without_api_key_returns_401 PASSED [  3%]
+tests/test_analyses_router.py::TestAnalysesDetail::test_unknown_task_id_returns_404 PASSED [  3%]
+tests/test_analyses_router.py::TestAnalysesDetail::test_db_failure_raises_database_error PASSED [  4%]
+tests/test_analyses_router.py::TestAnalysesTypedSummaryFallback::test_list_prefers_typed_summary_columns PASSED [  4%]
+tests/test_analyses_router.py::TestAnalysesValidation::test_page_non_integer_returns_422 PASSED [  4%]
+tests/test_analyses_router.py::TestAnalysesValidation::test_page_size_over_100_returns_422 PASSED [  4%]
+tests/test_analyses_router.py::test_analyses_list_response_structure PASSED [  4%]
+tests/test_analyses_router.py::test_analyses_sorted_by_created_at_desc PASSED [  4%]
+tests/test_analyses_router.py::test_get_analysis_detail_roundtrip PASSED [  4%]
+tests/test_analyses_router.py::TestExtractionMetadataSurvivesMasking::test_extraction_metadata_preserved_in_demo_mode PASSED [  4%]
+tests/test_analyses_router.py::TestExtractionMetadataSurvivesMasking::test_extraction_metadata_preserved_in_non_demo_mode PASSED [  4%]
+tests/test_analyses_router.py::TestExtractionMetadataSurvivesMasking::test_metrics_are_masked_but_extraction_metadata_is_not PASSED [  4%]
+tests/test_analyses_router.py::TestExtractionMetadataSurvivesMasking::test_detail_endpoint_returns_extraction_metadata PASSED [  4%]
+tests/test_analysis_pdf_extractor.py::TestIsScannedPdf::test_pdf_with_text_not_scanned PASSED [  4%]
+tests/test_analysis_pdf_extractor.py::TestIsScannedPdf::test_pdf_without_text_is_scanned PASSED [  4%]
+tests/test_analysis_pdf_extractor.py::TestIsScannedPdf::test_pdf_with_little_text_and_images_is_scanned PASSED [  4%]
+tests/test_analysis_pdf_extractor.py::TestIsScannedPdf::test_pdf_with_little_text_no_images_is_not_scanned PASSED [  4%]
+tests/test_analysis_pdf_extractor.py::TestIsScannedPdf::test_pdf_with_invisible_text_is_scanned PASSED [  4%]
+tests/test_analysis_pdf_extractor.py::TestExtractMetricsRegex::test_extract_revenue_regex PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractMetricsRegex::test_extract_net_profit_regex PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractMetricsRegex::test_extract_multiple_metrics PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractMetricsRegex::test_normalize_russian_number_formats PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractMetricsRegex::test_ignore_negative_or_zero_values_in_regex PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractTextFromScanned::test_successful_ocr PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractTextFromScanned::test_tesseract_error_fallback PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractTextFromScanned::test_ocr_exception_logged PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractTextFromScanned::test_convert_from_path_exception PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractTables::test_successful_table_extraction_prefers_stream PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractTables::test_lattice_fails_stream_works PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractTables::test_both_flavors_fail PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractTables::test_empty_table_skipped PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestExtractTables::test_none_dataframe_skipped PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestParseFinancialStatements::test_extract_from_tables PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestParseFinancialStatements::test_extract_from_text PASSED [  5%]
+tests/test_analysis_pdf_extractor.py::TestParseFinancialStatements::test_tables_take_precedence_over_text PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestParseFinancialStatements::test_empty_input PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestParseFinancialStatements::test_no_matching_metrics PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestTableToRows::test_dict_with_rows_key PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestTableToRows::test_plain_list_of_lists PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestTableToRows::test_list_of_dicts PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestTableToRows::test_empty_list PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestTableToRows::test_unsupported_type PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestExtractNumberFromText::test_simple_number PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestExtractNumberFromText::test_number_with_spaces PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestExtractNumberFromText::test_negative_number PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestExtractNumberFromText::test_no_numbers PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestExtractNumberNearKeywords::test_number_after_keyword PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestExtractNumberNearKeywords::test_number_before_keyword PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestExtractNumberNearKeywords::test_no_keyword PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestExtractNumberNearKeywords::test_multiple_keywords PASSED [  6%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_simple_number PASSED [  7%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_number_with_spaces PASSED [  7%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_number_with_commas PASSED [  7%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_negative_in_parentheses PASSED [  7%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_empty_string PASSED [  7%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_only_dash PASSED [  7%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_invalid_string PASSED [  7%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_none_input PASSED [  7%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_number_with_currency PASSED [  7%]
+tests/test_analysis_pdf_extractor.py::TestNormalizeNumber::test_nbsp_character PASSED [  7%]
+tests/test_analysis_ratios.py::TestCalculateRatios::test_all_ratios_calculated FAILED [  7%]
+
+================================== FAILURES ===================================
+_______________ TestCalculateRatios.test_all_ratios_calculated ________________
+tests\test_analysis_ratios.py:29: in test_all_ratios_calculated
+    assert result["Коэффициент текущей ликвидности"] == pytest.approx(
+E   assert 1.6667 == 1.6666666666666667 ± 1.7e-06
+E     
+E     comparison failed
+E     Obtained: 1.6667
+E     Expected: 1.6666666666666667 ± 1.7e-06
+============================== warnings summary ===============================
+C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\pypdf\_crypt_providers\_cryptography.py:32
+  C:\Users\User\AppData\Local\Programs\Python\Python311\Lib\site-packages\pypdf\_crypt_providers\_cryptography.py:32: CryptographyDeprecationWarning: ARC4 has been moved to cryptography.hazmat.decrepit.ciphers.algorithms.ARC4 and will be removed from cryptography.hazmat.primitives.ciphers.algorithms in 48.0.0.
+    from cryptography.hazmat.primitives.ciphers.algorithms import AES, ARC4
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_analysis_ratios.py::TestCalculateRatios::test_all_ratios_calculated
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+============ 1 failed, 121 passed, 2 skipped, 1 warning in 34.16s =============
