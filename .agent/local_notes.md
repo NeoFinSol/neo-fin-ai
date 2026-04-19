@@ -1,5 +1,54 @@
 # Local Notes
 
+## Технический долг
+
+> Полный backlog с приоритетами и описаниями: `.agent/tech_debt_backlog.md`
+>
+> Краткая сводка открытых items:
+> - **TD-001** (закрыт) — `/metrics` теперь требует auth
+> - **TD-002** (средний) — CSP/frontend security → требует frontend audit
+> - **TD-003** (средний) — denominator policy gap в math engine (Wave 2)
+> - **TD-004** (средний) — два источника правды для comparative reason codes (Wave 4)
+> - **TD-005–007** (низкий) — dev-mode docs, compose exposure, dead math code
+> - **TD-008–009** (низкий) — circuit breaker lifecycle tests, pipeline coverage
+> - **TD-010** (минимальный) — docs drift backlog
+> - **TD-011** (закрыт) — `test_wave8_websocket_auth.py` — добавлено исключение в `.gitignore`
+> - **TD-012** (закрыт) — CodeQL false positive — заменён на `__all__`
+> - **TD-013** (открыт) — `project_metric_value()` / `project_legacy_ratios()` принимают raw float — Wave 1b scope
+> - **TD-014** (открыт) — PBT диапазон ограничен 1e9, нужен billions × billions
+> - **TD-015** (открыт) — `_finalize_and_project()` failure path не покрыт интеграционным тестом
+
+## Wave 1a — памятки
+
+### Complexity violations в guard clauses функциях
+**Статус**: ⚠️ Known deviation (2026-04-19)
+**Суть**: 4 функции имеют complexity 6-7 при лимите ≤5:
+- `to_number()` (complexity 7) — type checking guard clauses
+- `normalize_number()` (complexity 6) — validation steps + try/except
+- `_resolve_state_and_flags()` (complexity 6) — multiple if/return branches
+- `round_number()` (complexity 6) — validation + rounding + normalization
+
+**Решение**: Это acceptable deviation — все функции используют guard clauses pattern (early return), что является best practice. Разбиение на подфункции ухудшит читаемость без реальной пользы.
+
+### normalize_number() валидирует normalization_policy
+**Статус**: ✅ Добавлено (2026-04-18)
+**Суть**: `normalize_number()` теперь бросает `NumericNormalizationError` при неизвестной policy. Список допустимых: `DEFAULT_NUMERIC_NORMALIZATION`, `COMPARATIVE_BALANCE_INPUT`, `COMPARATIVE_AVERAGE_RESULT`.
+**Памятка**: при добавлении новой normalization policy — добавить в `_KNOWN_NORMALIZATION_POLICIES` в normalization.py.
+
+### Wave 1a finalization order — строгий порядок
+**Статус**: ✅ Закодировано в finalization.py
+**Порядок**: `to_number()` → finite validation → normalization → signed-zero → rounding (normalized_result) → evidence aggregation → `ProjectionReadyNumber` (Decimal, NOT float) → `project_number()` → outward float.
+**Памятка**: нельзя менять порядок. Projection до normalization = leakage. Rounding до finite check = masking invalidity.
+
+### Decimal→float только в projections.py
+**Статус**: ✅ Закодировано в structural тестах (W1A-019)
+**Памятка**: `float()` на compute output — только в `project_number()`. `_decimal_to_float()` в comparative — только для auxiliary opening/closing inputs, не для outward computed metrics.
+
+### Stale pytest cache — использовать python -B
+**Статус**: ✅ Учтено (2026-04-18)
+**Проблема**: pytest reuses terminal и видит stale `.pyc` результаты при запуске через controlPwshProcess с `isReused: true`.
+**Решение**: всегда запускать с `python -B -m pytest` (отключает bytecode cache) или в новом процессе через `controlPwshProcess` с `isReused: false`.
+
 ## Активные проблемы
 
 ### CI isort: всегда прогонять `isort --profile black --check-only` на ВСЕХ новых файлах перед коммитом

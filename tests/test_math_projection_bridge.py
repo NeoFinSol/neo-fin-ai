@@ -134,6 +134,8 @@ def test_calculate_ratios_delegates_to_math_engine(monkeypatch) -> None:
     class SpyEngine:
         def compute(self, typed_inputs):
             call_log.append(typed_inputs)
+            from decimal import Decimal
+
             from src.analysis.math.contracts import (
                 DerivedMetric,
                 MetricUnit,
@@ -143,7 +145,8 @@ def test_calculate_ratios_delegates_to_math_engine(monkeypatch) -> None:
             return {
                 "current_ratio": DerivedMetric(
                     metric_id="current_ratio",
-                    value=99.0,
+                    canonical_value=Decimal("99.0"),
+                    projected_value=99.0,
                     unit=MetricUnit.RATIO,
                     formula_id="current_ratio",
                     formula_version="v1",

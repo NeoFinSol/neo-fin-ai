@@ -82,6 +82,7 @@ run_ocr.bat
 !tests/test_github_workflows.py
 !tests/test_pdf_real_heavy_fixtures.py
 !tests/test_pdf_local_magnit_regression.py
+!tests/test_wave8_websocket_auth.py
 
 # IDE and tool directories
 .agent/

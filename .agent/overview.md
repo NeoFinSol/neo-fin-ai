@@ -1,7 +1,48 @@
 # NeoFin AI — Обзор проекта
 
 ## Статус
-- **Текущая агентская сессия**: 2026-04-16 — завершены два пакета: `audit-findings-remediation` (F2–F9), `Wave 6 — Layering Cleanup` (ARCH-001, ARCH-002), и `Wave 8 — WebSocket Auth` (SEC-002). Подробности ниже.
+- **Текущая агентская сессия**: 2026-04-19 — Wave 1a complete (numeric hardening W1A-001–W1A-030) + security items TD-001, TD-011, TD-012 closed. Подробности ниже.
+
+- **Math Layer v2 — Wave 1a: ЗАВЕРШЕНА** (2026-04-19)
+  - Реализованы все 30 задач (W1A-001–W1A-030)
+  - Новые модули: `normalization.py`, `rounding.py`, `finalization.py`, `numeric_errors.py`, `projections.py` (hardened), `engine.py` (wired), `comparative.py` (hardened)
+  - Архитектурные инварианты: Decimal→float только через projections.py, нет NaN/Inf/-0.0 в output, engine не определяет своих helpers
+  - SOLID/Clean Code verification: flake8 PASS, complexity 4 функции 6-7 (guard clauses acceptable)
+  - **Следующий шаг**: pytest verification → commit → PR
+
+- **Security items (TD-001, TD-011, TD-012): ЗАКРЫТЫ** (2026-04-19)
+  - TD-001: `/metrics` теперь требует `Depends(get_api_key)`. Добавлены 3 теста на auth (401 без ключа, 200 с валидным, 401 с невалидным).
+  - TD-011: добавлено `!tests/test_wave8_websocket_auth.py` в `.gitignore` — файл больше не игнорируется.
+  - TD-012: `# noqa: F401` заменён на `__all__` в `circuit_breaker.py` и `core/security.py` — CodeQL false positive устранён.
+  - Verification: 40 passed
+
+- **Security items (TD-001, TD-011, TD-012): ЗАКРЫТЫ** (2026-04-19)
+  - TD-001: `/metrics` теперь требует `Depends(get_api_key)`. Добавлены 3 теста на auth (401 без ключа, 200 с валидным, 401 с невалидным).
+  - TD-011: добавлено `!tests/test_wave8_websocket_auth.py` в `.gitignore` — файл больше не игнорируется.
+  - TD-012: `# noqa: F401` заменён на `__all__` в `circuit_breaker.py` и `core/security.py` — CodeQL false positive устранён.
+  - Verification: 40 passed
+
+- **Math Layer v2 — Wave 1b: ЗАВЕРШЕНА И ПРИНЯТА** (2026-04-19)
+  - Итерация 1 (Блоки 1A+1B): model contract migration + builder migration. `DerivedMetric` получил `canonical_value: Decimal | None`, `projected_value: float | None`, `value` → `@computed_field`. Lifecycle validator блокирует F1/F2. Engine мигрирован на три-поля.
+  - Итерация 2: serializer + surface policy + lifecycle enforcement. Exposure policy задокументирована. JSON numeric types. Lifecycle matrix. No mixed-authority paths.
+  - Итерация 3: полный test package (B1-020–028). 104 новых теста.
+  - Итерация 4: benchmark (0.97x overhead — PASS) + closure (B1-029–034). Все 4 review passes пройдены.
+  - Итого тестов: 429 passed
+  - Benchmark: `.agent/math_layer_v2_wave1b_benchmark.md`
+  - **Следующий шаг**: Wave 2 — denominator policy hardening (TD-003)
+
+- **Math Layer v2 — Wave 1a: ЗАВЕРШЕНА И ПРИНЯТА** (2026-04-18)
+  - Реализованы все 30 задач (W1A-001–W1A-030)
+  - 325 тестов: unit + PBT + integration + structural + anti-fake-fix + compatibility snapshots
+  - Аудит пройден: 7 findings, 4 закрыты, 3 → tech debt (TD-013–015)
+  - Инварианты: `DerivedMetric.value: float | None` не изменён, REST/WS shape не изменён, Decimal→float только через `projections.py`, нет NaN/Inf/-0.0 в публичном output
+  - Новые модули: `normalization.py`, `rounding.py`, `finalization.py`, `numeric_errors.py` (core), `projections.py` (hardened), `engine.py` (wired), `comparative.py` (hardened)
+  - Новые тест-файлы: `test_math_normalization.py`, `test_math_rounding.py`, `test_math_finalization.py`, `test_math_projections.py`, `test_math_engine_integration.py`, `test_math_comparative_hardening.py`, `test_math_wave1a_structural.py`, `test_math_wave1a_batch5.py`
+  - **Следующий шаг**: Wave 1b — public `canonical_value`/`projected_value`/`value=@computed_field`, Decimal performance benchmark, JSON numeric type contract. Спека: `.agent/math_layer_v2_wave1b_spec.md`
+
+- **Тех долг (открытые items):** TD-001–TD-015. Самые срочные: TD-001 (`/metrics` без auth), TD-002 (CSP), TD-003 (denominator policy gap — Wave 2).
+
+- **Текущая агентская сессия**: 2026-04-16 — завершены `audit-findings-remediation` (F2–F9), `Wave 6 — Layering Cleanup` (ARCH-001, ARCH-002), `Wave 8 — WebSocket Auth` (SEC-002). Verification: `183 passed`.
 
 - **Wave 8 — WebSocket Auth** (SEC-002): добавлена аутентификация на `/ws/{task_id}` через query param `?api_key=...`. Новый pure helper `_is_ws_auth_valid()` с guard clauses и `hmac.compare_digest`. Отклонение до `ws_manager.connect()`. Именованная константа `_WS_CLOSE_UNAUTHORIZED = 4001`. Логирование без утечки ключа. `import logging` заменён на `get_logger`. Добавлен `tests/test_wave8_websocket_auth.py` с 25 тестами (unit + 4 PBT + integration). SOLID/Clean Code verification pass пройден.
 
