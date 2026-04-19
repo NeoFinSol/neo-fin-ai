@@ -90,8 +90,10 @@ def test_projection_returns_enabled_average_balance_metrics_when_valid() -> None
             {
                 "revenue": {"value": 120.0},
                 "net_profit": {"value": 12.0},
-                "average_total_assets": {"value": 120.0},
-                "average_equity": {"value": 60.0},
+                "opening_total_assets": {"value": 100.0},
+                "closing_total_assets": {"value": 140.0},
+                "opening_equity": {"value": 50.0},
+                "closing_equity": {"value": 70.0},
             }
         )
     )

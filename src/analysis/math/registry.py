@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from enum import Enum
 from types import MappingProxyType
 from typing import Callable
 
@@ -33,6 +34,15 @@ class InputDomainConstraint:
     requires_non_negative: bool = False
 
 
+class MetricCoverageClass(str, Enum):
+    FULLY_SUPPORTED = "FULLY_SUPPORTED"
+    REPORTED_ONLY = "REPORTED_ONLY"
+    DERIVED_FORMULA = "DERIVED_FORMULA"
+    APPROXIMATE_ONLY = "APPROXIMATE_ONLY"
+    INTENTIONALLY_SUPPRESSED = "INTENTIONALLY_SUPPRESSED"
+    OUT_OF_SCOPE = "OUT_OF_SCOPE"
+
+
 @dataclass(frozen=True, slots=True)
 class MetricDefinition:
     metric_id: str
@@ -42,14 +52,23 @@ class MetricDefinition:
     averaging_policy: AveragingPolicy
     suppression_policy: SuppressionPolicy
     compute: MetricComputer
+    coverage_class: MetricCoverageClass
 
     # Optional denominator semantics (None = not ratio-like)
     denominator_key: str | None = None
     denominator_policy: DenominatorPolicy | None = None
+    resolver_slot: str | None = None
+    precedence_policy_ref: str | None = None
+    average_balance_policy_ref: str | None = None
+    synthetic_dependencies: frozenset[str] = frozenset()
 
     legacy_label: str | None = None
     frontend_key: str | None = None
     non_negative_inputs: tuple[str, ...] = ()
+    # When resolver selects a family candidate not listed in required_inputs, map
+    # it onto this registry input key (e.g. EBITDA family → ebitda_reported).
+    resolver_required_input_prefix: str | None = None
+    resolver_bridge_input_key: str | None = None
 
 
 def is_ratio_like(definition: MetricDefinition) -> bool:
@@ -230,7 +249,14 @@ def _placeholder_compute(metric_id: str) -> MetricComputer:
     return _compute
 
 
-def _suppressed_placeholder(metric_id: str, legacy_label: str) -> MetricDefinition:
+def _suppressed_placeholder(
+    metric_id: str,
+    legacy_label: str,
+    *,
+    resolver_slot: str | None = None,
+    precedence_policy_ref: str | None = None,
+    synthetic_dependencies: frozenset[str] = frozenset(),
+) -> MetricDefinition:
     """Create placeholder definition for temporarily disabled metrics.
 
     Suppressed placeholders are NOT ratio-like until real implementation is provided.
@@ -245,8 +271,12 @@ def _suppressed_placeholder(metric_id: str, legacy_label: str) -> MetricDefiniti
         averaging_policy=AveragingPolicy.NONE,
         suppression_policy=SuppressionPolicy.SUPPRESS_UNSAFE,
         compute=_placeholder_compute(metric_id),
+        coverage_class=MetricCoverageClass.INTENTIONALLY_SUPPRESSED,
         denominator_key=None,
         denominator_policy=None,
+        resolver_slot=resolver_slot,
+        precedence_policy_ref=precedence_policy_ref,
+        synthetic_dependencies=synthetic_dependencies,
         legacy_label=legacy_label,
         frontend_key=metric_id,
     )
@@ -278,8 +308,11 @@ def _average_balance_metric(
         averaging_policy=AveragingPolicy.AVERAGE_BALANCE,
         suppression_policy=SuppressionPolicy.NEVER,
         compute=_ratio(numerator_key, denominator_key),
+        coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
         denominator_key=denominator_key,
         denominator_policy=DenominatorPolicy.STRICT_POSITIVE,
+        average_balance_policy_ref="opening_and_closing_required",
+        synthetic_dependencies=frozenset({denominator_key}),
         legacy_label=legacy_label,
         frontend_key=metric_id,
         non_negative_inputs=(denominator_key,),
@@ -296,6 +329,7 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.NEVER,
             compute=_ratio("current_assets", "short_term_liabilities"),
+            coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
             denominator_key="short_term_liabilities",
             denominator_policy=DenominatorPolicy.STRICT_POSITIVE,
             legacy_label="Коэффициент текущей ликвидности",
@@ -310,6 +344,7 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.NEVER,
             compute=_ratio("cash_and_equivalents", "short_term_liabilities"),
+            coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
             denominator_key="short_term_liabilities",
             denominator_policy=DenominatorPolicy.STRICT_POSITIVE,
             legacy_label="Коэффициент абсолютной ликвидности",
@@ -324,6 +359,7 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.NEVER,
             compute=_ratio("net_profit", "revenue"),
+            coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
             denominator_key="revenue",
             denominator_policy=DenominatorPolicy.STRICT_POSITIVE,
             legacy_label="Рентабельность продаж (ROS)",
@@ -338,6 +374,7 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.NEVER,
             compute=_ratio("equity", "total_assets"),
+            coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
             denominator_key="total_assets",
             denominator_policy=DenominatorPolicy.STRICT_POSITIVE,
             legacy_label="Коэффициент автономии",
@@ -352,15 +389,23 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.SUPPRESS_UNSAFE,
             compute=_ratio("ebitda_reported", "revenue"),
+            coverage_class=MetricCoverageClass.INTENTIONALLY_SUPPRESSED,
             denominator_key="revenue",
             denominator_policy=DenominatorPolicy.STRICT_POSITIVE,
+            resolver_slot="ebitda_variants",
+            precedence_policy_ref="reported_over_derived",
+            synthetic_dependencies=frozenset({"ebitda_reported"}),
             legacy_label="EBITDA маржа",
             frontend_key="ebitda_margin",
             non_negative_inputs=("revenue",),
+            resolver_required_input_prefix="ebitda",
+            resolver_bridge_input_key="ebitda_reported",
         ),
         "quick_ratio": _suppressed_placeholder(
             "quick_ratio",
             "Коэффициент быстрой ликвидности",
+            resolver_slot="reported_vs_derived",
+            precedence_policy_ref="reported_over_derived",
         ),
         "roa": _average_balance_metric(
             metric_id="roa",
@@ -377,18 +422,28 @@ REGISTRY = MappingProxyType(
         "financial_leverage": _suppressed_placeholder(
             "financial_leverage",
             "Финансовый рычаг",
+            resolver_slot="debt_basis",
+            precedence_policy_ref="reported_over_derived",
+            synthetic_dependencies=frozenset({"total_debt"}),
         ),
         "financial_leverage_total": _suppressed_placeholder(
             "financial_leverage_total",
             "Финансовый рычаг (обязательства/капитал)",
+            resolver_slot="debt_basis",
+            precedence_policy_ref="reported_over_derived",
         ),
         "financial_leverage_debt_only": _suppressed_placeholder(
             "financial_leverage_debt_only",
             "Финансовый рычаг (долг/капитал)",
+            resolver_slot="debt_basis",
+            precedence_policy_ref="reported_over_derived",
+            synthetic_dependencies=frozenset({"total_debt"}),
         ),
         "interest_coverage": _suppressed_placeholder(
             "interest_coverage",
             "Покрытие процентов",
+            resolver_slot="reported_vs_derived",
+            precedence_policy_ref="reported_over_derived",
         ),
         "asset_turnover": _average_balance_metric(
             metric_id="asset_turnover",
@@ -399,10 +454,14 @@ REGISTRY = MappingProxyType(
         "inventory_turnover": _suppressed_placeholder(
             "inventory_turnover",
             "Оборачиваемость запасов",
+            resolver_slot="reported_vs_derived",
+            precedence_policy_ref="reported_over_derived",
         ),
         "receivables_turnover": _suppressed_placeholder(
             "receivables_turnover",
             "Оборачиваемость дебиторской задолженности",
+            resolver_slot="reported_vs_derived",
+            precedence_policy_ref="reported_over_derived",
         ),
         # =========================================================================
         # WAVE 2 PROOF METRIC — Internal test-only metric for ALLOW_ANY_NON_ZERO validation
@@ -423,6 +482,7 @@ REGISTRY = MappingProxyType(
             averaging_policy=AveragingPolicy.NONE,
             suppression_policy=SuppressionPolicy.NEVER,
             compute=_ratio("proof_numerator", "proof_denominator"),
+            coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
             denominator_key="proof_denominator",
             denominator_policy=DenominatorPolicy.ALLOW_ANY_NON_ZERO,
             legacy_label=None,  # Explicitly None to prevent export to LEGACY_RATIO_NAME_MAP
@@ -466,6 +526,10 @@ def _build_input_domain_constraints(
 LEGACY_RATIO_NAME_MAP = MappingProxyType(_build_legacy_ratio_name_map(REGISTRY))
 RATIO_KEY_MAP = MappingProxyType(_build_frontend_ratio_key_map(REGISTRY))
 INPUT_DOMAIN_CONSTRAINTS = MappingProxyType(_build_input_domain_constraints(REGISTRY))
+
+# Bump together with EXPECTED_REGISTRY_SEMANTIC_HASH in startup_validation.py
+# when registry semantic fields intentionally change (Wave 3 Phase 6 discipline).
+REGISTRY_VERSION = "3.0.1-wave3-audit-fixes"
 
 
 def get_input_domain_constraint(metric_key: str) -> InputDomainConstraint:

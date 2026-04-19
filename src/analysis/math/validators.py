@@ -5,7 +5,8 @@ from typing import Any
 
 from src.analysis.math.contracts import MetricInputRef, TypedInputs
 from src.analysis.math.policies import DenominatorClass
-from src.analysis.math.registry import get_input_domain_constraint
+from src.analysis.math.registry import MetricDefinition, get_input_domain_constraint
+from src.analysis.math.resolver_reason_codes import WAVE3_REASON_MATH_UNIT_INCOMPATIBLE
 
 # Wave 2: Centralized near-zero threshold (Section 10.5, 15.1)
 # Single source of truth - MUST NOT be redefined in formula/helper code
@@ -32,6 +33,22 @@ def normalize_inputs(raw_inputs: dict[str, object]) -> TypedInputs:
     return {
         key: validate_input_semantics(key, value) for key, value in raw_inputs.items()
     }
+
+
+def validate_metric_inputs_unit_compatibility(
+    definition: MetricDefinition,
+    compute_inputs: TypedInputs,
+) -> str | None:
+    """Layer C: reject contradictory units across required inputs with values."""
+    distinct: set[str] = set()
+    for key in definition.required_inputs:
+        ref = compute_inputs.get(key, MetricInputRef(metric_key=key))
+        if ref.value is None or ref.unit is None:
+            continue
+        distinct.add(ref.unit)
+        if len(distinct) > 1:
+            return WAVE3_REASON_MATH_UNIT_INCOMPATIBLE
+    return None
 
 
 def classify_denominator(value: float | None) -> DenominatorClass:

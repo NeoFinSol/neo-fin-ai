@@ -16,6 +16,11 @@ import src.routers.multi_analysis as multi_analysis_router
 import src.routers.pdf_tasks as pdf_tasks_router
 import src.routers.system as system_router
 import src.routers.websocket as websocket_router
+from src.analysis.math.registry import REGISTRY
+from src.analysis.math.startup_validation import (
+    Wave3ContractValidationError,
+    validate_wave3_contract,
+)
 from src.core.ai_service import ai_service
 from src.core.runtime_events import runtime_event_bridge
 from src.db.database import dispose_engine
@@ -89,6 +94,12 @@ def _parse_cors_list(list_str: str, default_values: List[str]) -> List[str]:
 async def lifespan(app: FastAPI):
     # Setup structured logging
     setup_logging()
+
+    try:
+        validate_wave3_contract(REGISTRY)
+    except Wave3ContractValidationError:
+        logger.exception("Math Layer Wave 3 startup validation failed")
+        raise
 
     # AI service auto-configures based on available credentials
     # Priority: GigaChat > Qwen > Local LLM (Ollama)

@@ -88,6 +88,18 @@ run_ocr.bat
 !tests/analysis/math/test_wave2_proof_metric_registration.py
 !tests/analysis/math/test_denominator_classification.py
 !tests/analysis/math/test_denominator_policy.py
+!tests/analysis/math/test_wave3_phase1_contracts.py
+!tests/analysis/math/test_wave3_phase2_semantics.py
+!tests/analysis/math/test_wave3_phase3_resolver_framework.py
+!tests/analysis/math/test_wave3_phase4_resolvers.py
+!tests/analysis/math/test_wave3_phase5_engine_integration.py
+!tests/analysis/math/test_wave3_phase6_integrity.py
+!tests/analysis/math/test_wave7_task032_foundational_units.py
+!tests/analysis/math/test_wave7_task033_resolver_families.py
+!tests/analysis/math/test_wave7_task034_engine_e2e.py
+!tests/analysis/math/test_wave7_task035_coverage_completeness.py
+!tests/analysis/math/test_wave7_task036_proof_of_usage.py
+!tests/analysis/math/test_wave7_task037_determinism_regression.py
 
 # IDE and tool directories
 .agent/
