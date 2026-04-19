@@ -17,7 +17,7 @@ import pytest
 
 from src.analysis.math.contracts import MetricInputRef, TypedInputs, ValidityState
 from src.analysis.math.engine import MathEngine
-from src.analysis.math.policies import DenominatorClass, DenominatorPolicy
+from src.analysis.math.policies import DenominatorClass
 from src.analysis.math.registry import REGISTRY
 
 
@@ -26,7 +26,6 @@ class TestEngineDenominatorGate:
 
     def test_e1_engine_detects_ratio_like_metrics(self):
         """E1: Engine should process ratio-like metrics from registry."""
-        engine = MathEngine()
         # Proof metric is ratio-like with ALLOW_ANY_NON_ZERO
         assert "_wave2_proof_allow_any_non_zero" in REGISTRY
 

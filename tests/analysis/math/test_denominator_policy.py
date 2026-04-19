@@ -12,8 +12,6 @@ Reference: .agent/math_layer_v2_wave2_spec.md Section 7, 9
 
 from __future__ import annotations
 
-import pytest
-
 from src.analysis.math.policies import (
     DenominatorClass,
     DenominatorPolicy,
@@ -258,14 +256,8 @@ class TestInvalidPolicyCombinations:
     def test_d6_unknown_policy_is_rejected(self):
         """D6: Unknown policy values should be refused safely."""
         # This shouldn't happen in practice due to enum typing,
-        # but we handle it defensively
-        from enum import Enum
-        
-        class FakePolicy(str, Enum):
-            UNKNOWN = "unknown_policy"
-        
-        # Note: This would require bypassing type checking, so we just verify
-        # the else branch exists in the evaluator code
+        # but we handle it defensively.
+        # The defensive branch is maintained in evaluator implementation.
         pass  # Type system prevents this in normal usage
 
 

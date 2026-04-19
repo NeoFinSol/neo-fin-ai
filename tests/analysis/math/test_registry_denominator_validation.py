@@ -8,9 +8,6 @@ and malformed declarations fail validation.
 
 from __future__ import annotations
 
-import pytest
-from typing import Callable
-
 from src.analysis.math.contracts import (
     MetricComputationResult,
     TypedInputs,

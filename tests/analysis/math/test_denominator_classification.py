@@ -13,9 +13,6 @@ Reference: .agent/math_layer_v2_wave2_spec.md Section 10, 15
 
 from __future__ import annotations
 
-import math
-import pytest
-
 from src.analysis.math.policies import DenominatorClass
 from src.analysis.math.validators import (
     classify_denominator,

@@ -10,8 +10,6 @@ Reference: .agent/math_layer_v2_wave2_spec.md Section 17 (Proof-of-Usage)
 
 from __future__ import annotations
 
-import pytest
-
 from src.analysis.math.policies import DenominatorPolicy
 from src.analysis.math.registry import (
     REGISTRY,
