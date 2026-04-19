@@ -149,29 +149,62 @@ def _validate_denominator_policy(
     definition: MetricDefinition,
     prepared_inputs: TypedInputs,
 ) -> str | None:
-    """Validate denominator against declared policy (Wave 2 Section 9).
+    """E1-E6: Engine denominator gate with canonical policy evaluation.
     
-    Uses canonical classifier and checks policy compatibility.
-    Currently only STRICT_POSITIVE is enforced; ALLOW_ANY_NON_ZERO
-    will be fully implemented in Task D (Policy Evaluation).
+    Integrates classifier + evaluator for full denominator policy enforcement.
+    Engine is sole owner of final refusal assembly (Section 8, 11.2).
+    
+    Deterministic refusal mapping (Section 13):
+    - MISSING → UNAVAILABLE
+    - ZERO/SIGNED_ZERO → INVALID  
+    - NON_FINITE → INVALID
+    - NEAR_ZERO_FORBIDDEN → INVALID
+    - NEGATIVE_FINITE under STRICT_POSITIVE → INVALID
     
     Returns:
         Error reason string if validation fails, None if passes
+        
+    Reference: .agent/math_layer_v2_wave2_spec.md Section 8, 11, 13
     """
-    from src.analysis.math.policies import DenominatorClass
+    from src.analysis.math.policies import (
+        DenominatorClass,
+        evaluate_denominator_policy,
+    )
     
+    # E2: Extract denominator from explicit declaration
     denominator_ref = prepared_inputs.get(
         definition.denominator_key,
         MetricInputRef(metric_key=definition.denominator_key),
     )
+    
+    # E3: Call canonical classifier
     denominator_class = classify_denominator(denominator_ref.value)
     
-    if definition.denominator_policy == DenominatorPolicy.STRICT_POSITIVE:
-        # STRICT_POSITIVE only allows POSITIVE_FINITE
-        if denominator_class != DenominatorClass.POSITIVE_FINITE:
-            return f"denominator:{definition.denominator_key}:{denominator_class.value}"
+    # Handle missing denominator → UNAVAILABLE (Section 13.1)
+    if denominator_class == DenominatorClass.MISSING:
+        return f"denominator:{definition.denominator_key}:missing:unavailable"
     
-    # ALLOW_ANY_NON_ZERO will be handled in Task D
+    # E4: Apply canonical policy evaluator
+    decision = evaluate_denominator_policy(
+        definition.denominator_policy,
+        denominator_class,
+    )
+    
+    # E5: Engine-owned final refusal assembly
+    if not decision.allowed:
+        # E6: Deterministic refusal mapping
+        if denominator_class == DenominatorClass.ZERO:
+            validity = "invalid"  # Section 13.2
+        elif denominator_class == DenominatorClass.NON_FINITE:
+            validity = "invalid"  # Section 13.3
+        elif denominator_class == DenominatorClass.NEAR_ZERO_FORBIDDEN:
+            validity = "invalid"  # Section 13.4
+        else:
+            validity = "invalid"  # Default for other violations
+        
+        return f"denominator:{definition.denominator_key}:{denominator_class.value}:{validity}:{decision.refusal_reason}"
+    
+    return None
     return None
 
 
