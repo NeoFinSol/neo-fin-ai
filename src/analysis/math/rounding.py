@@ -64,7 +64,10 @@ _POLICY_QUANTIZE: dict[str, tuple[Decimal, str]] = {
     ROUNDING_POLICY_PERCENT_STANDARD: (Decimal("0.01"), ROUND_HALF_EVEN),
     ROUNDING_POLICY_COMPARATIVE_STANDARD: (Decimal("0.0001"), ROUND_HALF_EVEN),
     ROUNDING_POLICY_INTERNAL_HIGH_PRECISION: (Decimal("0.00000001"), ROUND_HALF_EVEN),
-    ROUNDING_POLICY_LEGACY_SAFE_FLOAT_PROJECTION: (Decimal("0.000001"), ROUND_HALF_EVEN),
+    ROUNDING_POLICY_LEGACY_SAFE_FLOAT_PROJECTION: (
+        Decimal("0.000001"),
+        ROUND_HALF_EVEN,
+    ),
 }
 
 # ---------------------------------------------------------------------------

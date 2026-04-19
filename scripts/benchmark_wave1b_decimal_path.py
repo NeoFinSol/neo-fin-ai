@@ -96,7 +96,9 @@ def main() -> None:
     print("WORKLOAD DEFINITION (B1-029):")
     print(f"  Batch size:          {BATCH_SIZE} iterations")
     print(f"  Metrics computed:    {len(REPRESENTATIVE_INPUTS)} input fields")
-    print(f"  Acceptance envelope: Decimal path ≤ {ACCEPTANCE_ENVELOPE_MULTIPLIER}x baseline")
+    print(
+        f"  Acceptance envelope: Decimal path ≤ {ACCEPTANCE_ENVELOPE_MULTIPLIER}x baseline"
+    )
     print()
 
     # Warmup
@@ -176,7 +178,9 @@ def main() -> None:
 
     print("=" * 70)
     print("BENCHMARK ARTIFACT (B1-031):")
-    print(f"  Workload:          {BATCH_SIZE} iterations, {len(REPRESENTATIVE_INPUTS)} input fields")
+    print(
+        f"  Workload:          {BATCH_SIZE} iterations, {len(REPRESENTATIVE_INPUTS)} input fields"
+    )
     print(f"  Baseline mean:     {format_ms(baseline_mean)}")
     print(f"  Decimal mean:      {format_ms(decimal_mean)}")
     print(f"  Overhead:          {overhead_mean:.2f}x")

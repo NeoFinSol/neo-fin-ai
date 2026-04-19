@@ -40,8 +40,8 @@ from src.analysis.math.normalization import (
 )
 from src.analysis.math.rounding import (
     ROUNDING_POLICY_RATIO_STANDARD,
-    RoundingEvidence,
     RoundedNumber,
+    RoundingEvidence,
     round_number,
 )
 

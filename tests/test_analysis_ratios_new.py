@@ -23,11 +23,12 @@ class TestCalculateRatios:
 
         result = calculate_ratios(financial_data)
 
+        # Wave 1a rounding policy: RATIO_STANDARD rounds to 4 decimal places
         assert result["Коэффициент текущей ликвидности"] == pytest.approx(
-            500000 / 300000
+            500000 / 300000, abs=0.0001
         )
         assert result["Коэффициент абсолютной ликвидности"] == pytest.approx(
-            50000 / 300000
+            50000 / 300000, abs=0.0001
         )
         assert result["Рентабельность продаж (ROS)"] == pytest.approx(150000 / 1000000)
         assert result["Коэффициент автономии"] == pytest.approx(800000 / 2000000)
@@ -65,8 +66,9 @@ class TestCalculateRatios:
 
         result = calculate_ratios(financial_data)
 
+        # Wave 1a rounding policy: RATIO_STANDARD rounds to 4 decimal places
         assert result["Коэффициент текущей ликвидности"] == pytest.approx(
-            500000 / 300000
+            500000 / 300000, abs=0.0001
         )
         assert result["Коэффициент автономии"] == pytest.approx(800000 / 2000000)
 
