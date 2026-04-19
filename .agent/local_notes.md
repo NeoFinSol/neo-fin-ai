@@ -7,7 +7,7 @@
 > Краткая сводка открытых items:
 > - **TD-001** (закрыт) — `/metrics` теперь требует auth
 > - **TD-002** (средний) — CSP/frontend security → требует frontend audit
-> - **TD-003** (средний) — denominator policy gap в math engine (Wave 2)
+> - **TD-003** (закрыт) — denominator policy gap в math engine → Wave 2 complete (Tasks A-F)
 > - **TD-004** (средний) — два источника правды для comparative reason codes (Wave 4)
 > - **TD-005–007** (низкий) — dev-mode docs, compose exposure, dead math code
 > - **TD-008–009** (низкий) — circuit breaker lifecycle tests, pipeline coverage

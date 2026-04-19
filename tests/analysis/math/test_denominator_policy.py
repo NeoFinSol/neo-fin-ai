@@ -182,10 +182,10 @@ class TestDenominatorPolicyDecision:
             DenominatorPolicy.STRICT_POSITIVE,
             DenominatorClass.POSITIVE_FINITE,
         )
-        assert hasattr(decision, 'allowed')
-        assert hasattr(decision, 'denominator_class')
-        assert hasattr(decision, 'policy')
-        assert hasattr(decision, 'refusal_reason')
+        assert hasattr(decision, "allowed")
+        assert hasattr(decision, "denominator_class")
+        assert hasattr(decision, "policy")
+        assert hasattr(decision, "refusal_reason")
 
     def test_d2_decision_is_not_bare_boolean(self):
         """D7: Decision must NOT be reducible to single True/False."""
@@ -229,9 +229,11 @@ class TestEvaluatorDeterminism:
             (DenominatorPolicy.ALLOW_ANY_NON_ZERO, DenominatorClass.NEGATIVE_FINITE),
             (DenominatorPolicy.STRICT_POSITIVE, DenominatorClass.ZERO),
         ]
-        
+
         for policy, denom_class in test_cases:
-            results = [evaluate_denominator_policy(policy, denom_class) for _ in range(10)]
+            results = [
+                evaluate_denominator_policy(policy, denom_class) for _ in range(10)
+            ]
             assert all(r.allowed == results[0].allowed for r in results)
             assert all(r.refusal_reason == results[0].refusal_reason for r in results)
 
@@ -239,14 +241,22 @@ class TestEvaluatorDeterminism:
         """D3: Evaluator must be pure function."""
         # Call evaluator many times
         for _ in range(100):
-            evaluate_denominator_policy(DenominatorPolicy.STRICT_POSITIVE, DenominatorClass.POSITIVE_FINITE)
-            evaluate_denominator_policy(DenominatorPolicy.ALLOW_ANY_NON_ZERO, DenominatorClass.NEGATIVE_FINITE)
-        
+            evaluate_denominator_policy(
+                DenominatorPolicy.STRICT_POSITIVE, DenominatorClass.POSITIVE_FINITE
+            )
+            evaluate_denominator_policy(
+                DenominatorPolicy.ALLOW_ANY_NON_ZERO, DenominatorClass.NEGATIVE_FINITE
+            )
+
         # Results should still be consistent
-        decision1 = evaluate_denominator_policy(DenominatorPolicy.STRICT_POSITIVE, DenominatorClass.POSITIVE_FINITE)
+        decision1 = evaluate_denominator_policy(
+            DenominatorPolicy.STRICT_POSITIVE, DenominatorClass.POSITIVE_FINITE
+        )
         assert decision1.allowed is True
-        
-        decision2 = evaluate_denominator_policy(DenominatorPolicy.ALLOW_ANY_NON_ZERO, DenominatorClass.NEGATIVE_FINITE)
+
+        decision2 = evaluate_denominator_policy(
+            DenominatorPolicy.ALLOW_ANY_NON_ZERO, DenominatorClass.NEGATIVE_FINITE
+        )
         assert decision2.allowed is True
 
 
@@ -292,7 +302,7 @@ class TestFullSemanticsMatrix:
         """D4: Verify 2 policies × 6 classes = 12 combinations all work."""
         policies = list(DenominatorPolicy)
         classes = list(DenominatorClass)
-        
+
         total_combinations = 0
         for policy in policies:
             for denom_class in classes:
@@ -301,6 +311,6 @@ class TestFullSemanticsMatrix:
                 assert decision.policy == policy
                 assert decision.denominator_class == denom_class
                 total_combinations += 1
-        
+
         assert total_combinations == len(policies) * len(classes)
         assert total_combinations == 12  # 2 policies × 6 classes

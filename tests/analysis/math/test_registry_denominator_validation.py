@@ -8,16 +8,9 @@ and malformed declarations fail validation.
 
 from __future__ import annotations
 
-from src.analysis.math.contracts import (
-    MetricComputationResult,
-    TypedInputs,
-)
+from src.analysis.math.contracts import MetricComputationResult, TypedInputs
 from src.analysis.math.policies import DenominatorPolicy
-from src.analysis.math.registry import (
-    MetricDefinition,
-    is_ratio_like,
-    REGISTRY,
-)
+from src.analysis.math.registry import REGISTRY, MetricDefinition, is_ratio_like
 
 
 def _dummy_compute(_: TypedInputs) -> MetricComputationResult:
@@ -105,17 +98,17 @@ class TestExplicitDenominatorDeclaration:
         """Every ratio-like metric must declare denominator_key explicitly."""
         for metric_id, definition in REGISTRY.items():
             if is_ratio_like(definition):
-                assert definition.denominator_key is not None, (
-                    f"Ratio-like metric '{metric_id}' must have explicit denominator_key"
-                )
+                assert (
+                    definition.denominator_key is not None
+                ), f"Ratio-like metric '{metric_id}' must have explicit denominator_key"
 
     def test_all_ratio_metrics_have_denominator_policy(self):
         """Every ratio-like metric must declare denominator_policy explicitly."""
         for metric_id, definition in REGISTRY.items():
             if is_ratio_like(definition):
-                assert definition.denominator_policy is not None, (
-                    f"Ratio-like metric '{metric_id}' must have explicit denominator_policy"
-                )
+                assert (
+                    definition.denominator_policy is not None
+                ), f"Ratio-like metric '{metric_id}' must have explicit denominator_policy"
 
     def test_denominator_key_in_required_inputs(self):
         """Denominator key should be in required_inputs for ratio-like metrics."""
@@ -129,7 +122,10 @@ class TestExplicitDenominatorDeclaration:
 
     def test_denominator_policy_is_valid_enum(self):
         """Denominator policy must be a valid DenominatorPolicy enum value."""
-        valid_policies = {DenominatorPolicy.STRICT_POSITIVE, DenominatorPolicy.ALLOW_ANY_NON_ZERO}
+        valid_policies = {
+            DenominatorPolicy.STRICT_POSITIVE,
+            DenominatorPolicy.ALLOW_ANY_NON_ZERO,
+        }
 
         for metric_id, definition in REGISTRY.items():
             if is_ratio_like(definition):
@@ -181,7 +177,7 @@ class TestMalformedDeclarations:
 
     def test_suppressed_placeholder_has_no_denominator_semantics(self):
         """True suppressed placeholders (not yet implemented) should have None for denominator fields.
-        
+
         Note: Metrics like ebitda_margin have SUPPRESS_UNSAFE but ARE fully implemented
         ratio-like metrics that are temporarily disabled. They correctly retain their
         denominator declarations for when they're re-enabled.
@@ -191,22 +187,22 @@ class TestMalformedDeclarations:
         true_placeholders = [
             "quick_ratio",
             "financial_leverage",
-            "financial_leverage_total", 
+            "financial_leverage_total",
             "financial_leverage_debt_only",
             "interest_coverage",
             "inventory_turnover",
             "receivables_turnover",
         ]
-        
+
         for metric_id in true_placeholders:
             definition = REGISTRY[metric_id]
             # True placeholders should have no denominator semantics
-            assert definition.denominator_key is None, (
-                f"True placeholder '{metric_id}' should have denominator_key=None"
-            )
-            assert definition.denominator_policy is None, (
-                f"True placeholder '{metric_id}' should have denominator_policy=None"
-            )
+            assert (
+                definition.denominator_key is None
+            ), f"True placeholder '{metric_id}' should have denominator_key=None"
+            assert (
+                definition.denominator_policy is None
+            ), f"True placeholder '{metric_id}' should have denominator_policy=None"
 
 
 class TestRegistryConsistency:
@@ -231,12 +227,12 @@ class TestRegistryConsistency:
         for metric_id, definition in REGISTRY.items():
             # If it's ratio-like, it MUST have complete declaration
             if is_ratio_like(definition):
-                assert definition.denominator_key is not None, (
-                    f"Metric '{metric_id}' uses ratio computation but lacks denominator_key"
-                )
-                assert definition.denominator_policy is not None, (
-                    f"Metric '{metric_id}' uses ratio computation but lacks denominator_policy"
-                )
+                assert (
+                    definition.denominator_key is not None
+                ), f"Metric '{metric_id}' uses ratio computation but lacks denominator_key"
+                assert (
+                    definition.denominator_policy is not None
+                ), f"Metric '{metric_id}' uses ratio computation but lacks denominator_policy"
 
     def test_denominator_key_references_valid_input(self):
         """Denominator key must reference an input in required_inputs."""

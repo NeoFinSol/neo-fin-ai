@@ -15,11 +15,11 @@ from __future__ import annotations
 
 from src.analysis.math.policies import DenominatorClass
 from src.analysis.math.validators import (
-    classify_denominator,
-    is_zero_or_signed_zero,
-    is_non_finite,
-    is_near_zero_forbidden,
     DENOMINATOR_EPSILON,
+    classify_denominator,
+    is_near_zero_forbidden,
+    is_non_finite,
+    is_zero_or_signed_zero,
 )
 
 
@@ -191,12 +191,12 @@ class TestClassifierDeterminism:
             float("inf"),
             DENOMINATOR_EPSILON / 2,
         ]
-        
+
         for value in test_values:
             results = [classify_denominator(value) for _ in range(10)]
-            assert all(r == results[0] for r in results), (
-                f"Non-deterministic classification for value={value}: {results}"
-            )
+            assert all(
+                r == results[0] for r in results
+            ), f"Non-deterministic classification for value={value}: {results}"
 
     def test_classifier_has_no_side_effects(self):
         """Classifier must be pure function with no side effects."""
@@ -205,7 +205,7 @@ class TestClassifierDeterminism:
             classify_denominator(1.0)
             classify_denominator(-1.0)
             classify_denominator(0)
-        
+
         # Results should still be consistent
         assert classify_denominator(1.0) == DenominatorClass.POSITIVE_FINITE
         assert classify_denominator(-1.0) == DenominatorClass.NEGATIVE_FINITE
@@ -218,7 +218,8 @@ class TestCentralizedThreshold:
     def test_epsilon_is_defined_in_validators(self):
         """DENOMINATOR_EPSILON must be defined in validators module."""
         from src.analysis.math import validators
-        assert hasattr(validators, 'DENOMINATOR_EPSILON')
+
+        assert hasattr(validators, "DENOMINATOR_EPSILON")
         assert validators.DENOMINATOR_EPSILON == 1e-9
 
     def test_no_local_epsilon_override_in_predicates(self):
@@ -227,7 +228,7 @@ class TestCentralizedThreshold:
         # by checking behavior at the boundary
         value_at_boundary = DENOMINATOR_EPSILON / 2
         assert is_near_zero_forbidden(value_at_boundary) is True
-        
+
         # If predicate had local epsilon, this might fail
         value_above_boundary = DENOMINATOR_EPSILON * 2
         assert is_near_zero_forbidden(value_above_boundary) is False
@@ -248,7 +249,7 @@ class TestNoAlternateClassifiers:
         """All possible enum values should match spec Section 10.2."""
         expected_classes = {
             "missing",
-            "non_finite", 
+            "non_finite",
             "zero",
             "near_zero_forbidden",
             "positive_finite",

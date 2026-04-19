@@ -12,12 +12,11 @@ from __future__ import annotations
 
 from src.analysis.math.policies import DenominatorPolicy
 from src.analysis.math.registry import (
-    REGISTRY,
     LEGACY_RATIO_NAME_MAP,
     RATIO_KEY_MAP,
+    REGISTRY,
     is_ratio_like,
 )
-
 
 PROOF_METRIC_ID = "_wave2_proof_allow_any_non_zero"
 
@@ -43,9 +42,9 @@ class TestProofMetricDeclaration:
     def test_proof_metric_has_explicit_denominator_key(self):
         """B2: Proof metric must declare explicit denominator source."""
         definition = REGISTRY[PROOF_METRIC_ID]
-        assert definition.denominator_key is not None, (
-            f"Proof metric '{PROOF_METRIC_ID}' must have explicit denominator_key"
-        )
+        assert (
+            definition.denominator_key is not None
+        ), f"Proof metric '{PROOF_METRIC_ID}' must have explicit denominator_key"
         assert definition.denominator_key == "proof_denominator", (
             f"Proof metric denominator_key should be 'proof_denominator', "
             f"got '{definition.denominator_key}'"
@@ -64,9 +63,9 @@ class TestProofMetricDeclaration:
         definition = REGISTRY[PROOF_METRIC_ID]
         # The compute function should be the one created by _ratio()
         # We can verify it's not a placeholder or suppressed metric
-        assert definition.suppression_policy.name == "NEVER", (
-            f"Proof metric should not be suppressed, got {definition.suppression_policy}"
-        )
+        assert (
+            definition.suppression_policy.name == "NEVER"
+        ), f"Proof metric should not be suppressed, got {definition.suppression_policy}"
 
     def test_proof_metric_has_required_inputs(self):
         """B2: Proof metric must declare numerator and denominator inputs."""
@@ -126,21 +125,21 @@ class TestProofMetricNonExportBoundary:
         from src.analysis.math.registry import _build_legacy_ratio_name_map
 
         test_definitions = {
-            "normal_metric": type('obj', (object,), {
-                'legacy_label': 'Normal Label',
-                'frontend_key': 'normal_metric'
-            })(),
-            "hidden_metric": type('obj', (object,), {
-                'legacy_label': None,
-                'frontend_key': None
-            })(),
+            "normal_metric": type(
+                "obj",
+                (object,),
+                {"legacy_label": "Normal Label", "frontend_key": "normal_metric"},
+            )(),
+            "hidden_metric": type(
+                "obj", (object,), {"legacy_label": None, "frontend_key": None}
+            )(),
         }
 
         result_map = _build_legacy_ratio_name_map(test_definitions)
         assert "normal_metric" in result_map, "Normal metrics should be in export map"
-        assert "hidden_metric" not in result_map, (
-            "Metrics with legacy_label=None should be filtered out"
-        )
+        assert (
+            "hidden_metric" not in result_map
+        ), "Metrics with legacy_label=None should be filtered out"
 
 
 class TestProofMetricDocumentation:
@@ -150,17 +149,18 @@ class TestProofMetricDocumentation:
         """B4: Proof metric should have clear documentation in registry.py."""
         # Read registry.py source to verify documentation exists
         import inspect
+
         import src.analysis.math.registry as registry_module
 
         source = inspect.getsource(registry_module)
-        
+
         # Check for key documentation markers
-        assert "WAVE 2 PROOF METRIC" in source or "wave2_proof" in source.lower(), (
-            "Proof metric should have documentation comment explaining its purpose"
-        )
-        assert "ALLOW_ANY_NON_ZERO" in source, (
-            "Documentation should mention ALLOW_ANY_NON_ZERO policy"
-        )
+        assert (
+            "WAVE 2 PROOF METRIC" in source or "wave2_proof" in source.lower()
+        ), "Proof metric should have documentation comment explaining its purpose"
+        assert (
+            "ALLOW_ANY_NON_ZERO" in source
+        ), "Documentation should mention ALLOW_ANY_NON_ZERO policy"
 
     def test_proof_metric_naming_convention(self):
         """B4: Proof metric naming should indicate internal/test-only status."""
