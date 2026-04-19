@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import pytest
 
+from src.analysis.math import reason_codes as rc
 from src.analysis.math.candidates import (
     build_candidate_set,
     build_derived_candidate,
@@ -15,7 +16,6 @@ from src.analysis.math.candidates import (
 from src.analysis.math.contracts import MetricUnit
 from src.analysis.math.registry import REGISTRY
 from src.analysis.math.resolver_engine import ResolverStatus, resolve_metric_family
-from src.analysis.math.resolver_reason_codes import WAVE3_REASON_MIXED_DEBT_BASIS
 
 
 @pytest.mark.wave3_phase7
@@ -110,4 +110,4 @@ def test_debt_basis_resolver_rejects_mixed_debt_and_liabilities_winners():
     decision = resolve_metric_family(definition, cs)
     assert decision.status is ResolverStatus.AMBIGUOUS
     assert decision.refusal is not None
-    assert WAVE3_REASON_MIXED_DEBT_BASIS in decision.refusal.reason_codes
+    assert rc.MATH_DEBT_MIXED_BASIS in decision.refusal.reason_codes

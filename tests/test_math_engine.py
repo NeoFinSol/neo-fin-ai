@@ -9,11 +9,17 @@ import pytest
 from src.analysis.math.candidates import build_candidate_set
 from src.analysis.math.engine import MathEngine
 from src.analysis.math.precompute import build_precomputed_candidates
-from src.analysis.math.registry import REGISTRY
-from src.analysis.math.resolver_reason_codes import (
-    WAVE3_REASON_COVERAGE_SUPPRESSED,
-    WAVE3_REASON_MISSING_OPENING_BALANCE,
+from src.analysis.math.reason_codes import (
+    COMPARATIVE_MISSING_OPENING_BALANCE,
+    MATH_COVERAGE_INTENTIONALLY_SUPPRESSED,
+    MATH_DENOMINATOR_INPUT_MISSING,
+    MATH_DENOMINATOR_POLICY_REFUSED,
+    MATH_INPUT_NON_FINITE,
+    MATH_INPUT_UNEXPECTED_NEGATIVE,
+    MATH_INPUT_UNEXPECTED_UNIT,
+    MATH_REQUIRED_INPUT_MISSING,
 )
+from src.analysis.math.registry import REGISTRY
 from src.analysis.math.validators import normalize_inputs
 
 
@@ -49,7 +55,8 @@ def test_engine_suppresses_unsafe_ebitda_metric() -> None:
 
     metric = result["ebitda_margin"]
     assert metric.validity_state == "suppressed"
-    assert WAVE3_REASON_COVERAGE_SUPPRESSED in metric.reason_codes
+    assert metric.reason_code == MATH_COVERAGE_INTENTIONALLY_SUPPRESSED
+    assert MATH_COVERAGE_INTENTIONALLY_SUPPRESSED in metric.reason_codes
     assert metric.trace["status"] == "suppressed"
 
 
@@ -66,7 +73,8 @@ def test_engine_invalidates_semantically_bad_input() -> None:
 
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
-    assert "current_assets:unexpected_negative_input" in metric.reason_codes
+    assert metric.reason_code == MATH_INPUT_UNEXPECTED_NEGATIVE
+    assert MATH_INPUT_UNEXPECTED_NEGATIVE in metric.reason_codes
 
 
 def test_engine_rejects_raw_inputs() -> None:
@@ -88,9 +96,8 @@ def test_engine_routes_missing_denominator_through_denominator_policy() -> None:
 
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
-    assert metric.reason_codes == [
-        "denominator:short_term_liabilities:missing:unavailable"
-    ]
+    assert metric.reason_code == MATH_DENOMINATOR_INPUT_MISSING
+    assert metric.reason_codes == [MATH_DENOMINATOR_INPUT_MISSING]
 
 
 def test_engine_invalidates_missing_non_denominator_inputs() -> None:
@@ -101,7 +108,8 @@ def test_engine_invalidates_missing_non_denominator_inputs() -> None:
 
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
-    assert "missing_required_input:current_assets" in metric.reason_codes
+    assert metric.reason_code == MATH_REQUIRED_INPUT_MISSING
+    assert MATH_REQUIRED_INPUT_MISSING in metric.reason_codes
 
 
 def test_registry_is_immutable() -> None:
@@ -262,11 +270,11 @@ def test_engine_invalidates_average_balance_metrics_when_average_inputs_missing(
     )
 
     assert result["roa"].validity_state == "invalid"
-    assert WAVE3_REASON_MISSING_OPENING_BALANCE in result["roa"].reason_codes
+    assert COMPARATIVE_MISSING_OPENING_BALANCE in result["roa"].reason_codes
     assert result["roe"].validity_state == "invalid"
-    assert WAVE3_REASON_MISSING_OPENING_BALANCE in result["roe"].reason_codes
+    assert COMPARATIVE_MISSING_OPENING_BALANCE in result["roe"].reason_codes
     assert result["asset_turnover"].validity_state == "invalid"
-    assert WAVE3_REASON_MISSING_OPENING_BALANCE in result["asset_turnover"].reason_codes
+    assert COMPARATIVE_MISSING_OPENING_BALANCE in result["asset_turnover"].reason_codes
 
 
 def test_engine_is_deterministic_for_same_inputs() -> None:
@@ -331,11 +339,11 @@ def test_engine_strict_positive_denominator_rejects_zero() -> None:
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
     assert metric.value is None
-    # Wave 2: Extended reason code format with full policy violation details
-    assert any(
-        "denominator:short_term_liabilities:zero" in code
-        for code in metric.reason_codes
-    )
+    assert metric.reason_code == MATH_DENOMINATOR_POLICY_REFUSED
+    assert MATH_DENOMINATOR_POLICY_REFUSED in metric.reason_codes
+    ctx = metric.trace.get("denominator_policy_context")
+    assert isinstance(ctx, dict)
+    assert ctx.get("denominator_class") == "zero"
 
 
 def test_engine_strict_positive_denominator_rejects_negative() -> None:
@@ -368,11 +376,11 @@ def test_engine_strict_positive_denominator_rejects_near_zero() -> None:
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
     assert metric.value is None
-    # Wave 2: Extended reason code format with full policy violation details
-    assert any(
-        "denominator:short_term_liabilities:near_zero" in code
-        for code in metric.reason_codes
-    )
+    assert metric.reason_code == MATH_DENOMINATOR_POLICY_REFUSED
+    assert MATH_DENOMINATOR_POLICY_REFUSED in metric.reason_codes
+    ctx = metric.trace.get("denominator_policy_context")
+    assert isinstance(ctx, dict)
+    assert ctx.get("denominator_class") == "near_zero_forbidden"
 
 
 def test_engine_invalidates_non_finite_input() -> None:
@@ -389,7 +397,8 @@ def test_engine_invalidates_non_finite_input() -> None:
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
     assert metric.value is None
-    assert "current_assets:input_non_finite" in metric.reason_codes
+    assert metric.reason_code == MATH_INPUT_NON_FINITE
+    assert MATH_INPUT_NON_FINITE in metric.reason_codes
 
 
 def test_engine_invalidates_unexpected_unit() -> None:
@@ -406,7 +415,8 @@ def test_engine_invalidates_unexpected_unit() -> None:
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
     assert metric.value is None
-    assert "current_assets:unexpected_unit" in metric.reason_codes
+    assert metric.reason_code == MATH_INPUT_UNEXPECTED_UNIT
+    assert MATH_INPUT_UNEXPECTED_UNIT in metric.reason_codes
 
 
 def test_engine_missing_confidence_applies_penalty() -> None:

@@ -17,6 +17,13 @@ from src.analysis.math.policies import (
     DenominatorPolicy,
     SuppressionPolicy,
 )
+from src.analysis.math.reason_codes import (
+    MATH_FORMULA_DENOMINATOR_NEAR_ZERO,
+    MATH_FORMULA_DENOMINATOR_ZERO,
+    MATH_FORMULA_DIVISION_ERROR,
+    MATH_FORMULA_INPUT_NON_FINITE,
+    MATH_FORMULA_INPUTS_MISSING,
+)
 
 MetricComputer = Callable[[TypedInputs], MetricComputationResult]
 STRICT_AVERAGE_BALANCE_METRICS = frozenset({"roa", "roe", "asset_turnover"})
@@ -161,7 +168,7 @@ def _safe_divide(
             value=None,
             trace=trace
             | {"guard_failure": "unexpected_division_error", "error": str(exc)},
-            extra_reason_codes=["formula_division_error"],
+            extra_reason_codes=[MATH_FORMULA_DIVISION_ERROR],
         )
 
 
@@ -212,25 +219,25 @@ def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
         # F2: Missing inputs
         failure = _guard_missing_inputs(numerator, denominator)
         if failure:
-            reason = "formula_inputs_missing"
+            reason = MATH_FORMULA_INPUTS_MISSING
             return _build_ratio_refusal(trace, failure, reason)
 
         # F3: Non-finite values
         failure = _guard_non_finite(numerator, denominator)
         if failure:
-            reason = "formula_input_non_finite"
+            reason = MATH_FORMULA_INPUT_NON_FINITE
             return _build_ratio_refusal(trace, failure, reason)
 
         # F4: Zero denominator
         failure = _guard_zero_denominator(denominator)
         if failure:
-            reason = "formula_denominator_zero"
+            reason = MATH_FORMULA_DENOMINATOR_ZERO
             return _build_ratio_refusal(trace, failure, reason)
 
         # F5: Near-zero denominator
         failure = _guard_near_zero_denominator(denominator)
         if failure:
-            reason = "formula_denominator_near_zero"
+            reason = MATH_FORMULA_DENOMINATOR_NEAR_ZERO
             return _build_ratio_refusal(trace, failure, reason)
 
         # F6: All guards passed - safe to divide

@@ -1,6 +1,8 @@
 # NeoFin AI — Обзор проекта
 
 ## Статус
+- **2026-04-20 — Math Layer v2 Wave 4 (outward reason governance) — ЗАКРЫТА в коде на ветке `feat/math-wave3-layer-v2`:** единый реестр `reason_codes.py`, финальная резолюция `reason_resolution.py`, emission guard на `DerivedMetric`, trace-слой `trace_reason_semantics.py`, удалён shim `resolver_reason_codes.py`, governance-тесты включены в репозиторий через `.gitignore` (исключения для `tests/test_reason_*.py`, `test_comparative_reason_governance.py`, `test_wave4_engine_reason_governance.py`, `test_ratio_helper_safety.py`). Зафиксированный долг: TD-023–TD-026 в `.agent/tech_debt_backlog.md`; нормативный `math_layer_v2_wave4_spec.md` — вне репо до отдельной публикации. Трекнутая заметка: `docs/MATH_LAYER_V2_WAVE4_CLOSURE.md`.
+
 - **Текущая агентская сессия**: 2026-04-19 — Math Layer v2 Wave 2 COMPLETE (Tasks A-F: registry validation, proof metric, denominator classification, policy evaluation, engine gate, ratio helper hardening). Подробности ниже.
 
 - **Math Layer v2 — Wave 2: ЗАВЕРШЕНА** (2026-04-19)

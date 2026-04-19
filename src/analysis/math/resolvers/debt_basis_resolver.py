@@ -1,14 +1,10 @@
 from __future__ import annotations
 
+from src.analysis.math import reason_codes as rc
 from src.analysis.math.candidates import MetricCandidate
 from src.analysis.math.precedence import PrecedenceChoice, PrecedenceStatus
 from src.analysis.math.refusals import make_resolver_refusal
 from src.analysis.math.resolver_engine import ResolverContext, ResolverDecision
-from src.analysis.math.resolver_reason_codes import (
-    WAVE3_REASON_INVALID_BASIS,
-    WAVE3_REASON_LEASE_LIABILITY_MIXING_FORBIDDEN,
-    WAVE3_REASON_MIXED_DEBT_BASIS,
-)
 from src.analysis.math.resolvers.common import (
     ambiguous_decision,
     choose_by_precedence,
@@ -152,7 +148,7 @@ def _mixed_basis_ambiguity(
 ) -> ResolverDecision:
     refusal = make_resolver_refusal(
         metric_key=context.metric_definition.metric_id,
-        reason_code=WAVE3_REASON_MIXED_DEBT_BASIS,
+        reason_code=rc.MATH_DEBT_MIXED_BASIS,
         details={"basis_kinds": winner_kinds},
     )
     candidate_ids = tuple(
@@ -174,7 +170,7 @@ def _invalid_basis_refusal(
 ) -> ResolverDecision:
     refusal = make_resolver_refusal(
         metric_key=context.metric_definition.metric_id,
-        reason_code=WAVE3_REASON_INVALID_BASIS,
+        reason_code=rc.MATH_INVALID_BASIS,
         details={"basis_kinds": winner_kinds},
     )
     candidate_ids = tuple(
@@ -195,7 +191,7 @@ def _lease_refusal(
 ) -> ResolverDecision:
     refusal = make_resolver_refusal(
         metric_key=context.metric_definition.metric_id,
-        reason_code=WAVE3_REASON_LEASE_LIABILITY_MIXING_FORBIDDEN,
+        reason_code=rc.MATH_DEBT_LEASE_LIABILITY_MIXING_FORBIDDEN,
         details={"basis_kinds": tuple(sorted(grouped))},
     )
     candidate_ids = tuple(

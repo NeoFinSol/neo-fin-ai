@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from src.analysis.math import reason_codes as rc
 from src.analysis.math.candidates import (
     build_candidate_set,
     build_derived_candidate,
@@ -11,11 +12,6 @@ from src.analysis.math.candidates import (
 from src.analysis.math.contracts import MetricUnit
 from src.analysis.math.registry import REGISTRY
 from src.analysis.math.resolver_engine import ResolverStatus, resolve_metric_family
-from src.analysis.math.resolver_reason_codes import (
-    WAVE3_REASON_AMBIGUOUS_CANDIDATES,
-    WAVE3_REASON_LEASE_LIABILITY_MIXING_FORBIDDEN,
-    WAVE3_REASON_MIXED_DEBT_BASIS,
-)
 from src.analysis.math.resolver_registry import has_resolver_handler
 
 
@@ -177,7 +173,7 @@ def test_ebitda_ambiguity_refusal():
 
     assert decision.status is ResolverStatus.AMBIGUOUS
     assert decision.refusal is not None
-    assert decision.refusal.reason_codes == (WAVE3_REASON_AMBIGUOUS_CANDIDATES,)
+    assert decision.refusal.reason_codes == (rc.MATH_RESOLVER_AMBIGUOUS_CANDIDATES,)
 
 
 def test_debt_only_path_works():
@@ -236,7 +232,7 @@ def test_forbidden_lease_liability_mixing_refusal():
     assert decision.status is ResolverStatus.REFUSED
     assert decision.refusal is not None
     assert decision.refusal.reason_codes == (
-        WAVE3_REASON_LEASE_LIABILITY_MIXING_FORBIDDEN,
+        rc.MATH_DEBT_LEASE_LIABILITY_MIXING_FORBIDDEN,
     )
 
 
@@ -261,7 +257,7 @@ def test_ambiguous_mixed_basis_refusal():
 
     assert decision.status is ResolverStatus.AMBIGUOUS
     assert decision.refusal is not None
-    assert decision.refusal.reason_codes == (WAVE3_REASON_MIXED_DEBT_BASIS,)
+    assert decision.refusal.reason_codes == (rc.MATH_DEBT_MIXED_BASIS,)
 
 
 def test_required_registry_slots_exist_for_implemented_families():

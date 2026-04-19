@@ -5,8 +5,14 @@ from typing import Any
 
 from src.analysis.math.contracts import MetricInputRef, TypedInputs
 from src.analysis.math.policies import DenominatorClass
+from src.analysis.math.reason_codes import (
+    MATH_INPUT_NON_FINITE,
+    MATH_INPUT_NOT_NUMERIC,
+    MATH_INPUT_UNEXPECTED_NEGATIVE,
+    MATH_INPUT_UNEXPECTED_UNIT,
+    MATH_UNIT_INCOMPATIBLE,
+)
 from src.analysis.math.registry import MetricDefinition, get_input_domain_constraint
-from src.analysis.math.resolver_reason_codes import WAVE3_REASON_MATH_UNIT_INCOMPATIBLE
 
 # Wave 2: Centralized near-zero threshold (Section 10.5, 15.1)
 # Single source of truth - MUST NOT be redefined in formula/helper code
@@ -18,14 +24,14 @@ def validate_input_semantics(key: str, raw_value: Any) -> MetricInputRef:
     candidate = _coerce_input_ref(key, raw_value)
     value = candidate.value
     if candidate.unit not in KNOWN_MONETARY_UNITS:
-        return _invalidate_input(candidate, "unexpected_unit")
+        return _invalidate_input(candidate, MATH_INPUT_UNEXPECTED_UNIT)
     if value is None:
         return candidate
     if not math.isfinite(value):
-        return _invalidate_input(candidate, "input_non_finite")
+        return _invalidate_input(candidate, MATH_INPUT_NON_FINITE)
     domain_constraint = get_input_domain_constraint(key)
     if domain_constraint.requires_non_negative and value < 0:
-        return _invalidate_input(candidate, "unexpected_negative_input")
+        return _invalidate_input(candidate, MATH_INPUT_UNEXPECTED_NEGATIVE)
     return candidate
 
 
@@ -47,7 +53,7 @@ def validate_metric_inputs_unit_compatibility(
             continue
         distinct.add(ref.unit)
         if len(distinct) > 1:
-            return WAVE3_REASON_MATH_UNIT_INCOMPATIBLE
+            return MATH_UNIT_INCOMPATIBLE
     return None
 
 
@@ -147,12 +153,12 @@ def _coerce_input_ref(key: str, raw_value: Any) -> MetricInputRef:
         return MetricInputRef(metric_key=key, value=None)
     if isinstance(raw_value, bool):
         return MetricInputRef(
-            metric_key=key, value=None, reason_codes=["input_not_numeric"]
+            metric_key=key, value=None, reason_codes=[MATH_INPUT_NOT_NUMERIC]
         )
     if isinstance(raw_value, (int, float)):
         return MetricInputRef(metric_key=key, value=float(raw_value))
     return MetricInputRef(
-        metric_key=key, value=None, reason_codes=["input_not_numeric"]
+        metric_key=key, value=None, reason_codes=[MATH_INPUT_NOT_NUMERIC]
     )
 
 

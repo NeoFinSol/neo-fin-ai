@@ -83,17 +83,27 @@ run_ocr.bat
 !tests/test_pdf_real_heavy_fixtures.py
 !tests/test_pdf_local_magnit_regression.py
 !tests/test_wave8_websocket_auth.py
+# Math Layer v2 Wave 4 — reason vocabulary / resolution / emission governance tests
+!tests/test_reason_codes_registry.py
+!tests/test_reason_code_usage.py
+!tests/test_reason_proof_of_usage.py
+!tests/test_reason_resolution.py
+!tests/test_reason_state_compatibility.py
+!tests/test_reason_trace_consistency.py
+!tests/test_comparative_reason_governance.py
 # Math Layer v2 Wave 2 tests (denominator policy hardening)
 !tests/analysis/math/test_registry_denominator_validation.py
 !tests/analysis/math/test_wave2_proof_metric_registration.py
 !tests/analysis/math/test_denominator_classification.py
 !tests/analysis/math/test_denominator_policy.py
+!tests/analysis/math/test_ratio_helper_safety.py
 !tests/analysis/math/test_wave3_phase1_contracts.py
 !tests/analysis/math/test_wave3_phase2_semantics.py
 !tests/analysis/math/test_wave3_phase3_resolver_framework.py
 !tests/analysis/math/test_wave3_phase4_resolvers.py
 !tests/analysis/math/test_wave3_phase5_engine_integration.py
 !tests/analysis/math/test_wave3_phase6_integrity.py
+!tests/analysis/math/test_wave4_engine_reason_governance.py
 !tests/analysis/math/test_wave7_task032_foundational_units.py
 !tests/analysis/math/test_wave7_task033_resolver_families.py
 !tests/analysis/math/test_wave7_task034_engine_e2e.py

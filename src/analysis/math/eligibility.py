@@ -5,6 +5,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
 
+from src.analysis.math import reason_codes as rc
 from src.analysis.math.candidates import CandidateState, MetricCandidate
 from src.analysis.math.refusals import (
     MetricRefusal,
@@ -12,14 +13,6 @@ from src.analysis.math.refusals import (
     make_missing_basis_refusal,
 )
 from src.analysis.math.registry import MetricDefinition
-from src.analysis.math.resolver_reason_codes import (
-    WAVE3_REASON_FORBIDDEN_APPROXIMATION,
-    WAVE3_REASON_INCOMPATIBLE_CLOSING_BASIS,
-    WAVE3_REASON_INCOMPATIBLE_OPENING_BASIS,
-    WAVE3_REASON_MISSING_CLOSING_BALANCE,
-    WAVE3_REASON_MISSING_OPENING_BALANCE,
-    WAVE3_REASON_UNKNOWN_AVERAGE_BALANCE_POLICY,
-)
 
 OPENING_AND_CLOSING_REQUIRED_POLICY_REF = "opening_and_closing_required"
 
@@ -61,7 +54,7 @@ def validate_average_balance_basis(
     if policy_ref != OPENING_AND_CLOSING_REQUIRED_POLICY_REF:
         refusal = make_invalid_basis_refusal(
             metric_key=metric_definition.metric_id,
-            reason_code=WAVE3_REASON_UNKNOWN_AVERAGE_BALANCE_POLICY,
+            reason_code=rc.COMPARATIVE_UNKNOWN_AVERAGE_BALANCE_POLICY,
             basis_detail=str(policy_ref),
         )
         return _refused_result(policy_ref=policy_ref, refusal=refusal)
@@ -71,7 +64,7 @@ def validate_average_balance_basis(
     if closing_candidate is None:
         refusal = make_missing_basis_refusal(
             metric_key=metric_definition.metric_id,
-            reason_code=WAVE3_REASON_MISSING_CLOSING_BALANCE,
+            reason_code=rc.COMPARATIVE_MISSING_CLOSING_BALANCE,
             missing_basis="closing_balance",
         )
         return _refused_result(policy_ref=policy_ref, refusal=refusal)
@@ -81,7 +74,7 @@ def validate_average_balance_basis(
     if opening_candidate.unit != closing_candidate.unit:
         refusal = make_invalid_basis_refusal(
             metric_key=metric_definition.metric_id,
-            reason_code=WAVE3_REASON_INCOMPATIBLE_OPENING_BASIS,
+            reason_code=rc.COMPARATIVE_INCOMPATIBLE_OPENING_BASIS,
             basis_detail="unit_mismatch",
         )
         return _refused_result(policy_ref=policy_ref, refusal=refusal)
@@ -103,7 +96,7 @@ def _validate_opening_candidate(
         return _missing_opening_refusal(metric_definition)
     return make_invalid_basis_refusal(
         metric_key=metric_definition.metric_id,
-        reason_code=WAVE3_REASON_INCOMPATIBLE_OPENING_BASIS,
+        reason_code=rc.COMPARATIVE_INCOMPATIBLE_OPENING_BASIS,
         basis_detail=opening_candidate.candidate_state.value,
     )
 
@@ -117,12 +110,12 @@ def _validate_closing_candidate(
     if closing_candidate.candidate_state is CandidateState.MISSING:
         return make_missing_basis_refusal(
             metric_key=metric_definition.metric_id,
-            reason_code=WAVE3_REASON_MISSING_CLOSING_BALANCE,
+            reason_code=rc.COMPARATIVE_MISSING_CLOSING_BALANCE,
             missing_basis="closing_balance",
         )
     return make_invalid_basis_refusal(
         metric_key=metric_definition.metric_id,
-        reason_code=WAVE3_REASON_INCOMPATIBLE_CLOSING_BASIS,
+        reason_code=rc.COMPARATIVE_INCOMPATIBLE_CLOSING_BASIS,
         basis_detail=closing_candidate.candidate_state.value,
     )
 
@@ -132,9 +125,9 @@ def _missing_opening_refusal(
 ) -> MetricRefusal:
     return make_missing_basis_refusal(
         metric_key=metric_definition.metric_id,
-        reason_code=WAVE3_REASON_MISSING_OPENING_BALANCE,
+        reason_code=rc.COMPARATIVE_MISSING_OPENING_BALANCE,
         missing_basis="opening_balance",
-        extra_reason_codes=(WAVE3_REASON_FORBIDDEN_APPROXIMATION,),
+        extra_reason_codes=(rc.COMPARATIVE_FORBIDDEN_APPROXIMATION,),
     )
 
 
@@ -174,7 +167,7 @@ def _refused_result(
             {
                 "status": EligibilityStatus.REFUSED.value,
                 "policy_ref": policy_ref,
-                "reason_codes": refusal.reason_codes,
+                "eligibility_refusal_candidate_reason_codes": refusal.reason_codes,
             }
         ),
     )

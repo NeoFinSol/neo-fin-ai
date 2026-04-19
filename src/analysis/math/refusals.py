@@ -5,6 +5,8 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
 
+from src.analysis.math import reason_codes as rc
+
 
 class RefusalStage(str, Enum):
     PRECOMPUTE = "precompute"
@@ -25,23 +27,17 @@ class MetricRefusal:
 def make_ambiguity_refusal(
     *, metric_key: str, candidate_ids: tuple[str, ...]
 ) -> MetricRefusal:
-    from src.analysis.math.resolver_reason_codes import (
-        WAVE3_REASON_AMBIGUOUS_CANDIDATES,
-    )
-
     return _build_refusal(
         stage=RefusalStage.RESOLVER,
-        reason_codes=(WAVE3_REASON_AMBIGUOUS_CANDIDATES,),
+        reason_codes=(rc.MATH_RESOLVER_AMBIGUOUS_CANDIDATES,),
         details={"metric_key": metric_key, "candidate_ids": candidate_ids},
     )
 
 
 def make_no_candidate_refusal(*, metric_key: str) -> MetricRefusal:
-    from src.analysis.math.resolver_reason_codes import WAVE3_REASON_NO_CANDIDATE
-
     return _build_refusal(
         stage=RefusalStage.RESOLVER,
-        reason_codes=(WAVE3_REASON_NO_CANDIDATE,),
+        reason_codes=(rc.MATH_RESOLVER_NO_CANDIDATE,),
         details={"metric_key": metric_key},
     )
 

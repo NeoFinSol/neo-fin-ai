@@ -422,10 +422,17 @@ def _resolve_link_target(
     return period_index.get((period_ref.period_class, period_ref.fiscal_year))
 
 
-def _metric_payload(value: float | None, reason_codes: list[str]) -> dict[str, object]:
+def _metric_payload(
+    value: float | None, comparability_context_flags: list[str]
+) -> dict[str, object]:
+    """Per-balance slice merged into ``MetricInputRef`` — uses ``reason_codes`` field name for wiring.
+
+    Values are **comparability / period diagnostics** (and optional canonical tokens);
+    they are not the final outward ``DerivedMetric.reason_codes`` assembly.
+    """
     payload: dict[str, object] = {"value": value}
-    if reason_codes:
-        payload["reason_codes"] = list(reason_codes)
+    if comparability_context_flags:
+        payload["reason_codes"] = list(comparability_context_flags)
     return payload
 
 

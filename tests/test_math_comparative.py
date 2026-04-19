@@ -3,6 +3,15 @@ from __future__ import annotations
 import pytest
 
 from src.analysis.math.comparative import ComparativePeriodInput, run_comparative_math
+from src.analysis.math.comparative_reasons import (
+    AVERAGE_BALANCE_CONTEXT_MISSING,
+    DUPLICATE_PERIOD_ID,
+    INCONSISTENT_UNITS,
+    MISSING_OPENING_BALANCE,
+    MISSING_PRIOR_PERIOD,
+    PARTIALLY_COMPARABLE_CONTEXT,
+    UNSUPPORTED_PERIOD_CLASS,
+)
 from src.analysis.math.contracts import ValidityState
 from src.analysis.math.periods import ComparabilityState
 
@@ -107,12 +116,9 @@ def test_run_comparative_math_fails_closed_for_duplicate_periods() -> None:
     )
 
     duplicate = results[1]
-    assert "duplicate_period_id" in duplicate.comparability_flags
+    assert DUPLICATE_PERIOD_ID in duplicate.comparability_flags
     assert duplicate.derived_metrics["roa"].validity_state is ValidityState.INVALID
-    assert any(
-        reason.endswith("average_balance_context_missing")
-        for reason in duplicate.derived_metrics["roa"].reason_codes
-    )
+    assert AVERAGE_BALANCE_CONTEXT_MISSING in duplicate.derived_metrics["roa"].reason_codes
 
 
 def test_run_comparative_math_keeps_q4_fail_closed_for_strict_metrics() -> None:
@@ -136,7 +142,7 @@ def test_run_comparative_math_keeps_q4_fail_closed_for_strict_metrics() -> None:
     )
 
     quarter = results[1]
-    assert "unsupported_period_class" in quarter.comparability_flags
+    assert UNSUPPORTED_PERIOD_CLASS in quarter.comparability_flags
     assert quarter.derived_metrics["roa"].validity_state is ValidityState.INVALID
     assert quarter.derived_metrics["roe"].value is None
 
@@ -227,8 +233,8 @@ def test_run_comparative_math_keeps_strict_metrics_fail_closed_for_single_period
     assert sole.links.prior_comparable_link is None
     assert sole.links.opening_balance_link is None
     assert sole.comparability_state is ComparabilityState.NOT_COMPARABLE
-    assert "missing_prior_period" in sole.comparability_flags
-    assert "missing_opening_balance" in sole.comparability_flags
+    assert MISSING_PRIOR_PERIOD in sole.comparability_flags
+    assert MISSING_OPENING_BALANCE in sole.comparability_flags
     assert sole.derived_metrics["roa"].validity_state is ValidityState.INVALID
     assert sole.derived_metrics["roa"].value is None
     assert sole.derived_metrics["asset_turnover"].value is None
@@ -265,8 +271,8 @@ def test_partially_comparable_context_allows_average_balance_but_flags_missing_g
 
     q1 = results[2]
     assert q1.comparability_state is ComparabilityState.PARTIALLY_COMPARABLE
-    assert "missing_prior_period" in q1.comparability_flags
-    assert "partially_comparable_context" in q1.comparability_flags
+    assert MISSING_PRIOR_PERIOD in q1.comparability_flags
+    assert PARTIALLY_COMPARABLE_CONTEXT in q1.comparability_flags
     assert q1.links.prior_comparable_link is None
     assert q1.links.opening_balance_link is not None
     assert q1.derived_metrics["roa"].validity_state is ValidityState.VALID
@@ -301,6 +307,6 @@ def test_inconsistent_unit_metadata_fail_closes_strict_metrics() -> None:
     )
 
     latest = results[1]
-    assert "inconsistent_units" in latest.comparability_flags
+    assert INCONSISTENT_UNITS in latest.comparability_flags
     assert latest.derived_metrics["roa"].validity_state is ValidityState.INVALID
     assert latest.derived_metrics["roa"].value is None

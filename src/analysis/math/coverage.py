@@ -3,16 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from src.analysis.math import reason_codes as rc
 from src.analysis.math.candidates import CandidateSourceKind, MetricCandidate
 from src.analysis.math.contracts import ValidityState
 from src.analysis.math.refusals import MetricRefusal, make_coverage_refusal
 from src.analysis.math.registry import MetricCoverageClass, MetricDefinition
-from src.analysis.math.resolver_reason_codes import (
-    WAVE3_REASON_APPROXIMATION_SEMANTICS_REQUIRED,
-    WAVE3_REASON_COVERAGE_SUPPRESSED,
-    WAVE3_REASON_OUT_OF_SCOPE_OUTWARD_REFUSAL,
-    WAVE3_REASON_REPORTED_CANDIDATE_REQUIRED,
-)
 
 
 class CoverageComputeMode(str, Enum):
@@ -52,12 +47,12 @@ def enforce_coverage(
     if coverage_class is MetricCoverageClass.INTENTIONALLY_SUPPRESSED:
         return _blocked_result(
             metric_definition,
-            WAVE3_REASON_COVERAGE_SUPPRESSED,
+            rc.MATH_COVERAGE_INTENTIONALLY_SUPPRESSED,
             ValidityState.SUPPRESSED,
         )
     return _blocked_result(
         metric_definition,
-        WAVE3_REASON_OUT_OF_SCOPE_OUTWARD_REFUSAL,
+        rc.MATH_COVERAGE_OUT_OF_SCOPE,
         ValidityState.NOT_APPLICABLE,
     )
 
@@ -72,7 +67,7 @@ def _handle_reported_only(
         return _allow_result(approximation_required=False)
     return _blocked_result(
         metric_definition,
-        WAVE3_REASON_REPORTED_CANDIDATE_REQUIRED,
+        rc.MATH_COVERAGE_REPORTED_CANDIDATE_REQUIRED,
         ValidityState.INVALID,
     )
 
@@ -86,7 +81,7 @@ def _handle_derived_formula(
     if selected_candidate.source_kind is CandidateSourceKind.REPORTED:
         return _blocked_result(
             metric_definition,
-            WAVE3_REASON_REPORTED_CANDIDATE_REQUIRED,
+            rc.MATH_COVERAGE_REPORTED_CANDIDATE_REQUIRED,
             ValidityState.INVALID,
         )
     return _allow_result(approximation_required=False)
@@ -100,7 +95,7 @@ def _handle_approximate_only(
         return _allow_result(approximation_required=True)
     return _blocked_result(
         metric_definition,
-        WAVE3_REASON_APPROXIMATION_SEMANTICS_REQUIRED,
+        rc.MATH_COVERAGE_APPROXIMATION_SEMANTICS_REQUIRED,
         ValidityState.INVALID,
     )
 

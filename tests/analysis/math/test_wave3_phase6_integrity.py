@@ -191,7 +191,7 @@ def test_average_balance_policy_without_averaging_policy_fails():
 
 @pytest.mark.wave3_integrity
 def test_reason_token_integrity_passes_on_current_tree():
-    """AST scan for undeclared wave3_* literals in Wave 3 modules."""
+    """AST scan: no legacy ``wave3_*`` string literals in scanned math modules."""
     validate_wave3_contract(REGISTRY)
 
 

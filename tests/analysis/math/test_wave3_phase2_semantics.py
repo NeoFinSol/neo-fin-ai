@@ -5,6 +5,7 @@ from decimal import Decimal
 
 import pytest
 
+from src.analysis.math import reason_codes as rc
 from src.analysis.math.candidates import (
     CandidateState,
     build_derived_candidate,
@@ -36,15 +37,6 @@ from src.analysis.math.refusals import (
     make_missing_basis_refusal,
 )
 from src.analysis.math.registry import MetricCoverageClass, MetricDefinition
-from src.analysis.math.resolver_reason_codes import (
-    WAVE3_REASON_AMBIGUOUS_CANDIDATES,
-    WAVE3_REASON_COVERAGE_SUPPRESSED,
-    WAVE3_REASON_FORBIDDEN_APPROXIMATION,
-    WAVE3_REASON_INCOMPATIBLE_OPENING_BASIS,
-    WAVE3_REASON_MISSING_CLOSING_BALANCE,
-    WAVE3_REASON_MISSING_OPENING_BALANCE,
-    WAVE3_REASON_OUT_OF_SCOPE_OUTWARD_REFUSAL,
-)
 from src.analysis.math.trace_builders import (
     build_candidate_trace,
     build_coverage_trace,
@@ -178,14 +170,14 @@ def test_refusal_helpers_preserve_stage_and_reasons():
     )
     missing_basis = make_missing_basis_refusal(
         metric_key="roa",
-        reason_code=WAVE3_REASON_MISSING_OPENING_BALANCE,
+        reason_code=rc.COMPARATIVE_MISSING_OPENING_BALANCE,
         missing_basis="opening_balance",
     )
 
     assert ambiguity.stage is RefusalStage.RESOLVER
-    assert ambiguity.reason_codes == (WAVE3_REASON_AMBIGUOUS_CANDIDATES,)
+    assert ambiguity.reason_codes == (rc.MATH_RESOLVER_AMBIGUOUS_CANDIDATES,)
     assert missing_basis.stage is RefusalStage.ELIGIBILITY
-    assert missing_basis.reason_codes == (WAVE3_REASON_MISSING_OPENING_BALANCE,)
+    assert missing_basis.reason_codes == (rc.COMPARATIVE_MISSING_OPENING_BALANCE,)
 
 
 @pytest.mark.parametrize(
@@ -281,7 +273,7 @@ def test_out_of_scope_refusal_works():
     )
 
     assert result.refusal is not None
-    assert result.refusal.reason_codes == (WAVE3_REASON_OUT_OF_SCOPE_OUTWARD_REFUSAL,)
+    assert result.refusal.reason_codes == (rc.MATH_COVERAGE_OUT_OF_SCOPE,)
     assert result.final_validity_state is ValidityState.NOT_APPLICABLE
 
 
@@ -296,7 +288,7 @@ def test_suppressed_outward_refusal_works():
     )
 
     assert result.refusal is not None
-    assert result.refusal.reason_codes == (WAVE3_REASON_COVERAGE_SUPPRESSED,)
+    assert result.refusal.reason_codes == (rc.MATH_COVERAGE_INTENTIONALLY_SUPPRESSED,)
     assert result.final_validity_state is ValidityState.SUPPRESSED
 
 
@@ -314,7 +306,7 @@ def test_missing_opening_basis_refusal_works():
 
     assert result.status is EligibilityStatus.REFUSED
     assert result.refusal is not None
-    assert WAVE3_REASON_MISSING_OPENING_BALANCE in result.refusal.reason_codes
+    assert rc.COMPARATIVE_MISSING_OPENING_BALANCE in result.refusal.reason_codes
 
 
 def test_both_balance_candidates_absent_prefers_opening_refusal():
@@ -330,8 +322,8 @@ def test_both_balance_candidates_absent_prefers_opening_refusal():
     )
 
     assert result.refusal is not None
-    assert WAVE3_REASON_MISSING_OPENING_BALANCE in result.refusal.reason_codes
-    assert WAVE3_REASON_MISSING_CLOSING_BALANCE not in result.refusal.reason_codes
+    assert rc.COMPARATIVE_MISSING_OPENING_BALANCE in result.refusal.reason_codes
+    assert rc.COMPARATIVE_MISSING_CLOSING_BALANCE not in result.refusal.reason_codes
 
 
 def test_incompatible_opening_basis_refusal_works():
@@ -348,7 +340,7 @@ def test_incompatible_opening_basis_refusal_works():
 
     assert result.status is EligibilityStatus.REFUSED
     assert result.refusal is not None
-    assert result.refusal.reason_codes == (WAVE3_REASON_INCOMPATIBLE_OPENING_BASIS,)
+    assert result.refusal.reason_codes == (rc.COMPARATIVE_INCOMPATIBLE_OPENING_BASIS,)
 
 
 def test_closing_only_approximation_blocked():
@@ -365,7 +357,7 @@ def test_closing_only_approximation_blocked():
 
     assert result.status is EligibilityStatus.REFUSED
     assert result.refusal is not None
-    assert WAVE3_REASON_FORBIDDEN_APPROXIMATION in result.refusal.reason_codes
+    assert rc.COMPARATIVE_FORBIDDEN_APPROXIMATION in result.refusal.reason_codes
 
 
 def test_compute_basis_materialization_works_for_success_and_refusal_path():
@@ -427,7 +419,7 @@ def test_trace_builders_produce_structured_trace_fragments():
         selected_candidate_id="reported:1",
         loser_candidate_ids=("derived:1",),
         status="RESOLVED",
-        reason_codes=(),
+        candidate_reason_codes=(),
     )
     coverage_trace = build_coverage_trace(
         _make_definition(metric_id="ros"),

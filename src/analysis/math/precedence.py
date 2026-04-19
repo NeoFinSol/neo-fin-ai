@@ -5,14 +5,11 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Protocol
 
+from src.analysis.math import reason_codes as rc
 from src.analysis.math.candidates import (
     CandidateSourceKind,
     CandidateState,
     MetricCandidate,
-)
-from src.analysis.math.resolver_reason_codes import (
-    WAVE3_REASON_AMBIGUOUS_CANDIDATES,
-    WAVE3_REASON_NO_CANDIDATE,
 )
 
 
@@ -107,7 +104,7 @@ def _no_candidate_choice() -> PrecedenceChoice:
         status=PrecedenceStatus.NO_CANDIDATE,
         selected_candidate_id=None,
         loser_candidate_ids=(),
-        reason_codes=(WAVE3_REASON_NO_CANDIDATE,),
+        reason_codes=(rc.MATH_RESOLVER_NO_CANDIDATE,),
     )
 
 
@@ -118,5 +115,5 @@ def _ambiguous_choice(
         status=PrecedenceStatus.AMBIGUOUS,
         selected_candidate_id=None,
         loser_candidate_ids=tuple(candidate.candidate_id for candidate in candidates),
-        reason_codes=(WAVE3_REASON_AMBIGUOUS_CANDIDATES,),
+        reason_codes=(rc.MATH_RESOLVER_AMBIGUOUS_CANDIDATES,),
     )

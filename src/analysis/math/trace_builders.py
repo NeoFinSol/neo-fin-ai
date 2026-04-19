@@ -52,8 +52,9 @@ def build_resolver_trace(
     selected_candidate_id: str | None,
     loser_candidate_ids: tuple[str, ...],
     status: str,
-    reason_codes: tuple[str, ...],
+    candidate_reason_codes: tuple[str, ...],
 ) -> dict[str, object]:
+    """Resolver-stage declared candidates (not final outward resolution)."""
     return {
         "metric_key": metric_key,
         "resolver_slot": resolver_slot,
@@ -61,7 +62,7 @@ def build_resolver_trace(
         "selected_candidate_id": selected_candidate_id,
         "loser_candidate_ids": loser_candidate_ids,
         "status": status,
-        "reason_codes": reason_codes,
+        "resolver_candidate_reason_codes": candidate_reason_codes,
     }
 
 
@@ -89,6 +90,6 @@ def build_coverage_trace(
 def build_refusal_trace(refusal: MetricRefusal) -> dict[str, object]:
     return {
         "stage": refusal.stage.value,
-        "reason_codes": refusal.reason_codes,
+        "refusal_candidate_reason_codes": refusal.reason_codes,
         "details": dict(refusal.details),
     }

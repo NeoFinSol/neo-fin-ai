@@ -21,7 +21,6 @@ from src.analysis.math.registry import (
     MetricDefinition,
 )
 from src.analysis.math.resolver_engine import collect_resolver_framework_errors
-from src.analysis.math.resolver_reason_codes import ALL_WAVE3_REASON_CODES
 from src.analysis.math.resolver_registry import RESOLVER_REGISTRY
 from src.analysis.math.synthetic_contract import is_declared_synthetic_key
 
@@ -61,7 +60,14 @@ def validate_wave3_contract(metric_registry: Mapping[str, MetricDefinition]) -> 
     _validate_average_balance_eligibility(metric_registry)
     _validate_strict_average_balance_metric_declarations(metric_registry)
     _validate_reason_token_integrity()
+    _validate_wave4_reason_code_registry()
     _validate_registry_semantic_fingerprint(metric_registry)
+
+
+def _validate_wave4_reason_code_registry() -> None:
+    from src.analysis.math.reason_codes import validate_reason_code_registry
+
+    validate_reason_code_registry()
 
 
 def compute_registry_semantic_fingerprint(
@@ -278,7 +284,8 @@ def _validate_reason_token_integrity() -> None:
     if violations:
         joined = "; ".join(violations)
         raise Wave3ContractValidationError(
-            f"reason-token integrity: undeclared wave3_* string literals: {joined}"
+            f"reason-token integrity: legacy wave3_* string literals are not allowed "
+            f"in scanned math modules (use reason_codes constants): {joined}"
         )
 
 
@@ -308,8 +315,6 @@ def _wave3_literal_violations_in_tree(tree: ast.AST, path: Path) -> list[str]:
             continue
         if not value.startswith("wave3_"):
             continue
-        if value in ALL_WAVE3_REASON_CODES:
-            continue
         violations.append(f"{path.name}:{getattr(node, 'lineno', 0)}:{value!r}")
     return violations
 
@@ -323,6 +328,10 @@ def _string_constant_value(node: ast.AST) -> str | None:
 def audit_wave3_reason_literals_source(
     source: str, *, filename: str = "<string>"
 ) -> tuple[str, ...]:
-    """Test helper: return undeclared wave3_* string literals in a Python source string."""
+    """Test helper: return ``wave3_*`` string literals found in source (always violations).
+
+    Canonical outward tokens live in ``reason_codes``; legacy ``wave3_*`` literals are
+    forbidden in the AST-scanned math files regardless of membership in any allowlist.
+    """
     tree = ast.parse(source, filename=filename)
     return tuple(_wave3_literal_violations_in_tree(tree, Path(filename)))

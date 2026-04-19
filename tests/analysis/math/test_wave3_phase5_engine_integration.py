@@ -6,6 +6,7 @@ from types import MappingProxyType
 
 import pytest
 
+from src.analysis.math import reason_codes as rc
 from src.analysis.math.candidates import MetricCandidate, build_reported_candidate
 from src.analysis.math.contracts import (
     MetricComputationResult,
@@ -21,14 +22,6 @@ from src.analysis.math.policies import (
 )
 from src.analysis.math.precompute import build_precomputed_candidates
 from src.analysis.math.registry import REGISTRY, MetricCoverageClass, MetricDefinition
-from src.analysis.math.resolver_reason_codes import (
-    WAVE3_REASON_AMBIGUOUS_CANDIDATES,
-    WAVE3_REASON_COVERAGE_SUPPRESSED,
-    WAVE3_REASON_INCOMPATIBLE_OPENING_BASIS,
-    WAVE3_REASON_MATH_UNIT_INCOMPATIBLE,
-    WAVE3_REASON_MISSING_OPENING_BALANCE,
-    WAVE3_REASON_OUT_OF_SCOPE_OUTWARD_REFUSAL,
-)
 from src.analysis.math.validators import (
     normalize_inputs,
     validate_metric_inputs_unit_compatibility,
@@ -189,12 +182,12 @@ def test_missing_opening_short_circuits_path():
     )["roa"]
 
     assert result.validity_state is ValidityState.INVALID
-    assert WAVE3_REASON_MISSING_OPENING_BALANCE in result.reason_codes
+    assert rc.COMPARATIVE_MISSING_OPENING_BALANCE in result.reason_codes
     assert result.trace["refusal_fragment"]["stage"] == "eligibility"
     assert result.trace["compute_basis_fragment"]["status"] == "REFUSED"
     assert (
-        WAVE3_REASON_MISSING_OPENING_BALANCE
-        in result.trace["compute_basis_fragment"]["reason_codes"]
+        rc.COMPARATIVE_MISSING_OPENING_BALANCE
+        in result.trace["compute_basis_fragment"]["refusal_candidate_reason_codes"]
     )
 
 
@@ -215,7 +208,7 @@ def test_incompatible_opening_short_circuits_path():
     )["roa"]
 
     assert result.validity_state is ValidityState.INVALID
-    assert WAVE3_REASON_INCOMPATIBLE_OPENING_BASIS in result.reason_codes
+    assert rc.COMPARATIVE_INCOMPATIBLE_OPENING_BASIS in result.reason_codes
     assert result.trace["refusal_fragment"]["stage"] == "eligibility"
 
 
@@ -229,7 +222,7 @@ def test_layer_c_unit_compatibility_rejects_distinct_units():
     }
     assert (
         validate_metric_inputs_unit_compatibility(definition, inputs)
-        == WAVE3_REASON_MATH_UNIT_INCOMPATIBLE
+        == rc.MATH_UNIT_INCOMPATIBLE
     )
 
 
@@ -348,7 +341,7 @@ def test_out_of_scope_coverage_refusal_blocks_compute(
 
     assert compute_called is False
     assert result.validity_state is ValidityState.NOT_APPLICABLE
-    assert result.reason_codes == [WAVE3_REASON_OUT_OF_SCOPE_OUTWARD_REFUSAL]
+    assert result.reason_codes == [rc.MATH_COVERAGE_OUT_OF_SCOPE]
 
 
 def test_suppressed_coverage_refusal_blocks_outward_path(
@@ -374,10 +367,10 @@ def test_suppressed_coverage_refusal_blocks_outward_path(
 
     assert compute_called is False
     assert result.validity_state is ValidityState.SUPPRESSED
-    assert result.reason_codes == [WAVE3_REASON_COVERAGE_SUPPRESSED]
+    assert result.reason_codes == [rc.MATH_COVERAGE_INTENTIONALLY_SUPPRESSED]
     assert result.trace["compute_basis_fragment"]["status"] == "REFUSED"
-    assert result.trace["compute_basis_fragment"]["reason_codes"] == (
-        WAVE3_REASON_COVERAGE_SUPPRESSED,
+    assert result.trace["compute_basis_fragment"]["refusal_candidate_reason_codes"] == (
+        rc.MATH_COVERAGE_INTENTIONALLY_SUPPRESSED,
     )
 
 
@@ -440,7 +433,7 @@ def test_ambiguity_refusal_becomes_explicit_non_success_derived_metric(
     result = MathEngine().compute({})["interest_coverage"]
 
     assert result.validity_state is ValidityState.INVALID
-    assert result.reason_codes == [WAVE3_REASON_AMBIGUOUS_CANDIDATES]
+    assert result.reason_codes == [rc.MATH_RESOLVER_AMBIGUOUS_CANDIDATES]
     assert result.trace["refusal_fragment"]["stage"] == "resolver"
 
 
