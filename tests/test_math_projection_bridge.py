@@ -41,6 +41,7 @@ def test_ratios_module_has_no_local_formula_helpers() -> None:
 def test_projection_does_not_mutate_domain_metric() -> None:
     from src.analysis.math.contracts import DerivedMetric, MetricUnit, ValidityState
     from src.analysis.math.projections import project_metric_value
+    from src.analysis.math.reason_codes import MATH_COVERAGE_INTENTIONALLY_SUPPRESSED
 
     metric = DerivedMetric(
         metric_id="ebitda_margin",
@@ -48,6 +49,8 @@ def test_projection_does_not_mutate_domain_metric() -> None:
         formula_id="ebitda_margin",
         formula_version="v1",
         validity_state=ValidityState.SUPPRESSED,
+        reason_code=MATH_COVERAGE_INTENTIONALLY_SUPPRESSED,
+        reason_codes=[MATH_COVERAGE_INTENTIONALLY_SUPPRESSED],
         trace={"status": "suppressed"},
     )
 
