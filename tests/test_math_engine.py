@@ -75,7 +75,7 @@ def test_engine_rejects_raw_inputs() -> None:
         raise AssertionError("MathEngine.compute must reject raw inputs")
 
 
-def test_engine_invalidates_missing_required_inputs() -> None:
+def test_engine_routes_missing_denominator_through_denominator_policy() -> None:
     engine = MathEngine()
     result = engine.compute(
         normalize_inputs({"current_assets": {"value": 200.0, "confidence": 0.9}})
@@ -83,7 +83,20 @@ def test_engine_invalidates_missing_required_inputs() -> None:
 
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
-    assert "missing_required_input:short_term_liabilities" in metric.reason_codes
+    assert metric.reason_codes == [
+        "denominator:short_term_liabilities:missing:unavailable"
+    ]
+
+
+def test_engine_invalidates_missing_non_denominator_inputs() -> None:
+    engine = MathEngine()
+    result = engine.compute(
+        normalize_inputs({"short_term_liabilities": {"value": 100.0, "confidence": 0.9}})
+    )
+
+    metric = result["current_ratio"]
+    assert metric.validity_state == "invalid"
+    assert "missing_required_input:current_assets" in metric.reason_codes
 
 
 def test_registry_is_immutable() -> None:
@@ -224,14 +237,17 @@ def test_engine_invalidates_average_balance_metrics_when_average_inputs_missing(
     )
 
     assert result["roa"].validity_state == "invalid"
-    assert "missing_required_input:average_total_assets" in result["roa"].reason_codes
+    assert result["roa"].reason_codes == [
+        "denominator:average_total_assets:missing:unavailable"
+    ]
     assert result["roe"].validity_state == "invalid"
-    assert "missing_required_input:average_equity" in result["roe"].reason_codes
+    assert result["roe"].reason_codes == [
+        "denominator:average_equity:missing:unavailable"
+    ]
     assert result["asset_turnover"].validity_state == "invalid"
-    assert (
-        "missing_required_input:average_total_assets"
-        in result["asset_turnover"].reason_codes
-    )
+    assert result["asset_turnover"].reason_codes == [
+        "denominator:average_total_assets:missing:unavailable"
+    ]
 
 
 def test_engine_is_deterministic_for_same_inputs() -> None:

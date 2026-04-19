@@ -91,20 +91,29 @@ def _compute_metric(
     if invalid_reasons:
         return _build_invalid_metric(definition, invalid_reasons, trace_inputs)
     missing_inputs = _collect_missing_inputs(trace_inputs)
-    if missing_inputs:
-        reason_codes = [
-            f"missing_required_input:{metric_key}" for metric_key in missing_inputs
-        ]
-        return _build_invalid_metric(definition, reason_codes, trace_inputs)
+    denominator_reason: str | None = None
 
-    # Only validate denominator policy for ratio-like metrics
+    # Missing denominators must use the canonical denominator refusal path
+    # instead of the generic missing_required_input reason code.
     if (
         definition.denominator_key is not None
         and definition.denominator_policy is not None
     ):
         denominator_reason = _validate_denominator_policy(definition, prepared_inputs)
+        missing_inputs = [
+            metric_key
+            for metric_key in missing_inputs
+            if metric_key != definition.denominator_key
+        ]
+
+    if denominator_reason is not None or missing_inputs:
+        reason_codes = []
         if denominator_reason is not None:
-            return _build_invalid_metric(definition, [denominator_reason], trace_inputs)
+            reason_codes.append(denominator_reason)
+        reason_codes.extend(
+            f"missing_required_input:{metric_key}" for metric_key in missing_inputs
+        )
+        return _build_invalid_metric(definition, reason_codes, trace_inputs)
 
     computation = definition.compute(prepared_inputs)
     return _build_computed_metric(
@@ -152,12 +161,12 @@ def _collect_missing_inputs(trace_inputs: list[MetricInputRef]) -> list[str]:
     return [item.metric_key for item in trace_inputs if item.value is None]
 
 
-def _map_denominator_class_to_validity(
+def _map_denominator_class_to_reason_status(
     denominator_class: DenominatorClass,
 ) -> str:
     """Deterministic refusal mapping per Section 13.
 
-    Maps denominator classification to validity state for refusal messages.
+    Maps denominator classification to the reason-code status segment.
     All invalid classes map to "invalid" except MISSING which maps to "unavailable".
 
     Reference: .agent/math_layer_v2_wave2_spec.md Section 13
@@ -211,7 +220,7 @@ def _validate_denominator_policy(
 
     # E5-E6: Engine-owned refusal assembly with deterministic mapping
     if not decision.allowed:
-        validity = _map_denominator_class_to_validity(denominator_class)
+        validity = _map_denominator_class_to_reason_status(denominator_class)
         return (
             f"denominator:{definition.denominator_key}:"
             f"{denominator_class.value}:{validity}:"

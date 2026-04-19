@@ -81,7 +81,7 @@ class TestEngineFinalRefusalAssembly:
         assert any("zero" in reason for reason in ratio_result.reason_codes)
 
     def test_e5_engine_assembles_refusal_for_missing_denominator(self):
-        """E5+E6: Missing denominator → UNAVAILABLE refusal assembled by engine."""
+        """E5+E6: Missing denominator gets canonical unavailable reason code."""
         engine = MathEngine()
         
         inputs: TypedInputs = {
@@ -92,10 +92,10 @@ class TestEngineFinalRefusalAssembly:
         result = engine.compute(inputs)
         ratio_result = result["current_ratio"]
         
-        # Missing required input leads to INVALID (engine sees it as missing)
         assert ratio_result.validity_state == ValidityState.INVALID
-        assert any("missing" in reason.lower() or "denominator" in reason 
-                   for reason in ratio_result.reason_codes)
+        assert ratio_result.reason_codes == [
+            "denominator:short_term_liabilities:missing:unavailable"
+        ]
 
     def test_e6_deterministic_refusal_mapping_zero(self):
         """E6: Zero denominator always maps to INVALID."""
