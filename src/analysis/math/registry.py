@@ -42,11 +42,11 @@ class MetricDefinition:
     averaging_policy: AveragingPolicy
     suppression_policy: SuppressionPolicy
     compute: MetricComputer
-    
+
     # Optional denominator semantics (None = not ratio-like)
     denominator_key: str | None = None
     denominator_policy: DenominatorPolicy | None = None
-    
+
     legacy_label: str | None = None
     frontend_key: str | None = None
     non_negative_inputs: tuple[str, ...] = ()
@@ -54,18 +54,17 @@ class MetricDefinition:
 
 def is_ratio_like(definition: MetricDefinition) -> bool:
     """Return True if metric requires denominator policy enforcement.
-    
+
     Machine-checkable ratio-like identity based on explicit denominator declaration.
     """
     return definition.denominator_key is not None
 
 
 def _guard_missing_inputs(
-    numerator: float | None, 
-    denominator: float | None
+    numerator: float | None, denominator: float | None
 ) -> str | None:
     """F2: Check for missing numerator or denominator.
-    
+
     Returns guard failure reason string if missing, None otherwise.
     """
     if numerator is None:
@@ -75,12 +74,9 @@ def _guard_missing_inputs(
     return None
 
 
-def _guard_non_finite(
-    numerator: float | None, 
-    denominator: float | None
-) -> str | None:
+def _guard_non_finite(numerator: float | None, denominator: float | None) -> str | None:
     """F3: Check for non-finite values (NaN, Inf).
-    
+
     Returns guard failure reason string if non-finite, None otherwise.
     Assumes inputs are not None (call _guard_missing_inputs first).
     """
@@ -93,7 +89,7 @@ def _guard_non_finite(
 
 def _guard_zero_denominator(denominator: float | None) -> str | None:
     """F4: Check for zero or signed-zero denominator.
-    
+
     Returns guard failure reason string if zero, None otherwise.
     Assumes denominator is not None and is finite.
     """
@@ -104,7 +100,7 @@ def _guard_zero_denominator(denominator: float | None) -> str | None:
 
 def _guard_near_zero_denominator(denominator: float | None) -> str | None:
     """F5: Check for forbidden near-zero denominator.
-    
+
     Returns guard failure reason string if near-zero, None otherwise.
     Assumes denominator is not None, finite, and non-zero.
     """
@@ -132,7 +128,7 @@ def _safe_divide(
     trace: dict,
 ) -> MetricComputationResult:
     """F6: Perform safe division after all guards pass.
-    
+
     Includes defensive exception handling as final safety net.
     """
     try:
@@ -144,34 +140,36 @@ def _safe_divide(
     except (ZeroDivisionError, OverflowError) as exc:
         return MetricComputationResult(
             value=None,
-            trace=trace | {"guard_failure": "unexpected_division_error", "error": str(exc)},
+            trace=trace
+            | {"guard_failure": "unexpected_division_error", "error": str(exc)},
             extra_reason_codes=["formula_division_error"],
         )
 
 
 def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
     """F1-F11: Create a ratio computation function with fail-safe hardening.
-    
+
     Wave 2: Local no-crash barrier for ratio-like computations.
     Even if engine-level validation regresses or is bypassed, direct unsafe
     invocation of _ratio() MUST NOT crash (Section 14.4).
-    
+
     Args:
         numerator_key: Key for numerator input (must be in required_inputs)
         denominator_key: Key for denominator input (must be in required_inputs)
-    
+
     Returns:
         MetricComputer function with comprehensive fail-safe guards.
-    
+
     Guards (Section 14.1):
     - F2: Missing numerator/denominator → structured refusal
     - F3: Non-finite numerator/denominator → structured refusal
     - F4: Zero/signed-zero denominator → structured refusal
     - F5: Forbidden near-zero denominator → structured refusal
     - F6: No raw divide before all guards pass
-    
+
     Reference: .agent/math_layer_v2_wave2_spec.md Section 14
     """
+
     def _compute(values: TypedInputs) -> MetricComputationResult:
         # Extract inputs
         numerator_ref = values.get(
@@ -183,39 +181,39 @@ def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
         )
         numerator = numerator_ref.value
         denominator = denominator_ref.value
-        
+
         trace = {
             "numerator": numerator,
             "denominator": denominator,
             "numerator_confidence": numerator_ref.confidence,
             "denominator_confidence": denominator_ref.confidence,
         }
-        
+
         # Apply sequential guards
         # F2: Missing inputs
         failure = _guard_missing_inputs(numerator, denominator)
         if failure:
             reason = "formula_inputs_missing"
             return _build_ratio_refusal(trace, failure, reason)
-        
+
         # F3: Non-finite values
         failure = _guard_non_finite(numerator, denominator)
         if failure:
             reason = "formula_input_non_finite"
             return _build_ratio_refusal(trace, failure, reason)
-        
+
         # F4: Zero denominator
         failure = _guard_zero_denominator(denominator)
         if failure:
             reason = "formula_denominator_zero"
             return _build_ratio_refusal(trace, failure, reason)
-        
+
         # F5: Near-zero denominator
         failure = _guard_near_zero_denominator(denominator)
         if failure:
             reason = "formula_denominator_near_zero"
             return _build_ratio_refusal(trace, failure, reason)
-        
+
         # F6: All guards passed - safe to divide
         return _safe_divide(numerator, denominator, trace)
 
@@ -234,7 +232,7 @@ def _placeholder_compute(metric_id: str) -> MetricComputer:
 
 def _suppressed_placeholder(metric_id: str, legacy_label: str) -> MetricDefinition:
     """Create placeholder definition for temporarily disabled metrics.
-    
+
     Suppressed placeholders are NOT ratio-like until real implementation is provided.
     denominator_key and denominator_policy are set to None to avoid misleading
     policy declarations.
@@ -262,13 +260,13 @@ def _average_balance_metric(
     denominator_key: str,
 ) -> MetricDefinition:
     """Create metric definition for average-balance ratio.
-    
+
     Args:
         metric_id: Unique metric identifier
         legacy_label: Russian label for UI
         numerator_key: Numerator input key (e.g., 'net_profit')
         denominator_key: Denominator input key (e.g., 'average_total_assets')
-    
+
     Returns:
         MetricDefinition with AVERAGE_BALANCE policy and STRICT_POSITIVE denominator.
     """
@@ -410,10 +408,10 @@ REGISTRY = MappingProxyType(
         # WAVE 2 PROOF METRIC — Internal test-only metric for ALLOW_ANY_NON_ZERO validation
         # Purpose: Prove that ALLOW_ANY_NON_ZERO denominator policy works correctly
         # through the full engine + classifier + evaluator + helper pipeline.
-        # 
+        #
         # This metric MUST NOT be exported to frontend or legacy name maps.
         # It has legacy_label=None and frontend_key=None to ensure non-export.
-        # 
+        #
         # TODO: Remove after Wave 2 completion (denominator policy hardening).
         # Reference: .agent/math_layer_v2_wave2_spec.md Section 17 (Proof-of-Usage)
         # =========================================================================
