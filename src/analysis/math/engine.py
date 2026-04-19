@@ -96,9 +96,16 @@ def _compute_metric(
             f"missing_required_input:{metric_key}" for metric_key in missing_inputs
         ]
         return _build_invalid_metric(definition, reason_codes, trace_inputs)
-    denominator_reason = _validate_denominator_policy(definition, prepared_inputs)
-    if denominator_reason is not None:
-        return _build_invalid_metric(definition, [denominator_reason], trace_inputs)
+
+    # Only validate denominator policy for ratio-like metrics
+    if (
+        definition.denominator_key is not None
+        and definition.denominator_policy is not None
+    ):
+        denominator_reason = _validate_denominator_policy(definition, prepared_inputs)
+        if denominator_reason is not None:
+            return _build_invalid_metric(definition, [denominator_reason], trace_inputs)
+
     computation = definition.compute(prepared_inputs)
     return _build_computed_metric(
         definition, trace_inputs, prepared_inputs, computation
