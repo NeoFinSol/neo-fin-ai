@@ -17,9 +17,9 @@ from src.analysis.math.validators import normalize_inputs
 def test_math_family_engine_path_covers_math_token() -> None:
     """Fixed inputs → deterministic outward codes (denominator missing when liability absent)."""
     engine = MathEngine()
-    out = engine.compute(
-        normalize_inputs({"current_assets": {"value": 100.0}})
-    )["current_ratio"]
+    out = engine.compute(normalize_inputs({"current_assets": {"value": 100.0}}))[
+        "current_ratio"
+    ]
     assert out.validity_state.value == "invalid"
     assert out.reason_code == rc.MATH_DENOMINATOR_INPUT_MISSING
     assert out.reason_codes == [rc.MATH_DENOMINATOR_INPUT_MISSING]

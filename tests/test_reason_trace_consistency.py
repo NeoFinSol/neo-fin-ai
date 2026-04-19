@@ -33,9 +33,9 @@ def test_trace_final_outward_matches_model_primary_and_supporting() -> None:
 
 def test_merged_candidates_distinct_from_final_outward_when_multiple() -> None:
     engine = MathEngine()
-    out = engine.compute(
-        normalize_inputs({"current_assets": {"value": 100.0}})
-    )["current_ratio"]
+    out = engine.compute(normalize_inputs({"current_assets": {"value": 100.0}}))[
+        "current_ratio"
+    ]
     merged = out.trace.get(MERGED_DECLARED_CANDIDATE_REASON_CODES_KEY)
     assert isinstance(merged, list)
     assert set(merged) <= set(out.reason_codes)
@@ -59,9 +59,7 @@ def test_computed_path_preserves_raw_extra_reason_codes_bucket() -> None:
 
 def test_refusal_fragment_uses_candidate_key_not_final_outward() -> None:
     engine = MathEngine()
-    out = engine.compute(
-        normalize_inputs({"net_profit": {"value": 12.0}})
-    )["roa"]
+    out = engine.compute(normalize_inputs({"net_profit": {"value": 12.0}}))["roa"]
     rf = out.trace["refusal_fragment"]
     assert "refusal_candidate_reason_codes" in rf
     assert "reason_codes" not in rf

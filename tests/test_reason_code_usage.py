@@ -41,7 +41,10 @@ def _ast_references_canonical_bindings_symbol(tree: ast.AST) -> bool:
             for alias in node.names:
                 if alias.name == "CANONICAL_REASON_CODE_BINDINGS":
                     return True
-        if isinstance(node, ast.Attribute) and node.attr == "CANONICAL_REASON_CODE_BINDINGS":
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr == "CANONICAL_REASON_CODE_BINDINGS"
+        ):
             return True
         if isinstance(node, ast.Assign):
             for t in node.targets:
@@ -65,7 +68,9 @@ def test_no_parallel_canonical_binding_tuple_elsewhere() -> None:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if _ast_references_canonical_bindings_symbol(tree):
             hits.append(path.relative_to(_REPO_ROOT))
-    assert not hits, f"Unexpected references to CANONICAL_REASON_CODE_BINDINGS outside reason_codes.py: {hits}"
+    assert (
+        not hits
+    ), f"Unexpected references to CANONICAL_REASON_CODE_BINDINGS outside reason_codes.py: {hits}"
 
 
 def _violations_for_inline_registry_strings(
@@ -85,14 +90,20 @@ def _violations_for_inline_registry_strings(
             if kw.arg is None or kw.value is None:
                 continue
             if kw.arg in ("reason_code", "reason_code_primary"):
-                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
-                    check_str_in_registry(kw.value.value, kw.value.lineno, f"keyword {kw.arg}")
+                if isinstance(kw.value, ast.Constant) and isinstance(
+                    kw.value.value, str
+                ):
+                    check_str_in_registry(
+                        kw.value.value, kw.value.lineno, f"keyword {kw.arg}"
+                    )
             if kw.arg in ("reason_codes", "extra_reason_codes", "refusal_reason_codes"):
                 seq = kw.value
                 if isinstance(seq, (ast.List, ast.Tuple)):
                     for elt in seq.elts:
                         if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                            check_str_in_registry(elt.value, elt.lineno, f"keyword {kw.arg}[]")
+                            check_str_in_registry(
+                                elt.value, elt.lineno, f"keyword {kw.arg}[]"
+                            )
 
     class V(ast.NodeVisitor):
         def visit_Call(self, node: ast.Call) -> None:
@@ -106,14 +117,18 @@ def _violations_for_inline_registry_strings(
                 key = None
                 if isinstance(k, ast.Constant) and isinstance(k.value, str):
                     key = k.value
-                if key == "reason_code" and isinstance(v, ast.Constant) and isinstance(
-                    v.value, str
+                if (
+                    key == "reason_code"
+                    and isinstance(v, ast.Constant)
+                    and isinstance(v.value, str)
                 ):
                     check_str_in_registry(v.value, v.lineno, 'dict key "reason_code"')
                 if key == "reason_codes" and isinstance(v, ast.List):
                     for elt in v.elts:
                         if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                            check_str_in_registry(elt.value, elt.lineno, 'dict "reason_codes"[]')
+                            check_str_in_registry(
+                                elt.value, elt.lineno, 'dict "reason_codes"[]'
+                            )
             self.generic_visit(node)
 
     V().visit(tree)
@@ -127,5 +142,3 @@ def test_critical_modules_avoid_inline_canonical_reason_literals(path: Path) -> 
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     bad = _violations_for_inline_registry_strings(tree, filepath=str(path))
     assert not bad, f"inline canonical literals in {path}: {bad}"
-
-

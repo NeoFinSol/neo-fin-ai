@@ -42,7 +42,9 @@ def _patch_registry(
     )
 
 
-def test_engine_integration_invalid_multi_declared_reasons_resolved_deterministically() -> None:
+def test_engine_integration_invalid_multi_declared_reasons_resolved_deterministically() -> (
+    None
+):
     """Full engine path: multiple eligible codes → primary + ordered supporting (Wave 4)."""
     engine = MathEngine()
     inputs: TypedInputs = {
