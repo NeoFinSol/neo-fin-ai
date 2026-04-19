@@ -145,6 +145,21 @@ def _collect_missing_inputs(trace_inputs: list[MetricInputRef]) -> list[str]:
     return [item.metric_key for item in trace_inputs if item.value is None]
 
 
+def _map_denominator_class_to_validity(
+    denominator_class: DenominatorClass,
+) -> str:
+    """Deterministic refusal mapping per Section 13.
+    
+    Maps denominator classification to validity state for refusal messages.
+    All invalid classes map to "invalid" except MISSING which maps to "unavailable".
+    
+    Reference: .agent/math_layer_v2_wave2_spec.md Section 13
+    """
+    if denominator_class == DenominatorClass.MISSING:
+        return "unavailable"
+    return "invalid"
+
+
 def _validate_denominator_policy(
     definition: MetricDefinition,
     prepared_inputs: TypedInputs,
@@ -190,21 +205,15 @@ def _validate_denominator_policy(
         denominator_class,
     )
     
-    # E5: Engine-owned final refusal assembly
+    # E5-E6: Engine-owned refusal assembly with deterministic mapping
     if not decision.allowed:
-        # E6: Deterministic refusal mapping
-        if denominator_class == DenominatorClass.ZERO:
-            validity = "invalid"  # Section 13.2
-        elif denominator_class == DenominatorClass.NON_FINITE:
-            validity = "invalid"  # Section 13.3
-        elif denominator_class == DenominatorClass.NEAR_ZERO_FORBIDDEN:
-            validity = "invalid"  # Section 13.4
-        else:
-            validity = "invalid"  # Default for other violations
-        
-        return f"denominator:{definition.denominator_key}:{denominator_class.value}:{validity}:{decision.refusal_reason}"
+        validity = _map_denominator_class_to_validity(denominator_class)
+        return (
+            f"denominator:{definition.denominator_key}:"
+            f"{denominator_class.value}:{validity}:"
+            f"{decision.refusal_reason}"
+        )
     
-    return None
     return None
 
 

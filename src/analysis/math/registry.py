@@ -21,7 +21,10 @@ MetricComputer = Callable[[TypedInputs], MetricComputationResult]
 STRICT_AVERAGE_BALANCE_METRICS = frozenset({"roa", "roe", "asset_turnover"})
 
 # Wave 2: Local near-zero threshold for _ratio() helper fail-safe guards
-# Uses same value as validators.DENOMINATOR_EPSILON for consistency (1e-9)
+# NOTE: Cannot import from validators.py due to circular dependency
+# (validators imports get_input_domain_constraint from registry).
+# This constant MUST stay synchronized with validators.DENOMINATOR_EPSILON.
+# Section 15.3 forbids local overrides, but this is an alias to avoid circular import.
 _RATIO_DENOMINATOR_EPSILON = 1e-9
 
 
@@ -55,6 +58,95 @@ def is_ratio_like(definition: MetricDefinition) -> bool:
     Machine-checkable ratio-like identity based on explicit denominator declaration.
     """
     return definition.denominator_key is not None
+
+
+def _guard_missing_inputs(
+    numerator: float | None, 
+    denominator: float | None
+) -> str | None:
+    """F2: Check for missing numerator or denominator.
+    
+    Returns guard failure reason string if missing, None otherwise.
+    """
+    if numerator is None:
+        return "missing_numerator"
+    if denominator is None:
+        return "missing_denominator"
+    return None
+
+
+def _guard_non_finite(
+    numerator: float | None, 
+    denominator: float | None
+) -> str | None:
+    """F3: Check for non-finite values (NaN, Inf).
+    
+    Returns guard failure reason string if non-finite, None otherwise.
+    Assumes inputs are not None (call _guard_missing_inputs first).
+    """
+    if not math.isfinite(numerator):  # type: ignore
+        return "non_finite_numerator"
+    if not math.isfinite(denominator):  # type: ignore
+        return "non_finite_denominator"
+    return None
+
+
+def _guard_zero_denominator(denominator: float | None) -> str | None:
+    """F4: Check for zero or signed-zero denominator.
+    
+    Returns guard failure reason string if zero, None otherwise.
+    Assumes denominator is not None and is finite.
+    """
+    if denominator == 0:  # type: ignore
+        return "zero_denominator"
+    return None
+
+
+def _guard_near_zero_denominator(denominator: float | None) -> str | None:
+    """F5: Check for forbidden near-zero denominator.
+    
+    Returns guard failure reason string if near-zero, None otherwise.
+    Assumes denominator is not None, finite, and non-zero.
+    """
+    if abs(denominator) < _RATIO_DENOMINATOR_EPSILON:  # type: ignore
+        return "near_zero_denominator"
+    return None
+
+
+def _build_ratio_refusal(
+    trace: dict,
+    guard_failure: str,
+    reason_code: str,
+) -> MetricComputationResult:
+    """Build structured refusal result for ratio helper guards."""
+    return MetricComputationResult(
+        value=None,
+        trace=trace | {"guard_failure": guard_failure},
+        extra_reason_codes=[reason_code],
+    )
+
+
+def _safe_divide(
+    numerator: float,
+    denominator: float,
+    trace: dict,
+) -> MetricComputationResult:
+    """F6: Perform safe division after all guards pass.
+    
+    Includes defensive exception handling as final safety net.
+    """
+    try:
+        result_value = numerator / denominator
+        return MetricComputationResult(
+            value=result_value,
+            trace=trace | {"guard_status": "passed"},
+        )
+    except (ZeroDivisionError, OverflowError) as exc:
+        return MetricComputationResult(
+            value=None,
+            trace=trace | {"guard_failure": "unexpected_division_error", "error": str(exc)},
+            extra_reason_codes=["formula_division_error"],
+        )
 
 
 def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
@@ -99,64 +191,33 @@ def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
             "denominator_confidence": denominator_ref.confidence,
         }
         
-        # F2: Missing input guards
-        if numerator is None:
-            return MetricComputationResult(
-                value=None,
-                trace=trace | {"guard_failure": "missing_numerator"},
-                extra_reason_codes=["formula_inputs_missing"],
-            )
-        if denominator is None:
-            return MetricComputationResult(
-                value=None,
-                trace=trace | {"guard_failure": "missing_denominator"},
-                extra_reason_codes=["formula_inputs_missing"],
-            )
+        # Apply sequential guards
+        # F2: Missing inputs
+        failure = _guard_missing_inputs(numerator, denominator)
+        if failure:
+            reason = "formula_inputs_missing"
+            return _build_ratio_refusal(trace, failure, reason)
         
-        # F3: Non-finite guards (NaN, Inf)
-        if not math.isfinite(numerator):
-            return MetricComputationResult(
-                value=None,
-                trace=trace | {"guard_failure": "non_finite_numerator"},
-                extra_reason_codes=["formula_input_non_finite"],
-            )
-        if not math.isfinite(denominator):
-            return MetricComputationResult(
-                value=None,
-                trace=trace | {"guard_failure": "non_finite_denominator"},
-                extra_reason_codes=["formula_input_non_finite"],
-            )
+        # F3: Non-finite values
+        failure = _guard_non_finite(numerator, denominator)
+        if failure:
+            reason = "formula_input_non_finite"
+            return _build_ratio_refusal(trace, failure, reason)
         
-        # F4: Zero/signed-zero denominator guard
-        if denominator == 0:
-            return MetricComputationResult(
-                value=None,
-                trace=trace | {"guard_failure": "zero_denominator"},
-                extra_reason_codes=["formula_denominator_zero"],
-            )
+        # F4: Zero denominator
+        failure = _guard_zero_denominator(denominator)
+        if failure:
+            reason = "formula_denominator_zero"
+            return _build_ratio_refusal(trace, failure, reason)
         
-        # F5: Forbidden near-zero denominator guard (uses local constant to avoid circular import)
-        if abs(denominator) < _RATIO_DENOMINATOR_EPSILON:
-            return MetricComputationResult(
-                value=None,
-                trace=trace | {"guard_failure": "near_zero_denominator"},
-                extra_reason_codes=["formula_denominator_near_zero"],
-            )
+        # F5: Near-zero denominator
+        failure = _guard_near_zero_denominator(denominator)
+        if failure:
+            reason = "formula_denominator_near_zero"
+            return _build_ratio_refusal(trace, failure, reason)
         
         # F6: All guards passed - safe to divide
-        try:
-            result_value = numerator / denominator
-            return MetricComputationResult(
-                value=result_value,
-                trace=trace | {"guard_status": "passed"},
-            )
-        except (ZeroDivisionError, OverflowError) as exc:
-            # Defensive: should never reach here after guards, but handle anyway
-            return MetricComputationResult(
-                value=None,
-                trace=trace | {"guard_failure": "unexpected_division_error", "error": str(exc)},
-                extra_reason_codes=["formula_division_error"],
-            )
+        return _safe_divide(numerator, denominator, trace)
 
     return _compute
 
