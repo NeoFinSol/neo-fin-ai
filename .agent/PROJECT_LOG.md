@@ -1,5 +1,17 @@
 # Project Log
 
+## 2026-04-20 — feat(math): Wave 4 outward reason governance + Phase 8 cleanup (ветка feat/math-wave3-layer-v2)
+
+**Контекст:** Завершение Wave 4 для math layer: канонический словарь outward-причин, детерминированная резолюция primary/supporting на границе engine, централизованный emission guard, разделение trace vs final outward, удаление migration-модуля `resolver_reason_codes.py`, ужесточение AST-scan legacy `wave3_*` литералов. Black/isort подогнаны под CI.
+
+**Артефакты:** `reason_codes.py`, `reason_resolution.py`, `emission_guard.py`, `trace_reason_semantics.py`; правки `engine.py`, `contracts.py`, comparative/period/registry/validators/refusals/coverage/eligibility и др.; `docs/MATH_LAYER_V2_WAVE4_CLOSURE.md`, `docs/TECH_DEBT_BACKLOG.md`; исключения в `.gitignore` для governance-тестов и `test_ratio_helper_safety.py`.
+
+**Тесты:** pytest bundle math + reason governance (325 passed, 2 skipped в последнем прогоне).
+
+**Долг:** TD-023–TD-026 (см. `.agent/tech_debt_backlog.md`); нормативный wave4 spec-файл — отложен.
+
+---
+
 ## 2026-04-19 — feat(math): Wave 2 complete — denominator policy hardening (Tasks A-F)
 
 **Контекст:** Math Layer v2 — Wave 2, устранение дефектов в denominator policy path согласно спецификации `.agent/math_layer_v2_wave2_spec.md`

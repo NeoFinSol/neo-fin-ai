@@ -18,6 +18,10 @@ import pytest
 from src.analysis.math.contracts import MetricInputRef, TypedInputs, ValidityState
 from src.analysis.math.engine import MathEngine
 from src.analysis.math.policies import DenominatorClass
+from src.analysis.math.reason_codes import (
+    MATH_DENOMINATOR_INPUT_MISSING,
+    MATH_DENOMINATOR_POLICY_REFUSED,
+)
 from src.analysis.math.registry import REGISTRY
 
 
@@ -83,8 +87,11 @@ class TestEngineFinalRefusalAssembly:
         ratio_result = result["current_ratio"]
 
         assert ratio_result.validity_state == ValidityState.INVALID
-        assert any("denominator" in reason for reason in ratio_result.reason_codes)
-        assert any("zero" in reason for reason in ratio_result.reason_codes)
+        assert MATH_DENOMINATOR_POLICY_REFUSED in ratio_result.reason_codes
+        ctx = ratio_result.trace.get("denominator_policy_context")
+        assert isinstance(ctx, dict)
+        assert ctx.get("denominator_key") == "short_term_liabilities"
+        assert ctx.get("denominator_class") == DenominatorClass.ZERO.value
 
     def test_e5_engine_assembles_refusal_for_missing_denominator(self):
         """E5+E6: Missing denominator gets canonical unavailable reason code."""
@@ -99,9 +106,10 @@ class TestEngineFinalRefusalAssembly:
         ratio_result = result["current_ratio"]
 
         assert ratio_result.validity_state == ValidityState.INVALID
-        assert ratio_result.reason_codes == [
-            "denominator:short_term_liabilities:missing:unavailable"
-        ]
+        assert ratio_result.reason_codes == [MATH_DENOMINATOR_INPUT_MISSING]
+        ctx = ratio_result.trace.get("denominator_policy_context")
+        assert isinstance(ctx, dict)
+        assert ctx.get("denominator_class") == DenominatorClass.MISSING.value
 
     def test_e6_deterministic_refusal_mapping_zero(self):
         """E6: Zero denominator always maps to INVALID."""
@@ -133,10 +141,10 @@ class TestEngineFinalRefusalAssembly:
 
         result = engine.compute(inputs)
         assert result["current_ratio"].validity_state == ValidityState.INVALID
-        assert any(
-            "negative" in reason or "denominator" in reason
-            for reason in result["current_ratio"].reason_codes
-        )
+        assert MATH_DENOMINATOR_POLICY_REFUSED in result["current_ratio"].reason_codes
+        ctx = result["current_ratio"].trace.get("denominator_policy_context")
+        assert isinstance(ctx, dict)
+        assert ctx.get("denominator_class") == DenominatorClass.NEGATIVE_FINITE.value
 
 
 class TestEngineDenialShortCircuit:

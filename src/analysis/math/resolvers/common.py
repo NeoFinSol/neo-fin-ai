@@ -181,6 +181,6 @@ def _build_trace(
         selected_candidate_id=selected_candidate_id,
         loser_candidate_ids=loser_candidate_ids,
         status=status.value,
-        reason_codes=reason_codes,
+        candidate_reason_codes=reason_codes,
     )
     return base_trace | {"resolver_family": resolver_family} | extra_trace

@@ -123,7 +123,7 @@ def _refused_basis(
         trace_payload=MappingProxyType(
             {
                 "status": ComputeBasisStatus.REFUSED.value,
-                "reason_codes": refusal_reason_codes,
+                "refusal_candidate_reason_codes": refusal_reason_codes,
             }
         ),
     )

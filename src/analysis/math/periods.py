@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
+from src.analysis.math.reason_codes import PERIOD_UNSUPPORTED_PERIOD_CLASS
+
 
 class PeriodClass(str, Enum):
     FY = "fy"
@@ -136,7 +138,7 @@ def parse_period_label(label: str) -> RawPeriodParseResult:
         raw_label=normalized,
         period_ref=None,
         comparability_state=ComparabilityState.NOT_COMPARABLE,
-        reason_codes=(ComparabilityFlag.UNSUPPORTED_PERIOD_CLASS.value,),
+        reason_codes=(PERIOD_UNSUPPORTED_PERIOD_CLASS,),
     )
 
 

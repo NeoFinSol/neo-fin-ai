@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 
+from src.analysis.math import reason_codes as rc
 from src.analysis.math.candidates import (
     CandidateState,
     build_candidate_set,
@@ -20,15 +21,10 @@ from src.analysis.math.compute_basis import (
 from src.analysis.math.contracts import MetricComputationResult, MetricUnit
 from src.analysis.math.coverage import enforce_coverage
 from src.analysis.math.eligibility import EligibilityStatus, evaluate_eligibility
-from src.analysis.math.policies import (
-    AveragingPolicy,
-    DenominatorPolicy,
-    SuppressionPolicy,
-)
+from src.analysis.math.policies import AveragingPolicy, SuppressionPolicy
 from src.analysis.math.precedence import PRECEDENCE_POLICIES, PrecedenceStatus
 from src.analysis.math.refusals import RefusalStage, make_coverage_refusal
 from src.analysis.math.registry import REGISTRY, MetricCoverageClass, MetricDefinition
-from src.analysis.math.resolver_reason_codes import WAVE3_REASON_COVERAGE_SUPPRESSED
 from src.analysis.math.synthetic_contract import (
     is_declared_synthetic_key,
     validate_synthetic_key,
@@ -131,7 +127,7 @@ def test_precedence_policy_registry_contains_defaults():
 def test_coverage_refusal_carries_coverage_stage():
     refusal = make_coverage_refusal(
         metric_key="m",
-        reason_code=WAVE3_REASON_COVERAGE_SUPPRESSED,
+        reason_code=rc.MATH_COVERAGE_INTENTIONALLY_SUPPRESSED,
         coverage_class="INTENTIONALLY_SUPPRESSED",
     )
     assert refusal.stage is RefusalStage.COVERAGE
@@ -192,13 +188,10 @@ def test_compute_basis_refused_when_no_eligibility_basis():
 
     from src.analysis.math.eligibility import EligibilityResult, EligibilityStatus
     from src.analysis.math.refusals import make_missing_basis_refusal
-    from src.analysis.math.resolver_reason_codes import (
-        WAVE3_REASON_MISSING_OPENING_BALANCE,
-    )
 
     refusal = make_missing_basis_refusal(
         metric_key="x",
-        reason_code=WAVE3_REASON_MISSING_OPENING_BALANCE,
+        reason_code=rc.COMPARATIVE_MISSING_OPENING_BALANCE,
         missing_basis="opening_balance",
     )
     elig = EligibilityResult(

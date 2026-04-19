@@ -25,7 +25,7 @@
 
 - Крупные orchestrator-функции в `engine.py` остаются зоной будущего рефакторинга (не блокер freeze тестов).
 - Новые Phase 7 тесты разнесены по файлам по TASK-032…037; длинные фикстуры минимизированы.
-- Inline `wave3_*` reason literals вне `resolver_reason_codes.py` — блокируются Phase 6 AST scan + Phase 7 spot-check `precompute.py`.
+- Inline `wave3_*` reason literals — блокируются Phase 6 AST scan + Phase 7 spot-check `precompute.py` (канонические строки — `reason_codes.py`).
 
 ---
 

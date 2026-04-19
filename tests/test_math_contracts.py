@@ -26,16 +26,20 @@ def test_derived_metric_requires_trace_and_inputs() -> None:
 
 
 def test_derived_metric_without_trace_is_invalid() -> None:
+    from src.analysis.math.reason_codes import MATH_FORMULA_INPUTS_MISSING
+
     metric = DerivedMetric.invalid(
         metric_id="current_ratio",
         formula_id="current_ratio",
         formula_version="v1",
-        reason_codes=["trace_incomplete"],
+        reason_codes=[MATH_FORMULA_INPUTS_MISSING],
         inputs_snapshot={"current_assets": 125.0, "short_term_liabilities": None},
     )
 
     assert metric.validity_state == ValidityState.INVALID
-    assert "trace_incomplete" in metric.reason_codes
+    assert metric.reason_code == MATH_FORMULA_INPUTS_MISSING
+    assert metric.reason_codes[0] == metric.reason_code
+    assert MATH_FORMULA_INPUTS_MISSING in metric.reason_codes
     assert metric.trace["status"] == "invalid"
     assert metric.trace["formula_id"] == "current_ratio"
     assert metric.trace["inputs_snapshot"]["current_assets"] == 125.0

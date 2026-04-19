@@ -114,6 +114,9 @@ class DerivedMetric(BaseModel):
     formula_version: str
     validity_state: ValidityState
     inputs_used: list[MetricInputRef] = Field(default_factory=list)
+    # Wave 4: single primary outward reason for non-success states (INVALID /
+    # NOT_APPLICABLE / SUPPRESSED). For VALID, remains None.
+    reason_code: str | None = None
     reason_codes: list[str] = Field(default_factory=list)
     confidence: float | None = None
     confidence_components: dict[str, Any] = Field(default_factory=dict)
@@ -159,6 +162,24 @@ class DerivedMetric(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _enforce_wave4_final_emission_guard(self) -> "DerivedMetric":
+        """Wave 4: ValidityState ↔ outward canonical reasons (see ``emission_guard``)."""
+        from src.analysis.math.emission_guard import validate_final_outward_emission
+
+        validate_final_outward_emission(self)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_trace_final_outward_when_present(self) -> "DerivedMetric":
+        """Wave 4: if ``trace['final_outward']`` exists, it mirrors outward fields."""
+        from src.analysis.math.trace_reason_semantics import (
+            validate_trace_final_outward_matches_model,
+        )
+
+        validate_trace_final_outward_matches_model(self)
+        return self
+
     @classmethod
     def invalid(
         cls,
@@ -170,9 +191,28 @@ class DerivedMetric(BaseModel):
         unit: MetricUnit = MetricUnit.RATIO,
     ) -> "DerivedMetric":
         """Build an invalid/refusal result with no numeric fields populated."""
+        from src.analysis.math.reason_codes import is_declared_reason_code
+        from src.analysis.math.reason_resolution import (
+            resolve_outward_reasons_for_non_success,
+        )
+        from src.analysis.math.trace_reason_semantics import (
+            FINAL_OUTWARD_KEY,
+            MERGED_DECLARED_CANDIDATE_REASON_CODES_KEY,
+            final_outward_snapshot,
+        )
+
+        merged_declared = [
+            c for c in dict.fromkeys(reason_codes) if is_declared_reason_code(c)
+        ]
+        primary, ordered = resolve_outward_reasons_for_non_success(
+            merged_declared,
+            validity_state=ValidityState.INVALID,
+        )
+
         trace = {
             "status": "invalid",
-            "reason_codes": list(reason_codes),
+            FINAL_OUTWARD_KEY: final_outward_snapshot(primary, ordered),
+            MERGED_DECLARED_CANDIDATE_REASON_CODES_KEY: merged_declared,
             "inputs_snapshot": dict(inputs_snapshot),
             "formula_id": formula_id,
             "formula_version": formula_version,
@@ -186,6 +226,7 @@ class DerivedMetric(BaseModel):
             formula_version=formula_version,
             validity_state=ValidityState.INVALID,
             inputs_used=[],
-            reason_codes=list(reason_codes),
+            reason_code=primary,
+            reason_codes=ordered,
             trace=trace,
         )

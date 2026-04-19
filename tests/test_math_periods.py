@@ -7,6 +7,7 @@ from src.analysis.math.periods import (
     PeriodClass,
     parse_period_label,
 )
+from src.analysis.math.reason_codes import PERIOD_UNSUPPORTED_PERIOD_CLASS
 
 
 def test_parse_period_label_supports_year_label() -> None:
@@ -51,4 +52,4 @@ def test_parse_period_label_marks_unknown_label_as_not_comparable() -> None:
 
     assert parsed.period_ref is None
     assert parsed.comparability_state is ComparabilityState.NOT_COMPARABLE
-    assert "unsupported_period_class" in parsed.reason_codes
+    assert PERIOD_UNSUPPORTED_PERIOD_CLASS in parsed.reason_codes

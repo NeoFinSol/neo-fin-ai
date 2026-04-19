@@ -1,5 +1,9 @@
 """
 Math engine orchestration layer for Math Layer v2.
+
+Wave 4: ``DerivedMetric`` outward ``reason_code`` / ``reason_codes`` are validated
+on construction by ``emission_guard.validate_final_outward_emission`` (Pydantic
+validator on ``DerivedMetric``) — final emission contract for all assembly paths.
 """
 
 from __future__ import annotations
@@ -37,16 +41,36 @@ from src.analysis.math.numeric_errors import (
 )
 from src.analysis.math.precompute import build_precomputed_candidates
 from src.analysis.math.projections import project_number
+from src.analysis.math.reason_codes import (
+    MATH_COMPUTE_BASIS_MISSING,
+    MATH_DENOMINATOR_INPUT_MISSING,
+    MATH_DENOMINATOR_POLICY_REFUSED,
+    MATH_INPUT_NON_FINITE,
+    MATH_INPUT_NOT_NUMERIC,
+    MATH_INPUT_UNEXPECTED_NEGATIVE,
+    MATH_INPUT_UNEXPECTED_UNIT,
+    MATH_REQUIRED_INPUT_MISSING,
+    is_declared_reason_code,
+)
+from src.analysis.math.reason_resolution import (
+    resolve_outward_reasons_for_non_success,
+    resolve_outward_reasons_for_success,
+)
 from src.analysis.math.refusals import MetricRefusal
 from src.analysis.math.registry import REGISTRY, MetricCoverageClass, MetricDefinition
 from src.analysis.math.resolver_engine import ResolverDecision, resolve_metric_family
-from src.analysis.math.resolver_reason_codes import WAVE3_REASON_COMPUTE_BASIS_MISSING
 from src.analysis.math.rounding import ROUNDING_POLICY_RATIO_STANDARD
 from src.analysis.math.trace_builders import (
     build_candidate_trace,
     build_coverage_trace,
     build_eligibility_trace,
     build_refusal_trace,
+)
+from src.analysis.math.trace_reason_semantics import (
+    COMPUTATION_EXTRA_REASON_CODES_RAW_KEY,
+    FINAL_OUTWARD_KEY,
+    MERGED_DECLARED_CANDIDATE_REASON_CODES_KEY,
+    final_outward_snapshot,
 )
 from src.analysis.math.validators import (
     DenominatorClass,
@@ -63,7 +87,23 @@ _NUMERIC_FAILURE_TYPES = (
     NumericRoundingError,
     ProjectionSafetyError,
 )
-_DEFAULT_REASON_CODE = WAVE3_REASON_COMPUTE_BASIS_MISSING
+_DEFAULT_REASON_CODE = MATH_COMPUTE_BASIS_MISSING
+
+_LEGACY_INPUT_REASON_TO_CANONICAL: dict[str, str] = {
+    "input_not_numeric": MATH_INPUT_NOT_NUMERIC,
+    "unexpected_unit": MATH_INPUT_UNEXPECTED_UNIT,
+    "input_non_finite": MATH_INPUT_NON_FINITE,
+    "unexpected_negative_input": MATH_INPUT_UNEXPECTED_NEGATIVE,
+}
+
+
+def _normalize_upstream_input_reason(reason: str) -> str:
+    if is_declared_reason_code(reason):
+        return reason
+    mapped = _LEGACY_INPUT_REASON_TO_CANONICAL.get(reason)
+    if mapped is not None:
+        return mapped
+    return reason
 
 
 class MathEngine:
@@ -148,35 +188,43 @@ def _compute_metric(
         )
     compute_inputs = _build_compute_inputs(definition, inputs, compute_basis)
     trace_inputs = _collect_trace_inputs(definition, compute_inputs)
-    invalid_reasons = _collect_invalid_input_reasons(trace_inputs)
-    if invalid_reasons:
+    invalid_codes, invalid_trace = _collect_invalid_input_reasons(trace_inputs)
+    if invalid_trace:
+        merged = {**trace_fragments, **invalid_trace}
         return _build_invalid_metric(
             definition,
-            invalid_reasons,
+            invalid_codes,
             trace_inputs,
-            trace_fragments,
+            merged,
         )
     missing_inputs = _collect_missing_inputs(trace_inputs)
-    denominator_reason: str | None = None
+    denominator_code: str | None = None
+    denominator_context: dict[str, object] = {}
     if _has_denominator_policy(definition):
-        denominator_reason = _validate_denominator_policy(definition, compute_inputs)
+        denominator_code, denominator_context = _validate_denominator_policy(
+            definition, compute_inputs
+        )
         missing_inputs = [
             metric_key
             for metric_key in missing_inputs
             if metric_key != definition.denominator_key
         ]
-    if denominator_reason is not None or missing_inputs:
+    if denominator_code is not None or missing_inputs:
         reason_codes: list[str] = []
-        if denominator_reason is not None:
-            reason_codes.append(denominator_reason)
-        reason_codes.extend(
-            f"missing_required_input:{metric_key}" for metric_key in missing_inputs
-        )
+        if denominator_code is not None:
+            reason_codes.append(denominator_code)
+        if missing_inputs:
+            reason_codes.append(MATH_REQUIRED_INPUT_MISSING)
+        merged = dict(trace_fragments)
+        if denominator_context:
+            merged["denominator_policy_context"] = denominator_context
+        if missing_inputs:
+            merged["missing_required_input_keys"] = list(missing_inputs)
         return _build_invalid_metric(
             definition,
             reason_codes,
             trace_inputs,
-            trace_fragments,
+            merged,
         )
     unit_reason = validate_metric_inputs_unit_compatibility(definition, compute_inputs)
     if unit_reason is not None:
@@ -478,12 +526,29 @@ def _collect_trace_inputs(
     ]
 
 
-def _collect_invalid_input_reasons(trace_inputs: list[MetricInputRef]) -> list[str]:
-    return [
-        f"{item.metric_key}:{reason}"
-        for item in trace_inputs
-        for reason in item.reason_codes
-    ]
+def _collect_invalid_input_reasons(
+    trace_inputs: list[MetricInputRef],
+) -> tuple[list[str], dict[str, object]]:
+    """Return outward canonical reason codes plus optional trace diagnostics."""
+    details: list[dict[str, str]] = []
+    outward: list[str] = []
+    for item in trace_inputs:
+        for reason in item.reason_codes:
+            normalized = _normalize_upstream_input_reason(reason)
+            details.append(
+                {
+                    "metric_key": item.metric_key,
+                    "upstream_reason": reason,
+                    "outward_reason": normalized,
+                }
+            )
+            if is_declared_reason_code(normalized):
+                outward.append(normalized)
+    outward_unique = list(dict.fromkeys(outward))
+    extra: dict[str, object] = {}
+    if details:
+        extra["input_invalidity_details"] = details
+    return outward_unique, extra
 
 
 def _collect_missing_inputs(trace_inputs: list[MetricInputRef]) -> list[str]:
@@ -503,7 +568,9 @@ def _build_invalid_metric(
         reason_codes=reason_codes,
         inputs_snapshot={item.metric_key: item.value for item in trace_inputs},
     )
-    trace = metric.trace | trace_fragments
+    # Fragments first, then overlay resolved trace from invalid() so Wave 4
+    # reason_code / reason_codes cannot be overwritten by fragment keys.
+    trace = {**trace_fragments, **metric.trace}
     return metric.model_copy(update={"trace": trace})
 
 
@@ -520,12 +587,18 @@ def _build_refusal_metric(
             **trace_fragments,
             "compute_basis_fragment": {
                 "status": "REFUSED",
-                "reason_codes": actual_refusal.reason_codes,
+                "refusal_candidate_reason_codes": tuple(actual_refusal.reason_codes),
             },
         }
-    reason_codes = _merged_refusal_reason_codes(definition, inputs, actual_refusal)
+    reason_codes_raw = _merged_refusal_reason_codes(definition, inputs, actual_refusal)
+    primary, ordered = resolve_outward_reasons_for_non_success(
+        reason_codes_raw,
+        validity_state=validity_state,
+    )
     trace = {
         "status": validity_state.value,
+        FINAL_OUTWARD_KEY: final_outward_snapshot(primary, ordered),
+        MERGED_DECLARED_CANDIDATE_REASON_CODES_KEY: list(reason_codes_raw),
         "formula_id": definition.formula_id,
         "formula_version": definition.formula_version,
         "inputs": {
@@ -544,7 +617,8 @@ def _build_refusal_metric(
         formula_version=definition.formula_version,
         validity_state=validity_state,
         inputs_used=_collect_trace_inputs(definition, inputs),
-        reason_codes=reason_codes,
+        reason_code=primary,
+        reason_codes=ordered,
         trace=trace,
     )
 
@@ -555,11 +629,12 @@ def _merged_refusal_reason_codes(
     refusal: MetricRefusal,
 ) -> list[str]:
     input_reasons = [
-        reason
+        _normalize_upstream_input_reason(reason)
         for key in definition.required_inputs
         for reason in inputs.get(key, MetricInputRef(metric_key=key)).reason_codes
     ]
-    return list(dict.fromkeys((*refusal.reason_codes, *input_reasons)))
+    merged = list(dict.fromkeys((*refusal.reason_codes, *input_reasons)))
+    return [code for code in merged if is_declared_reason_code(code)]
 
 
 def _default_refusal() -> MetricRefusal:
@@ -597,7 +672,7 @@ def _map_denominator_class_to_reason_status(
 def _validate_denominator_policy(
     definition: MetricDefinition,
     prepared_inputs: TypedInputs,
-) -> str | None:
+) -> tuple[str | None, dict[str, object]]:
     from src.analysis.math.policies import evaluate_denominator_policy
 
     denominator_ref = prepared_inputs.get(
@@ -606,19 +681,26 @@ def _validate_denominator_policy(
     )
     denominator_class = classify_denominator(denominator_ref.value)
     if denominator_class == DenominatorClass.MISSING:
-        return f"denominator:{definition.denominator_key}:missing:unavailable"
+        return MATH_DENOMINATOR_INPUT_MISSING, {
+            "denominator_key": definition.denominator_key,
+            "denominator_class": denominator_class.value,
+            "mapped_validity": _map_denominator_class_to_reason_status(
+                denominator_class
+            ),
+        }
     decision = evaluate_denominator_policy(
         definition.denominator_policy,
         denominator_class,
     )
     if not decision.allowed:
         validity = _map_denominator_class_to_reason_status(denominator_class)
-        return (
-            f"denominator:{definition.denominator_key}:"
-            f"{denominator_class.value}:{validity}:"
-            f"{decision.refusal_reason}"
-        )
-    return None
+        return MATH_DENOMINATOR_POLICY_REFUSED, {
+            "denominator_key": definition.denominator_key,
+            "denominator_class": denominator_class.value,
+            "mapped_validity": validity,
+            "policy_refusal": decision.refusal_reason,
+        }
+    return None, {}
 
 
 def _build_computed_metric(
@@ -634,6 +716,34 @@ def _build_computed_metric(
         computation,
     )
     trace_status = "valid" if projected_float is not None else "invalid"
+    validity = (
+        ValidityState.VALID if projected_float is not None else ValidityState.INVALID
+    )
+    eligible_compute = [
+        c for c in computation.extra_reason_codes if is_declared_reason_code(c)
+    ]
+    if validity is ValidityState.VALID:
+        primary_reason, ordered_reasons = resolve_outward_reasons_for_success(
+            eligible_compute
+        )
+    else:
+        primary_reason, ordered_reasons = resolve_outward_reasons_for_non_success(
+            eligible_compute,
+            validity_state=validity,
+        )
+    trace_body: dict[str, object] = {
+        "status": trace_status,
+        FINAL_OUTWARD_KEY: final_outward_snapshot(primary_reason, ordered_reasons),
+        MERGED_DECLARED_CANDIDATE_REASON_CODES_KEY: list(eligible_compute),
+        COMPUTATION_EXTRA_REASON_CODES_RAW_KEY: list(computation.extra_reason_codes),
+        "inputs": {
+            key: compute_inputs.get(key, MetricInputRef(metric_key=key)).model_dump()
+            for key in definition.required_inputs
+        },
+        "formula_id": definition.formula_id,
+        "formula_version": definition.formula_version,
+        "numeric_finalization": finalization_trace,
+    }
     return DerivedMetric(
         metric_id=definition.metric_id,
         canonical_value=canonical_decimal,
@@ -641,29 +751,13 @@ def _build_computed_metric(
         unit=MetricUnit.RATIO,
         formula_id=definition.formula_id,
         formula_version=definition.formula_version,
-        validity_state=(
-            ValidityState.VALID
-            if projected_float is not None
-            else ValidityState.INVALID
-        ),
+        validity_state=validity,
         inputs_used=trace_inputs,
-        reason_codes=list(computation.extra_reason_codes),
+        reason_code=primary_reason,
+        reason_codes=ordered_reasons,
         confidence=confidence,
         confidence_components=confidence_components,
-        trace=computation.trace
-        | {
-            "status": trace_status,
-            "inputs": {
-                key: compute_inputs.get(
-                    key, MetricInputRef(metric_key=key)
-                ).model_dump()
-                for key in definition.required_inputs
-            },
-            "formula_id": definition.formula_id,
-            "formula_version": definition.formula_version,
-            "numeric_finalization": finalization_trace,
-        }
-        | trace_fragments,
+        trace=computation.trace | trace_body | trace_fragments,
     )
 
 
