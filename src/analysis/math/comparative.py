@@ -321,13 +321,11 @@ def _build_average_balance_inputs(
         comparability_flags,
         key_inconsistency,
     )
+    opening_reasons = _basis_reason_codes(opening_value, reasons)
+    closing_reasons = _basis_reason_codes(closing_value, reasons)
 
-    opening_payload = _metric_payload(
-        _decimal_to_float(opening_value), reasons if opening_value is None else []
-    )
-    closing_payload = _metric_payload(
-        _decimal_to_float(closing_value), reasons if closing_value is None else []
-    )
+    opening_payload = _metric_payload(_decimal_to_float(opening_value), opening_reasons)
+    closing_payload = _metric_payload(_decimal_to_float(closing_value), closing_reasons)
 
     if comparability_state == ComparabilityState.NOT_COMPARABLE:
         average_payload = _metric_payload(
@@ -429,6 +427,14 @@ def _metric_payload(value: float | None, reason_codes: list[str]) -> dict[str, o
     if reason_codes:
         payload["reason_codes"] = list(reason_codes)
     return payload
+
+
+def _basis_reason_codes(value: Decimal | None, reasons: list[str]) -> list[str]:
+    if value is None:
+        return list(reasons)
+    if reasons:
+        return list(reasons)
+    return []
 
 
 def _copy_raw_metric_value(raw_value: Any) -> object:

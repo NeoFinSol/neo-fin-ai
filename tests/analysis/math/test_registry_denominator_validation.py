@@ -10,7 +10,12 @@ from __future__ import annotations
 
 from src.analysis.math.contracts import MetricComputationResult, TypedInputs
 from src.analysis.math.policies import DenominatorPolicy
-from src.analysis.math.registry import REGISTRY, MetricDefinition, is_ratio_like
+from src.analysis.math.registry import (
+    REGISTRY,
+    MetricCoverageClass,
+    MetricDefinition,
+    is_ratio_like,
+)
 
 
 def _dummy_compute(_: TypedInputs) -> MetricComputationResult:
@@ -71,6 +76,7 @@ class TestRatioLikeIdentityDetection:
             averaging_policy=None,  # type: ignore[arg-type]
             suppression_policy=None,  # type: ignore[arg-type]
             compute=_dummy_compute,
+            coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
             denominator_key="denominator",
             denominator_policy=DenominatorPolicy.STRICT_POSITIVE,
         )
@@ -85,6 +91,7 @@ class TestRatioLikeIdentityDetection:
             averaging_policy=None,  # type: ignore[arg-type]
             suppression_policy=None,  # type: ignore[arg-type]
             compute=_dummy_compute,
+            coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
             denominator_key=None,
             denominator_policy=None,
         )
@@ -150,6 +157,7 @@ class TestMalformedDeclarations:
             averaging_policy=None,  # type: ignore[arg-type]
             suppression_policy=None,  # type: ignore[arg-type]
             compute=_dummy_compute,  # Pretends to be ratio but no denominator declared
+            coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
             denominator_key=None,  # Missing!
             denominator_policy=None,
         )
@@ -167,6 +175,7 @@ class TestMalformedDeclarations:
             averaging_policy=None,  # type: ignore[arg-type]
             suppression_policy=None,  # type: ignore[arg-type]
             compute=_dummy_compute,
+            coverage_class=MetricCoverageClass.FULLY_SUPPORTED,
             denominator_key="den",
             denominator_policy=None,  # Missing policy!
         )
