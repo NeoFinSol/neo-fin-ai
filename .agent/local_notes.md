@@ -18,6 +18,25 @@
 > - **TD-014** (открыт) — PBT диапазон ограничен 1e9, нужен billions × billions
 > - **TD-015** (открыт) — `_finalize_and_project()` failure path не покрыт интеграционным тестом
 
+## AI Agent Control Center — памятки
+
+### Supabase client initialization требует явной установки пакета
+**Статус**: ✅ Решено (2026-04-19)
+**Проблема**: пакет `@supabase/supabase-js` был в `package.json`, но отсутствовал в `node_modules`
+**Решение**: явно установлен через `npm install @supabase/supabase-js --save` (v2.89.0)
+**Памятка**: если TypeScript жалуется на missing module из `@supabase/*`, проверь физическое наличие в node_modules, а не только в package.json
+
+### npm registry npmmirror может возвращать 404 на некоторые пакеты
+**Статус**: ✅ Решено (2026-04-19)
+**Проблема**: `https://registry.npmmirror.com/antd-style` возвращал 404 Not Found
+**Решение**: переключён registry на официальный `https://registry.npmjs.org/` через `npm config set registry https://registry.npmjs.org/`
+**Памятка**: при ошибках 404 на seemingly valid packages — сначала проверить и сменить registry
+
+### Real-time updates через setInterval — временная замена WebSocket subscription
+**Статус**: ⚠️ Known limitation
+**Суть**: текущая реализация использует `setInterval` для симуляции real-time данных от Supabase
+**Памятка**: для production заменить на реальную Supabase subscription через `supabase.from('table').on('INSERT', callback).subscribe()`
+
 ## Wave 1a — памятки
 
 ### Complexity violations в guard clauses функциях

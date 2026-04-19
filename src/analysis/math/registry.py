@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Callable
@@ -11,12 +12,17 @@ from src.analysis.math.contracts import (
 )
 from src.analysis.math.policies import (
     AveragingPolicy,
+    DenominatorClass,
     DenominatorPolicy,
     SuppressionPolicy,
 )
 
 MetricComputer = Callable[[TypedInputs], MetricComputationResult]
 STRICT_AVERAGE_BALANCE_METRICS = frozenset({"roa", "roe", "asset_turnover"})
+
+# Wave 2: Local near-zero threshold for _ratio() helper fail-safe guards
+# Uses same value as validators.DENOMINATOR_EPSILON for consistency (1e-9)
+_RATIO_DENOMINATOR_EPSILON = 1e-9
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,20 +58,30 @@ def is_ratio_like(definition: MetricDefinition) -> bool:
 
 
 def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
-    """Create a ratio computation function.
+    """F1-F11: Create a ratio computation function with fail-safe hardening.
+    
+    Wave 2: Local no-crash barrier for ratio-like computations.
+    Even if engine-level validation regresses or is bypassed, direct unsafe
+    invocation of _ratio() MUST NOT crash (Section 14.4).
     
     Args:
         numerator_key: Key for numerator input (must be in required_inputs)
         denominator_key: Key for denominator input (must be in required_inputs)
     
     Returns:
-        MetricComputer function that divides numerator by denominator.
+        MetricComputer function with comprehensive fail-safe guards.
     
-    Note:
-        Denominator policy validation happens upstream in engine layer.
-        This function assumes denominator has been validated as safe.
+    Guards (Section 14.1):
+    - F2: Missing numerator/denominator → structured refusal
+    - F3: Non-finite numerator/denominator → structured refusal
+    - F4: Zero/signed-zero denominator → structured refusal
+    - F5: Forbidden near-zero denominator → structured refusal
+    - F6: No raw divide before all guards pass
+    
+    Reference: .agent/math_layer_v2_wave2_spec.md Section 14
     """
     def _compute(values: TypedInputs) -> MetricComputationResult:
+        # Extract inputs
         numerator_ref = values.get(
             numerator_key, MetricInputRef(metric_key=numerator_key)
         )
@@ -75,26 +91,72 @@ def _ratio(numerator_key: str, denominator_key: str) -> MetricComputer:
         )
         numerator = numerator_ref.value
         denominator = denominator_ref.value
-        if numerator is None or denominator is None:
+        
+        trace = {
+            "numerator": numerator,
+            "denominator": denominator,
+            "numerator_confidence": numerator_ref.confidence,
+            "denominator_confidence": denominator_ref.confidence,
+        }
+        
+        # F2: Missing input guards
+        if numerator is None:
             return MetricComputationResult(
                 value=None,
-                trace={
-                    "numerator": numerator,
-                    "denominator": denominator,
-                    "numerator_confidence": numerator_ref.confidence,
-                    "denominator_confidence": denominator_ref.confidence,
-                },
+                trace=trace | {"guard_failure": "missing_numerator"},
                 extra_reason_codes=["formula_inputs_missing"],
             )
-        return MetricComputationResult(
-            value=numerator / denominator,
-            trace={
-                "numerator": numerator,
-                "denominator": denominator,
-                "numerator_confidence": numerator_ref.confidence,
-                "denominator_confidence": denominator_ref.confidence,
-            },
-        )
+        if denominator is None:
+            return MetricComputationResult(
+                value=None,
+                trace=trace | {"guard_failure": "missing_denominator"},
+                extra_reason_codes=["formula_inputs_missing"],
+            )
+        
+        # F3: Non-finite guards (NaN, Inf)
+        if not math.isfinite(numerator):
+            return MetricComputationResult(
+                value=None,
+                trace=trace | {"guard_failure": "non_finite_numerator"},
+                extra_reason_codes=["formula_input_non_finite"],
+            )
+        if not math.isfinite(denominator):
+            return MetricComputationResult(
+                value=None,
+                trace=trace | {"guard_failure": "non_finite_denominator"},
+                extra_reason_codes=["formula_input_non_finite"],
+            )
+        
+        # F4: Zero/signed-zero denominator guard
+        if denominator == 0:
+            return MetricComputationResult(
+                value=None,
+                trace=trace | {"guard_failure": "zero_denominator"},
+                extra_reason_codes=["formula_denominator_zero"],
+            )
+        
+        # F5: Forbidden near-zero denominator guard (uses local constant to avoid circular import)
+        if abs(denominator) < _RATIO_DENOMINATOR_EPSILON:
+            return MetricComputationResult(
+                value=None,
+                trace=trace | {"guard_failure": "near_zero_denominator"},
+                extra_reason_codes=["formula_denominator_near_zero"],
+            )
+        
+        # F6: All guards passed - safe to divide
+        try:
+            result_value = numerator / denominator
+            return MetricComputationResult(
+                value=result_value,
+                trace=trace | {"guard_status": "passed"},
+            )
+        except (ZeroDivisionError, OverflowError) as exc:
+            # Defensive: should never reach here after guards, but handle anyway
+            return MetricComputationResult(
+                value=None,
+                trace=trace | {"guard_failure": "unexpected_division_error", "error": str(exc)},
+                extra_reason_codes=["formula_division_error"],
+            )
 
     return _compute
 

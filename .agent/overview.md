@@ -1,7 +1,30 @@
 # NeoFin AI — Обзор проекта
 
 ## Статус
-- **Текущая агентская сессия**: 2026-04-19 — Wave 1a complete (numeric hardening W1A-001–W1A-030) + security items TD-001, TD-011, TD-012 closed. Подробности ниже.
+- **Текущая агентская сессия**: 2026-04-19 — Math Layer v2 Wave 2 COMPLETE (Tasks A-F: registry validation, proof metric, denominator classification, policy evaluation, engine gate, ratio helper hardening). Подробности ниже.
+
+- **Math Layer v2 — Wave 2: ЗАВЕРШЕНА** (2026-04-19)
+  - Реализованы все 6 задач (Task A-F) по denominator policy hardening
+  - Task A: Registry validation — machine-checkable ratio-like identity via `is_ratio_like()`, explicit denominator declaration enforced
+  - Task B: Proof metric declaration — `_wave2_proof_allow_any_non_zero` with ALLOW_ANY_NON_ZERO policy, non-export boundary verified
+  - Task C: Canonical denominator classification — `classify_denominator()` in validators.py with centralized threshold (DENOMINATOR_EPSILON = 1e-9)
+  - Task D: Canonical denominator policy evaluation — `evaluate_denominator_policy()` with full matrix coverage (STRICT_POSITIVE + ALLOW_ANY_NON_ZERO × all classes)
+  - Task E: Engine denominator gate — `_validate_denominator_policy()` integrates classifier + evaluator, deterministic refusal mapping (Section 13)
+  - Task F: Canonical ratio helper fail-safe hardening — `_ratio()` guards: missing inputs (F2), non-finite (F3), zero/signed-zero (F4), near-zero (F5), no raw divide before guards pass (F6), no-crash guarantee (F10-F11)
+  - Тесты: 120 passed (denominator classification, policy evaluation, engine gate, ratio helper safety, proof metric registration, registry validation)
+  - Архитектурные инварианты: dual-layer safety (engine gate + local helper guard), structured refusal only, determinism, non-breaking
+  - SOLID/Clean Code verification: функции ≤ 20 строк, complexity ≤ 5, вложенность ≤ 3 уровня, guard clauses pattern
+  - **Следующий шаг**: Commit Wave 2 implementation → PR
+
+- **AI Agent Control Center Demo: ЗАВЕРШЕНА** (2026-04-19)
+
+- **AI Agent Control Center Demo: ЗАВЕРШЕНА** (2026-04-19)
+  - Создана демонстрационная страница интеграции AgentBrowser + MCP + Supabase
+  - Файлы: `src/pages/AIAgentControlCenter.tsx` (569 строк), `src/components/AIAgentControlCenter/index.tsx` (370 строк), `types.ts` (108 строк), `styles/AIAgentControlCenter.css` (327 строк)
+  - Ключевые фичи: управление агентами, система задач с приоритетами, MCP инструменты, AgentBrowser iframe, real-time updates simulation, statistics dashboard
+  - Технологии: React 19, TypeScript, Ant Design v5.29.3, @supabase/supabase-js v2.89.0, MCP integration
+  - Исправлены проблемы: npm registry switched to official, установлен @supabase/supabase-js
+  - Доступно по адресу: http://localhost:8000/ai-agent-control-center
 
 - **Math Layer v2 — Wave 1a: ЗАВЕРШЕНА** (2026-04-19)
   - Реализованы все 30 задач (W1A-001–W1A-030)
