@@ -149,14 +149,29 @@ def _validate_denominator_policy(
     definition: MetricDefinition,
     prepared_inputs: TypedInputs,
 ) -> str | None:
+    """Validate denominator against declared policy (Wave 2 Section 9).
+    
+    Uses canonical classifier and checks policy compatibility.
+    Currently only STRICT_POSITIVE is enforced; ALLOW_ANY_NON_ZERO
+    will be fully implemented in Task D (Policy Evaluation).
+    
+    Returns:
+        Error reason string if validation fails, None if passes
+    """
+    from src.analysis.math.policies import DenominatorClass
+    
     denominator_ref = prepared_inputs.get(
         definition.denominator_key,
         MetricInputRef(metric_key=definition.denominator_key),
     )
-    denominator_state = classify_denominator(denominator_ref.value)
+    denominator_class = classify_denominator(denominator_ref.value)
+    
     if definition.denominator_policy == DenominatorPolicy.STRICT_POSITIVE:
-        if denominator_state != "valid":
-            return f"denominator:{definition.denominator_key}:{denominator_state}"
+        # STRICT_POSITIVE only allows POSITIVE_FINITE
+        if denominator_class != DenominatorClass.POSITIVE_FINITE:
+            return f"denominator:{definition.denominator_key}:{denominator_class.value}"
+    
+    # ALLOW_ANY_NON_ZERO will be handled in Task D
     return None
 
 
