@@ -12,10 +12,6 @@ Reference: .agent/math_layer_v2_wave2_spec.md Section 14
 
 from __future__ import annotations
 
-import math
-
-import pytest
-
 from src.analysis.math.contracts import MetricInputRef, TypedInputs
 from src.analysis.math.reason_codes import (
     MATH_FORMULA_DENOMINATOR_NEAR_ZERO,

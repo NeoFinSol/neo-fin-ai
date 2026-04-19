@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.analysis.math import reason_codes as rc
-from src.analysis.math.candidates import MetricCandidate
+from src.analysis.math.candidates import CandidateState, MetricCandidate
 from src.analysis.math.precedence import PrecedenceChoice, PrecedenceStatus
 from src.analysis.math.refusals import make_resolver_refusal
 from src.analysis.math.resolver_engine import ResolverContext, ResolverDecision
@@ -22,7 +22,10 @@ _BASIS_KINDS = (_DEBT_ONLY, _LIABILITIES_TOTAL, _LEASE_LIABILITIES)
 class DebtBasisResolver:
     def resolve(self, context: ResolverContext) -> ResolverDecision:
         grouped = _group_by_basis(context.candidates)
-        if _LEASE_LIABILITIES in grouped:
+        lease_bucket = grouped.get(_LEASE_LIABILITIES, ())
+        if lease_bucket and any(
+            c.candidate_state is CandidateState.READY for c in lease_bucket
+        ):
             return _lease_refusal(context, grouped)
         winners = _basis_winners(context, grouped)
         if winners is None:

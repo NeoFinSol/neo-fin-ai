@@ -47,7 +47,8 @@ class ResolverDecision:
 
 @runtime_checkable
 class ResolverHandler(Protocol):
-    def resolve(self, context: ResolverContext) -> ResolverDecision: ...
+    def resolve(self, context: ResolverContext) -> ResolverDecision:
+        pass
 
 
 def resolve_metric_family(

@@ -21,11 +21,7 @@ from src.analysis.math.compute_basis import (
 from src.analysis.math.contracts import MetricComputationResult, MetricUnit
 from src.analysis.math.coverage import enforce_coverage
 from src.analysis.math.eligibility import EligibilityStatus, evaluate_eligibility
-from src.analysis.math.policies import (
-    AveragingPolicy,
-    DenominatorPolicy,
-    SuppressionPolicy,
-)
+from src.analysis.math.policies import AveragingPolicy, SuppressionPolicy
 from src.analysis.math.precedence import PRECEDENCE_POLICIES, PrecedenceStatus
 from src.analysis.math.refusals import RefusalStage, make_coverage_refusal
 from src.analysis.math.registry import REGISTRY, MetricCoverageClass, MetricDefinition

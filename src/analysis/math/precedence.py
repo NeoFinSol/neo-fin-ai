@@ -31,7 +31,8 @@ class PrecedencePolicy(Protocol):
     def choose(
         self,
         candidates: tuple[MetricCandidate, ...],
-    ) -> PrecedenceChoice: ...
+    ) -> PrecedenceChoice:
+        pass
 
 
 class ReportedOverDerivedDefaultPolicy:
