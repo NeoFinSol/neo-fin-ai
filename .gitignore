@@ -83,6 +83,8 @@ run_ocr.bat
 !tests/test_pdf_real_heavy_fixtures.py
 !tests/test_pdf_local_magnit_regression.py
 !tests/test_wave8_websocket_auth.py
+# Math Layer v2 Wave 2 tests (denominator policy hardening)
+!tests/analysis/math/test_registry_denominator_validation.py
 
 # IDE and tool directories
 .agent/
