@@ -1,3 +1,16 @@
+"""Math layer initialization with registry validation."""
+
+from src.analysis.math.registry import REGISTRY
+from src.analysis.math.registry_validation import validate_registry
+
+# Validate registry at import time - fail fast on malformed definitions
+_validation_errors = validate_registry(REGISTRY)
+if _validation_errors:
+    raise RuntimeError(
+        f"Math registry validation failed with {len(_validation_errors)} error(s):\n"
+        + "\n".join(f"  - {err}" for err in _validation_errors)
+    )
+
 from src.analysis.math.contracts import (
     DerivedMetric,
     MetricComputationResult,
@@ -24,4 +37,5 @@ __all__ = [
     "SuppressionPolicy",
     "TypedInputs",
     "ValidityState",
+    "REGISTRY",
 ]

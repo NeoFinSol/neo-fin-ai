@@ -4,9 +4,12 @@ import math
 from typing import Any
 
 from src.analysis.math.contracts import MetricInputRef, TypedInputs
+from src.analysis.math.policies import DenominatorClass
 from src.analysis.math.registry import get_input_domain_constraint
 
-DENOMINATOR_EPSILON = 1e-9  # Threshold below which denominator is treated as near-zero to avoid instability
+# Wave 2: Centralized near-zero threshold (Section 10.5, 15.1)
+# Single source of truth - MUST NOT be redefined in formula/helper code
+DENOMINATOR_EPSILON = 1e-9
 KNOWN_MONETARY_UNITS = {None, "currency"}
 
 
@@ -31,18 +34,91 @@ def normalize_inputs(raw_inputs: dict[str, object]) -> TypedInputs:
     }
 
 
-def classify_denominator(value: float | None) -> str:
+def classify_denominator(value: float | None) -> DenominatorClass:
+    """Canonical denominator classifier (Wave 2 Section 10).
+
+    Single source of truth for denominator class assignment.
+    All ratio-like metrics MUST use this classifier.
+
+    Classification order (matches spec Section 10.3-10.5):
+    1. MISSING - None value
+    2. NON_FINITE - NaN, +Inf, -Inf
+    3. ZERO - 0, 0.0, -0.0 (all zero variants treated equally)
+    4. NEAR_ZERO_FORBIDDEN - |value| < DENOMINATOR_EPSILON
+    5. NEGATIVE_FINITE - value < 0 and finite
+    6. POSITIVE_FINITE - value > 0 and finite
+
+    Args:
+        value: Denominator value to classify
+
+    Returns:
+        DenominatorClass enum value (never string codes)
+
+    Reference: .agent/math_layer_v2_wave2_spec.md Section 10
+    """
+    # C1-C2: Missing check
     if value is None:
-        return "missing"
+        return DenominatorClass.MISSING
+
+    # C4: Non-finite check (NaN, Inf)
     if not math.isfinite(value):
-        return "non_finite"
+        return DenominatorClass.NON_FINITE
+
+    # C3: Zero semantics - 0, 0.0, -0.0 all treated as ZERO
     if value == 0:
-        return "zero"
+        return DenominatorClass.ZERO
+
+    # C5: Near-zero semantics with centralized threshold
     if abs(value) < DENOMINATOR_EPSILON:
-        return "near_zero"
+        return DenominatorClass.NEAR_ZERO_FORBIDDEN
+
+    # Positive/negative classification
     if value < 0:
-        return "negative"
-    return "valid"
+        return DenominatorClass.NEGATIVE_FINITE
+
+    return DenominatorClass.POSITIVE_FINITE
+
+
+# =============================================================================
+# Wave 2: Shared predicate surface for helper reuse (Section 10.6, C6)
+# These predicates provide the same semantics as classify_denominator()
+# for cases where helpers need direct checks without full classification.
+# =============================================================================
+
+
+def is_zero_or_signed_zero(value: float | None) -> bool:
+    """Check if value is zero or signed-zero (0, 0.0, -0.0).
+
+    Uses same semantics as canonical classifier (value == 0).
+    """
+    if value is None:
+        return False
+    return value == 0
+
+
+def is_non_finite(value: float | None) -> bool:
+    """Check if value is non-finite (NaN, +Inf, -Inf).
+
+    Uses same semantics as canonical classifier.
+    """
+    if value is None:
+        return False
+    return not math.isfinite(value)
+
+
+def is_near_zero_forbidden(value: float | None) -> bool:
+    """Check if value is forbidden near-zero (|value| < DENOMINATOR_EPSILON).
+
+    Uses centralized threshold from validators module.
+    MUST NOT define local epsilon in helper code.
+    """
+    if value is None:
+        return False
+    if not math.isfinite(value):
+        return False
+    if value == 0:
+        return False  # Zero is handled by is_zero_or_signed_zero
+    return abs(value) < DENOMINATOR_EPSILON
 
 
 def _coerce_input_ref(key: str, raw_value: Any) -> MetricInputRef:

@@ -296,7 +296,11 @@ def test_engine_strict_positive_denominator_rejects_zero() -> None:
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
     assert metric.value is None
-    assert "denominator:short_term_liabilities:zero" in metric.reason_codes
+    # Wave 2: Extended reason code format with full policy violation details
+    assert any(
+        "denominator:short_term_liabilities:zero" in code
+        for code in metric.reason_codes
+    )
 
 
 def test_engine_strict_positive_denominator_rejects_negative() -> None:
@@ -329,7 +333,11 @@ def test_engine_strict_positive_denominator_rejects_near_zero() -> None:
     metric = result["current_ratio"]
     assert metric.validity_state == "invalid"
     assert metric.value is None
-    assert "denominator:short_term_liabilities:near_zero" in metric.reason_codes
+    # Wave 2: Extended reason code format with full policy violation details
+    assert any(
+        "denominator:short_term_liabilities:near_zero" in code
+        for code in metric.reason_codes
+    )
 
 
 def test_engine_invalidates_non_finite_input() -> None:

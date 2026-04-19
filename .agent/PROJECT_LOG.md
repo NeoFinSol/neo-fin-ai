@@ -1,5 +1,130 @@
 # Project Log
 
+## 2026-04-19 — feat(math): Wave 2 complete — denominator policy hardening (Tasks A-F)
+
+**Контекст:** Math Layer v2 — Wave 2, устранение дефектов в denominator policy path согласно спецификации `.agent/math_layer_v2_wave2_spec.md`
+
+**Что сделано:**
+
+**Task A: Registry validation and ratio-like identity enforcement**
+- Добавлена функция `is_ratio_like()` для machine-checkable определения ratio-like метрик через explicit `denominator_key`
+- Registry теперь требует явного объявления `denominator_key` и `denominator_policy` для всех ratio-like метрик
+- Validation предотвращает hidden raw divide без denominator policy declaration
+
+**Task B: Proof metric declaration with non-export boundary**
+- Добавлен proof metric `_wave2_proof_allow_any_non_zero` с ALLOW_ANY_NON_ZERO policy
+- Metric имеет `legacy_label=None` и `frontend_key=None` для предотвращения экспорта в product-facing surfaces
+- Документирован в registry.py с комментарием "WAVE 2 PROOF METRIC"
+- Тесты подтверждают: metric существует, ratio-like, не экспортируется в LEGACY_RATIO_NAME_MAP или RATIO_KEY_MAP
+
+**Task C: Canonical denominator classification**
+- Создана функция `classify_denominator()` в `validators.py` как единый источник классификации
+- Классы: MISSING, ZERO, SIGNED_ZERO, NON_FINITE, NEAR_ZERO_FORBIDDEN, POSITIVE_FINITE, NEGATIVE_FINITE
+- Централизованный порог DENOMINATOR_EPSILON = 1e-9 (используется везде, нет локальных override'ов)
+- Детерминированная классификация без side effects
+
+**Task D: Canonical denominator policy evaluation**
+- Создана функция `evaluate_denominator_policy()` для применения политик к классам знаменателя
+- Поддерживаемые политики: STRICT_POSITIVE, ALLOW_ANY_NON_ZERO
+- Возвращает DenominatorPolicyDecision с полями: allowed (bool), refusal_reason (str), context (dict)
+- Полный coverage matrix: все комбинации политик × классов протестированы
+
+**Task E: Engine denominator gate with deterministic refusal**
+- Добавлена функция `_validate_denominator_policy()` в engine.py
+- Интегрирует classifier + evaluator для full policy enforcement перед formula execution
+- Deterministic refusal mapping (Section 13):
+  - MISSING → UNAVAILABLE
+  - ZERO/SIGNED_ZERO/NON_FINITE/NEAR_ZERO_FORBIDDEN → INVALID
+  - NEGATIVE_FINITE under STRICT_POSITIVE → INVALID
+- Engine owned final refusal assembly с trace annotation
+
+**Task F: Canonical ratio helper fail-safe hardening (F1-F11)**
+- Усилена функция `_ratio()` в registry.py с comprehensive guards:
+  - F2: Missing numerator/denominator → structured refusal
+  - F3: Non-finite (NaN, Inf) inputs → structured refusal
+  - F4: Zero/signed-zero denominator → structured refusal
+  - F5: Forbidden near-zero denominator (< 1e-9) → structured refusal
+  - F6: No raw divide before all guards pass
+  - F10-F11: Direct unsafe invocation no-crash guarantee (defensive try/except)
+- Локальный константа `_RATIO_DENOMINATOR_EPSILON = 1e-9` для избежания circular import
+- Structured failure semantics вместо exceptions: guard_failure в trace, extra_reason_codes
+
+**Новые файлы:**
+- `src/analysis/math/registry_validation.py` — startup validation для ratio-like declarations
+
+**Модифицированные модули:**
+- `src/analysis/math/registry.py` — добавлены guards в `_ratio()`, docstring "F1-F11", proof metric
+- `src/analysis/math/engine.py` — добавлен `_validate_denominator_policy()` gate
+- `src/analysis/math/validators.py` — добавлен `classify_denominator()` (из Task C)
+- `src/analysis/math/policies.py` — добавлен `evaluate_denominator_policy()` (из Task D)
+
+**Тесты:**
+- Модифицированы: `tests/analysis/math/test_ratio_helper_safety.py` (21 тест, F2-F6, R1-R6)
+- Добавлены: `tests/analysis/math/test_denominator_classification.py` (35 тестов, C1-C6)
+- Добавлены: `tests/analysis/math/test_denominator_policy.py` (30 тестов, P1-P11, D2-D6)
+- Добавлены: `tests/analysis/math/test_engine_denominator_guard.py` (18 тестов, E1-E10)
+- Добавлены: `tests/analysis/math/test_registry_denominator_validation.py` (12 тестов)
+- Добавлены: `tests/analysis/math/test_wave2_proof_metric_registration.py` (14 тестов, B1-B4)
+- Итого: 120 тестов passed
+
+**Архитектурные инварианты:**
+- Dual-layer safety: engine-level gate (Layer 1) + local helper guard (Layer 2)
+- Centralized denominator semantics: один classifier, один evaluator, один threshold
+- Structured refusal only: никаких runtime exceptions как expected control flow
+- Determinism: same inputs → same classification → same outcome
+- Non-breaking: public output shape не изменён
+
+**SOLID/Clean Code verification:**
+- SRP: classification / policy decision / guarded divide / orchestration разделены
+- OCP: новые политики добавляются без invasive rewrites формул
+- DIP: engine зависит от абстракций (classifier, evaluator), не реализаций
+- Все функции ≤ 20 строк (кроме docstrings)
+- Cyclomatic complexity ≤ 5 (guard clauses pattern)
+- Вложенность ≤ 3 уровня
+- DRY: нет дублирования threshold или guard logic
+
+**Верификация:** `pytest tests/analysis/math/ -v` → 120 passed
+
+---
+
+## 2026-04-19 — feat(demo): AI Agent Control Center — AgentBrowser + MCP + Supabase integration showcase
+
+**Контекст:** Создание демонстрационной страницы для показа интеграции трёх ключевых технологий
+
+**Что сделано:**
+- Создана новая страница `src/pages/AIAgentControlCenter.tsx` (569 строк)
+- Добавлен основной компонент `src/components/AIAgentControlCenter/index.tsx` (370 строк)
+- Определены типы в `src/components/AIAgentControlCenter/types.ts` (108 строк)
+- Стили в `src/styles/AIAgentControlCenter.css` (327 строк)
+- Обновлён `src/App.tsx` с новым роутом `/ai-agent-control-center`
+
+**Ключевые фичи:**
+- **Agent Management**: управление агентами с отслеживанием статусов и производительности
+- **Task Queue System**: система задач с приоритетами и прогрессом выполнения
+- **MCP Integration**: отображение Model Context Protocol инструментов по категориям
+- **AgentBrowser Embedding**: встроенный iframe с AI агентом
+- **Real-time Updates**: симуляция real-time обновлений через интервалы
+- **Statistics Dashboard**: дашборд с метриками, графиками и activity feed
+- **Three-panel Layout**: три панели (Agents, Tasks, System Status)
+
+**Технологии:**
+- React 19 + TypeScript
+- Ant Design (antd v5.29.3) для UI компонентов
+- Supabase client (`@supabase/supabase-js` v2.89.0) для backend интеграции
+- MCP (Model Context Protocol) для AI agent tool integration
+- AgentBrowser через iframe embedding
+
+**Исправленные ошибки:**
+- npm registry issue: изменён с `npmmirror.com` на `registry.npmjs.org`
+- Missing Supabase package: установлен `@supabase/supabase-js --save`
+
+**Верификация:** 
+- Webpack compiled successfully
+- Dev server запущен на port 8000
+- Страница доступна по адресу http://localhost:8000/ai-agent-control-center
+
+---
+
 ## 2026-04-19 — feat(math): Wave 1a complete — numeric hardening (W1A-001–W1A-030)
 
 **Контекст:** Math Layer v2 — Wave 1a, все 30 задач + audit findings remediation
