@@ -1,6 +1,7 @@
 # NeoFin AI — Обзор проекта
 
 ## Статус
+- **Текущая агентская сессия**: 2026-04-20 — усилен internal design [math_layer_v2_wave4.5_design.md](E:/neo-fin-ai/.agent/math%20layer%20v2%20docs/math_layer_v2_wave4.5_design.md) до уровня implementation blueprint. Добавлены: полный typed artifact model (`DocumentInputBundle`, `PrecomputedInputBundle`, `ScoringFreezeCase`, `ClassificationDecision`, `PayloadFieldRule`, `FreezeInventoryEntry`, `InvariantSeed`, `BoundaryExpectation`, `BoundaryExecutionResult`, `PayloadClassResolution`), canonical source-of-truth rule (typed registries primary, docs derived), exact case registry/export contract, fixed assertion pipeline, payload class resolution priority, blocker workflow для `BUG_TO_FIX_BEFORE_FREEZE`, invariant taxonomy, no-crash structured-result rule, snapshot scope rule, stable render order для derived docs и production modification policy.
 - **Текущая агентская сессия**: 2026-04-20 — создан recovery-контур для безопасной интеграции веток вокруг `Math Layer v2 Wave 4.5`. Сохранены страховочные ветки `codex/preserve-main-dirty-2026-04-20` и `codex/preserve-math-layer-v1-dirty-2026-04-20`, рабочее дерево переведено на `codex/wave45-recovery-2026-04-20` от `origin/main`. После re-check выяснено: `feat/math-wave3-layer-v2` уже совпадает по дереву с `origin/main`, `claude/festive-nash` содержит в основном устаревший/шумный surface. В recovery перенесены только два полезных non-duplicative тестовых инварианта: vocabulary lock для `SuppressionPolicy` и consumer-contract test, что `calculate_ratios()` читает весь legacy export из `project_legacy_ratios()`. Targeted verification зелёная: `tests/test_api.py tests/test_math_contracts.py tests/test_ratios.py` → `13 passed`.
 - **2026-04-20 — Math Layer v2 Wave 4 (outward reason governance) — ЗАКРЫТА в коде на ветке `feat/math-wave3-layer-v2`:** единый реестр `reason_codes.py`, финальная резолюция `reason_resolution.py`, emission guard на `DerivedMetric`, trace-слой `trace_reason_semantics.py`, удалён shim `resolver_reason_codes.py`, governance-тесты включены в репозиторий через `.gitignore` (исключения для `tests/test_reason_*.py`, `test_comparative_reason_governance.py`, `test_wave4_engine_reason_governance.py`, `test_ratio_helper_safety.py`). Зафиксированный долг: TD-023–TD-026 в `.agent/tech_debt_backlog.md`; нормативный `math_layer_v2_wave4_spec.md` — вне репо до отдельной публикации. Трекнутая заметка: `docs/MATH_LAYER_V2_WAVE4_CLOSURE.md`.
 
@@ -504,3 +505,14 @@ Internet → nginx:80/443 (reverse proxy, rate limiting, gzip)
 - `docker-compose.prod.yml` — production orchestration
 - `nginx.conf` — reverse proxy, rate limiting (10r/s), security headers
 - `scripts/deploy-prod.sh` — deploy script (validate → build → migrate → start)
+
+---
+
+## Текущий статус (2026-04-20): Math Layer v2 Wave 4.5
+
+- Wave 4.5 freeze baseline собран как executable test-governed layer (`tests/scoring_freeze/*` + derived docs).
+- Финальный handoff артефакт создан: `docs/WAVE_4_5_SCORING_FREEZE.md`.
+- Обязательные suite-категории Wave 4.5 проходят локально.
+- Blocker separation соблюдён (`BUG_TO_FIX_BEFORE_FREEZE` не включены в canonical baseline).
+- **Wave 5 статус:** `BLOCKED` — mandatory gate `payload matrix complete` пока не закрыт (неполное покрытие payload classes в typed matrix).
+- Техдолг по Iterations 5–9 зафиксирован в `docs/TECH_DEBT_BACKLOG.md`.

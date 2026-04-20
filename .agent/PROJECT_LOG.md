@@ -1,5 +1,80 @@
 # Project Log
 
+## 2026-04-20 — docs(math-v2): harden Wave 4.5 design into implementation blueprint
+
+**Контекст:** user-requested refinement pass for `Math Layer v2 — Wave 4.5 Design`
+
+**Что сделано:**
+- полностью переписан `.agent/math layer v2 docs/math_layer_v2_wave4.5_design.md` из рамочного design в deterministic implementation blueprint
+- добавлен полный typed artifact model:
+  - `DocumentInputBundle`
+  - `PrecomputedInputBundle`
+  - `ScoringFreezeCase`
+  - `ClassificationDecision`
+  - `PayloadFieldRule`
+  - `FreezeInventoryEntry`
+  - `InvariantSeed`
+  - `BoundaryExpectation`
+  - `BoundaryExecutionResult`
+  - `PayloadClassResolution`
+- зафиксирован canonical source-of-truth rule:
+  - machine-readable source lives in `tests/scoring_freeze/fixtures/*`
+  - docs under `docs/*` are derived/synchronized artifacts
+  - markdown explicitly forbidden as primary source for assertions
+- добавлен exact registry/export contract:
+  - input bundles
+  - canonical cases / blocker cases
+  - expectations
+  - classifications
+  - payload rule sets
+  - inventory entries
+  - invariant seeds
+- добавлен deterministic helper architecture:
+  - `boundary_runner.py`
+  - `payload_classifier.py`
+  - `case_assertions.py`
+  - `payload_assertions.py`
+  - `machine_contract_assertions.py`
+  - `numeric_assertions.py`
+  - `domain_assertions.py`
+  - `doc_renderers.py`
+- добавлен exact assertion pipeline:
+  - boundary execution
+  - crash/refusal admissibility
+  - classification admissibility
+  - payload class resolution
+  - payload matrix contract
+  - machine status contract
+  - machine reason contract
+  - domain-specific annualization/guardrails behavior
+  - numeric assertions
+  - soft presentation assertions
+- добавлены недостающие governance/workflow rules:
+  - payload class resolution priority + secondary traits
+  - blocker workflow for `BUG_TO_FIX_BEFORE_FREEZE`
+  - invariant taxonomy
+  - no-crash structured-result rule
+  - snapshot scope rule
+  - production modification policy
+  - stable render ordering for derived docs
+- подтянуты реальные scoring signatures в design:
+  - `calculate_score_with_context(metrics, filename, text, extraction_metadata, profile)`
+  - `calculate_score_from_precomputed_ratios(metrics, ratios_ru, ratios_en, methodology, extraction_metadata)`
+
+**Верификация:**
+- выполнен local self-review обновлённого design
+- проверены:
+  - симметрия typed models и registry linkage
+  - соответствие input bundle models реальным scoring signatures
+  - отсутствие рыхлых формулировок в phase sequence
+  - стабильность render-order rules для derived docs
+
+**Примечание:**
+- это internal-doc refinement; runtime/product code не менялся
+- автоматические тесты не запускались, потому что изменение ограничено design/documentation layer
+
+---
+
 ## 2026-04-20 — test(recovery): preserve branch recovery and add two non-duplicative math guards
 
 **Контекст:** user-requested cleanup/recovery pass по локальным веткам вокруг `E:\neo-fin-ai` перед работой над `Math Layer v2 Wave 4.5`.
@@ -5827,3 +5902,26 @@ Frontend (frontend/src/):
 **BREAKING CHANGE:** `PeriodInput` теперь требует обязательное поле `file_path`. Клиенты, использующие JSON-тело `MultiAnalysisRequest`, должны перейти на `multipart/form-data`.
 
 **Тесты:** `test_period_input_missing_file_path` — PASSED; 6/6 preservation тестов — PASSED.
+
+---
+
+## 2026-04-20 — Math Layer v2 Wave 4.5 freeze baseline (Iterations 1–9)
+
+### Scoring freeze harness, suites, docs and handoff gate
+
+**Изменения:**
+- `tests/scoring_freeze/fixtures/*` — сформирован typed freeze baseline: models, inventory, classification, inputs, cases, expectations, payload rules, invariant seeds.
+- `tests/scoring_freeze/helpers/*` — добавлен helper layer для boundary execution, payload classification, assertion orchestration и docs rendering.
+- `tests/scoring_freeze/test_scoring_annualization_golden.py` — annualization golden suite.
+- `tests/scoring_freeze/test_scoring_guardrails_golden.py` + `tests/scoring_freeze/test_scoring_regressions.py` — guardrails golden/regression suites.
+- `tests/scoring_freeze/test_scoring_payload_snapshots.py` — payload structural/snapshot suite.
+- `tests/scoring_freeze/test_scoring_invariants.py` + `tests/scoring_freeze/test_scoring_docs_sync.py` — invariant governance и docs sync coverage.
+- `docs/scoring_freeze_inventory.md`, `docs/scoring_freeze_classification.md`, `docs/scoring_freeze_payload_matrix.md` — derived freeze docs.
+- `docs/WAVE_4_5_SCORING_FREEZE.md` — финальный handoff artifact (derived, gate-based).
+
+**Gate status (Wave 5 unblock):**
+- mandatory suites green: PASS (annualization / guardrails+regressions / payload snapshots / invariants / docs sync)
+- blocker separation: PASS
+- canonical linkage invariants: PASS
+- payload matrix completeness: **FAIL** (missing classes: `full_success`, `with_exclusions`, `invalid_or_suppressed_factor`, `refused_payload`)
+- итоговый статус: **Wave 5 BLOCKED** до закрытия payload-matrix completeness.
