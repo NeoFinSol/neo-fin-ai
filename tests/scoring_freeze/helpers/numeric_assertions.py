@@ -34,9 +34,9 @@ def assert_soft_presentation_number(
     if expected_value is None:
         return
     assert actual_value is not None, f"Missing soft numeric field {field_path}"
-    assert isinstance(actual_value, (int, float)), (
-        f"Soft numeric field {field_path} must be numeric"
-    )
+    assert isinstance(
+        actual_value, (int, float)
+    ), f"Soft numeric field {field_path} must be numeric"
 
 
 def _get_by_path(payload: Mapping[str, Any], field_path: str) -> Any:

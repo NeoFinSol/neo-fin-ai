@@ -2,7 +2,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, Mapping
 
 BoundaryKind = Literal["document", "precomputed"]
-FreezeDomain = Literal["annualization", "guardrails", "payload", "regression", "invariant"]
+FreezeDomain = Literal[
+    "annualization", "guardrails", "payload", "regression", "invariant"
+]
 PayloadClass = Literal[
     "full_success",
     "with_annualization",

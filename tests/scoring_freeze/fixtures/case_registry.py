@@ -74,7 +74,9 @@ ALL_FREEZE_CASES: tuple[ScoringFreezeCase, ...] = (
     ),
 )
 
-CASE_INDEX: dict[str, ScoringFreezeCase] = {case.case_id: case for case in ALL_FREEZE_CASES}
+CASE_INDEX: dict[str, ScoringFreezeCase] = {
+    case.case_id: case for case in ALL_FREEZE_CASES
+}
 
 CANONICAL_FREEZE_CASES: tuple[ScoringFreezeCase, ...] = tuple(
     CASE_INDEX[case_id] for case_id in ADMISSIBLE_CANONICAL_BASELINE_CASES
@@ -85,32 +87,52 @@ BLOCKER_CASES: tuple[ScoringFreezeCase, ...] = tuple(
 )
 
 CASES_BY_DOMAIN: dict[FreezeDomain, tuple[ScoringFreezeCase, ...]] = {
-    "annualization": tuple(case for case in ALL_FREEZE_CASES if case.domain == "annualization"),
-    "guardrails": tuple(case for case in ALL_FREEZE_CASES if case.domain == "guardrails"),
+    "annualization": tuple(
+        case for case in ALL_FREEZE_CASES if case.domain == "annualization"
+    ),
+    "guardrails": tuple(
+        case for case in ALL_FREEZE_CASES if case.domain == "guardrails"
+    ),
     "payload": tuple(case for case in ALL_FREEZE_CASES if case.domain == "payload"),
-    "regression": tuple(case for case in ALL_FREEZE_CASES if case.domain == "regression"),
+    "regression": tuple(
+        case for case in ALL_FREEZE_CASES if case.domain == "regression"
+    ),
     "invariant": tuple(case for case in ALL_FREEZE_CASES if case.domain == "invariant"),
 }
 
 CASES_BY_BOUNDARY: dict[str, tuple[ScoringFreezeCase, ...]] = {
-    "document": tuple(case for case in ALL_FREEZE_CASES if case.boundary_kind == "document"),
-    "precomputed": tuple(case for case in ALL_FREEZE_CASES if case.boundary_kind == "precomputed"),
+    "document": tuple(
+        case for case in ALL_FREEZE_CASES if case.boundary_kind == "document"
+    ),
+    "precomputed": tuple(
+        case for case in ALL_FREEZE_CASES if case.boundary_kind == "precomputed"
+    ),
 }
 
 CASES_WITHOUT_INPUT_BUNDLE: tuple[str, ...] = tuple(
-    case.case_id for case in ALL_FREEZE_CASES if case.input_bundle_id not in INPUT_BUNDLE_INDEX
+    case.case_id
+    for case in ALL_FREEZE_CASES
+    if case.input_bundle_id not in INPUT_BUNDLE_INDEX
 )
 CASES_WITHOUT_CLASSIFICATION: tuple[str, ...] = tuple(
-    case.case_id for case in ALL_FREEZE_CASES if case.classification_id not in CLASSIFICATION_INDEX
+    case.case_id
+    for case in ALL_FREEZE_CASES
+    if case.classification_id not in CLASSIFICATION_INDEX
 )
 CASES_WITHOUT_PAYLOAD_RULE_SET: tuple[str, ...] = tuple(
-    case.case_id for case in ALL_FREEZE_CASES if case.payload_rule_set_id not in PAYLOAD_RULE_SET_INDEX
+    case.case_id
+    for case in ALL_FREEZE_CASES
+    if case.payload_rule_set_id not in PAYLOAD_RULE_SET_INDEX
 )
 CASES_WITHOUT_INVENTORY_LINKAGE: tuple[str, ...] = tuple(
-    case.case_id for case in ALL_FREEZE_CASES if case.inventory_entry_id not in INVENTORY_INDEX
+    case.case_id
+    for case in ALL_FREEZE_CASES
+    if case.inventory_entry_id not in INVENTORY_INDEX
 )
 CASES_WITHOUT_EXPECTATION: tuple[str, ...] = tuple(
-    case.case_id for case in ALL_FREEZE_CASES if case.expectation_id not in EXPECTATION_INDEX
+    case.case_id
+    for case in ALL_FREEZE_CASES
+    if case.expectation_id not in EXPECTATION_INDEX
 )
 CASES_WITHOUT_INVARIANT_SEEDS: tuple[str, ...] = tuple(
     case.case_id for case in ALL_FREEZE_CASES if not case.invariant_seed_ids

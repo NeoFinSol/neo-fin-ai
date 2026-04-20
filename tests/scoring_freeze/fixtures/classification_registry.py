@@ -157,8 +157,7 @@ ADMISSIBLE_CANONICAL_BASELINE_CASES: tuple[str, ...] = tuple(
 UNCLASSIFIED_AMBIGUITY_IDS: tuple[str, ...] = tuple(
     ambiguity_id
     for ambiguity_id in AMBIGUITY_INDEX
-    if ambiguity_id
-    not in set(CLASSIFICATION_TO_AMBIGUITY_ID.values())
+    if ambiguity_id not in set(CLASSIFICATION_TO_AMBIGUITY_ID.values())
 )
 
 if UNCLASSIFIED_AMBIGUITY_IDS:

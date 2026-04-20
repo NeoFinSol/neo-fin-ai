@@ -35,7 +35,10 @@ def assert_optional_field_omission_rules(
         elif rule.omission_rule == "null":
             assert value is None, f"Field must be null: {rule.field_path}"
         elif rule.omission_rule == "empty_container":
-            assert value in ([], {}), f"Field must be empty container: {rule.field_path}"
+            assert value in (
+                [],
+                {},
+            ), f"Field must be empty container: {rule.field_path}"
 
 
 def assert_field_types(

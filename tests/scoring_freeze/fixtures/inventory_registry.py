@@ -286,9 +286,7 @@ AMBIGUITY_LIST: tuple[AmbiguityEntry, ...] = (
         ambiguity_id="amb-observed-vs-spec-label-coupling",
         kind="observed_vs_spec",
         source_symbol="src.analysis.scoring.build_score_payload",
-        observed_behavior=(
-            "WEIGHTS and BENCHMARKS are keyed by Russian ratio labels."
-        ),
+        observed_behavior=("WEIGHTS and BENCHMARKS are keyed by Russian ratio labels."),
         ambiguity_summary=(
             "Wave specs discourage labels/localization as primary semantic "
             "source; current behavior still binds to RU labels."
@@ -318,16 +316,13 @@ AMBIGUITY_LIST: tuple[AmbiguityEntry, ...] = (
         kind="consumer_visible_quirk",
         source_symbol="src.analysis.scoring.build_score_payload",
         observed_behavior=(
-            "factors list may be empty while score/methodology fields still "
-            "exist."
+            "factors list may be empty while score/methodology fields still " "exist."
         ),
         ambiguity_summary=(
             "Consumer interpretation of empty factors is visible and can drift "
             "during refactor."
         ),
-        freeze_scope_note=(
-            "Include in payload freeze inventory as explicit quirk."
-        ),
+        freeze_scope_note=("Include in payload freeze inventory as explicit quirk."),
     ),
 )
 

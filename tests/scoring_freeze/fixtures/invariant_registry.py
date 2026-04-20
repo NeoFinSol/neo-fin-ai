@@ -77,4 +77,6 @@ INVARIANT_SEEDS: tuple[InvariantSeed, ...] = (
     ),
 )
 
-INVARIANT_INDEX: dict[str, InvariantSeed] = {seed.seed_id: seed for seed in INVARIANT_SEEDS}
+INVARIANT_INDEX: dict[str, InvariantSeed] = {
+    seed.seed_id: seed for seed in INVARIANT_SEEDS
+}

@@ -115,9 +115,10 @@ def render_wave_handoff_md() -> str:
             not CASES_WITH_DUPLICATE_DOMAIN_ASSIGNMENT,
         )
     )
-    blocker_cases_separated = (
-        {case.case_id for case in CANONICAL_FREEZE_CASES}.isdisjoint(BLOCKER_CASE_IDS)
-        and {case.case_id for case in BLOCKER_CASES} == set(BLOCKER_CASE_IDS)
+    blocker_cases_separated = {
+        case.case_id for case in CANONICAL_FREEZE_CASES
+    }.isdisjoint(BLOCKER_CASE_IDS) and {case.case_id for case in BLOCKER_CASES} == set(
+        BLOCKER_CASE_IDS
     )
     payload_matrix_complete = not missing_payload_classes
     all_mandatory_suites_green = True
@@ -201,7 +202,7 @@ def render_wave_handoff_md() -> str:
     lines.extend(
         [
             "",
-        "## Canonical Cases",
+            "## Canonical Cases",
         ]
     )
     for case in sorted(CANONICAL_FREEZE_CASES, key=lambda item: item.case_id):
@@ -245,7 +246,9 @@ def render_wave_handoff_md() -> str:
         ]
     )
     if missing_payload_classes:
-        lines.append(f"- payload matrix missing classes: {', '.join(missing_payload_classes)}")
+        lines.append(
+            f"- payload matrix missing classes: {', '.join(missing_payload_classes)}"
+        )
     lines.extend(
         [
             "",

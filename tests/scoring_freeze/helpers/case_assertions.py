@@ -21,7 +21,9 @@ from tests.scoring_freeze.helpers.numeric_assertions import (
     assert_hard_frozen_number,
     assert_soft_presentation_number,
 )
-from tests.scoring_freeze.helpers.payload_assertions import assert_payload_matches_matrix
+from tests.scoring_freeze.helpers.payload_assertions import (
+    assert_payload_matches_matrix,
+)
 
 
 def assert_boundary_case(
@@ -39,7 +41,9 @@ def assert_boundary_case(
     assert_payload_matches_matrix(payload, payload_rules)
     assert_machine_status_contract(payload, expectation.expected_status_fields)
     assert_machine_reason_contract(payload, expectation.expected_reason_fields)
-    assert_machine_methodology_contract(payload, expectation.expected_annualization_fields)
+    assert_machine_methodology_contract(
+        payload, expectation.expected_annualization_fields
+    )
     assert_annualization_behavior(payload, expectation.expected_annualization_fields)
     assert_guardrail_behavior(payload, expectation.expected_guardrail_fields)
     _assert_numeric_contract(payload, expectation)
