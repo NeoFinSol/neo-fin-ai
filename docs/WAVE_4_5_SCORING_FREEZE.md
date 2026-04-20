@@ -58,12 +58,12 @@ Derived from typed registries.
 ## Mandatory Gates
 - canonical freeze case registry complete: PASS
 - blocker cases separated: PASS
-- annualization golden suite green: PASS
-- guardrails golden/regression suites green: PASS
+- annualization golden suite green: FAIL
+- guardrails golden/regression suites green: FAIL
 - payload matrix complete: FAIL
-- payload structural tests green: PASS
-- invariant suite green: PASS
-- docs sync green: PASS
+- payload structural tests green: FAIL
+- invariant suite green: FAIL
+- docs sync green: FAIL
 - handoff docs complete: PASS
 - payload matrix missing classes: full_success, invalid_or_suppressed_factor, refused_payload, with_exclusions
 

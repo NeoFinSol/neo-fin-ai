@@ -123,7 +123,9 @@ def render_wave_handoff_md() -> str:
         BLOCKER_CASE_IDS
     )
     payload_matrix_complete = not missing_payload_classes
-    all_mandatory_suites_green = True
+    # Suite pass state must come from executable CI/test evidence.
+    # If there is no machine-recorded evidence in typed baseline, stay conservative.
+    all_mandatory_suites_green = False
     wave5_unblocked = all(
         (
             canonical_registry_complete,
@@ -238,12 +240,12 @@ def render_wave_handoff_md() -> str:
             "## Mandatory Gates",
             f"- canonical freeze case registry complete: {'PASS' if canonical_registry_complete else 'FAIL'}",
             f"- blocker cases separated: {'PASS' if blocker_cases_separated else 'FAIL'}",
-            "- annualization golden suite green: PASS",
-            "- guardrails golden/regression suites green: PASS",
+            f"- annualization golden suite green: {'PASS' if all_mandatory_suites_green else 'FAIL'}",
+            f"- guardrails golden/regression suites green: {'PASS' if all_mandatory_suites_green else 'FAIL'}",
             f"- payload matrix complete: {'PASS' if payload_matrix_complete else 'FAIL'}",
-            "- payload structural tests green: PASS",
-            "- invariant suite green: PASS",
-            "- docs sync green: PASS",
+            f"- payload structural tests green: {'PASS' if all_mandatory_suites_green else 'FAIL'}",
+            f"- invariant suite green: {'PASS' if all_mandatory_suites_green else 'FAIL'}",
+            f"- docs sync green: {'PASS' if all_mandatory_suites_green else 'FAIL'}",
             "- handoff docs complete: PASS",
         ]
     )
