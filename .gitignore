@@ -113,6 +113,8 @@ run_ocr.bat
 
 # IDE and tool directories
 .agent/
+# Owner-only technical docs (never push to public GitHub)
+docs/tech_docs_private/
 .kiro/
 AGENTS.md
 .qwen/
@@ -123,7 +125,6 @@ AGENTS.md
 .pytest_cache/
 .ruff_cache/
 PDFforTests/
-docs/ROADMAP.md
 
 # Coverage artifacts
 coverage.json

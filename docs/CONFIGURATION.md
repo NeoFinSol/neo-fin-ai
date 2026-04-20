@@ -1,311 +1,364 @@
-# Конфигурация системы НеоФин.Документы
+# Конфигурация НеоФин.Документы
 
-## Общая информация
+## 1. Назначение документа
 
-Все параметры задаются через переменные окружения.
+Документ описывает фактическую конфигурацию среды выполнения проекта:
 
-- **Локально:** файл `.env` в корне репозитория
-- **Продакшн:** переменные окружения контейнера или менеджер секретов
+- параметры приложения;
+- параметры инфраструктурного запуска;
+- режимы выполнения задач;
+- отличия локального и производственного контуров.
 
-```bash
-cp .env.example .env
-# Заполнить обязательные переменные: DATABASE_URL, API_KEY
-```
-
-Переменные читаются при старте через `src/models/settings.py` (Pydantic Settings).
-При невалидном значении — система логирует предупреждение и применяет значение по умолчанию.
+Документ опирается на текущие файлы кода и запуска (`src/models/settings.py`, `src/*`, `.env.example`, `docker-compose.yml`, `docker-compose.prod.yml`, `Dockerfile.backend`).
 
 ---
 
-## Переменные конфигурации
+## 2. Общая модель конфигурации
 
-### Основные параметры
+### 2.1 Где задаются настройки
 
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `DATABASE_URL` | `string` | — | ✅ | Строка подключения к PostgreSQL. Формат: `postgresql+asyncpg://user:pass@host:5432/dbname` |
-| `TEST_DATABASE_URL` | `string` | — | — | Отдельная строка подключения для тестов. При `TESTING=1` используется вместо `DATABASE_URL`, если задана |
-| `API_KEY` | `string` | — | ✅ | Ключ аутентификации. Передаётся в заголовке `X-API-Key` |
-| `CONFIDENCE_THRESHOLD` | `float` | `0.5` | — | Минимальный уровень достоверности для включения показателя в расчёт. Диапазон: `[0.0, 1.0]` |
-| `SCORING_PROFILE` | `string` | `auto` | — | Профиль benchmark’ов интегрального скоринга: `auto`, `generic` или `retail_demo` |
-| `DEV_MODE` | `bool` | `false` | — | Режим разработки: отключает проверку `API_KEY`, разрешает CORS `*` |
-| `DEMO_MODE` | `int` | `0` | — | При `1` — маскирует числовые данные в ответах API |
+1. Файл `.env` (для локального запуска и для compose-контуров с `env_file`).
+2. Переменные окружения контейнера (могут переопределять `.env`).
+3. Значения по умолчанию в коде (`AppSettings` и прямые `os.getenv` в отдельных модулях).
 
-### Пул подключений к базе данных
+### 2.2 Уровни конфигурации
 
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `DB_POOL_SIZE` | `int` | `5` | — | Базовый размер пула подключений |
-| `DB_MAX_OVERFLOW` | `int` | `10` | — | Дополнительные подключения сверх `DB_POOL_SIZE` при всплеске нагрузки |
-| `DB_POOL_TIMEOUT` | `int` | `30` | — | Сколько секунд ждать свободное соединение перед ошибкой пула |
-| `DB_POOL_RECYCLE` | `int` | `3600` | — | Через сколько секунд пересоздавать устаревшие соединения пула |
-| `DB_POOL_PRE_PING` | `bool` | `true` | — | Проверять соединение перед выдачей из пула |
+- **Уровень приложения** — параметры, которые читает код FastAPI/анализатора.
+- **Уровень инфраструктуры запуска** — параметры compose и контейнеров (PostgreSQL, Redis, worker, миграции).
+- **Внешний контур** — обратный прокси и сетевой периметр (например, nginx в production compose).
 
-Поведение:
-- `DB_POOL_TIMEOUT` и `DB_POOL_RECYCLE` реально прокидываются в `create_async_engine()`
-- при невалидных значениях применяются безопасные значения по умолчанию и логируется `WARNING`
-- при `TESTING=1` с заданным `TEST_DATABASE_URL` пул создаётся поверх тестовой БД, а не основной `DATABASE_URL`
+### 2.3 Как читать документ
 
-### Очистка зависших задач
-
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `CLEANUP_BATCH_LIMIT` | `int` | `100` | — | Максимальное число строк за один пакет очистки |
-| `ANALYSIS_CLEANUP_STALE_HOURS` | `int` | `48` | — | Через сколько часов `analyses` в `uploading/processing` считаются зависшими |
-| `MULTI_SESSION_STALE_HOURS` | `int` | `24` | — | Через сколько часов `multi_analysis_sessions` в `processing` считаются зависшими |
-
-Поведение:
-- используются `scripts/admin_cleanup.py` и модулем обслуживания как значения по умолчанию
-- должны быть положительными целыми числами; при невалидных значениях применяются безопасные значения по умолчанию и логируется `WARNING`
-- задание очистки первой версии использует только политику для зависших незавершённых записей и не удаляет завершённую историю по умолчанию
+- Разделы 3–5: параметры и режимы приложения.
+- Разделы 6–7: запуск через Docker Compose.
+- Раздел 8: сводная таблица переменных с источником, уровнем и дефолтом.
+- Пошаговый запуск в среде **Windows** (Docker Desktop, нативный контур, OCR, режимы задач) вынесен в [`docs/INSTALL_WINDOWS.md`](INSTALL_WINDOWS.md), чтобы не дублировать его здесь.
 
 ---
 
-### Runtime recovery для зависших worker-задач
+## 3. Параметры приложения
 
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `RUNTIME_RECOVERY_BATCH_LIMIT` | `int` | `100` | — | Максимум строк за один проход recovery job |
-| `ANALYSIS_RUNTIME_STALE_MINUTES` | `int` | `60` | — | Через сколько минут без heartbeat одиночный анализ считается зависшим |
-| `MULTI_SESSION_RUNTIME_STALE_MINUTES` | `int` | `90` | — | Через сколько минут без heartbeat многопериодная сессия считается зависшей |
+В этом разделе перечислены параметры, которые влияют на поведение самого сервера и обработчика анализа.  
+Параметры запуска контейнеров и сетевого периметра вынесены в разделы 6–7.
 
-Поведение:
-- используются `scripts/runtime_recover.py` и recovery-модулем как значения по умолчанию
-- recovery job по умолчанию работает в `dry_run`
-- текущая безопасная политика не делает auto-requeue: stale runtime строки переводятся в `failed` с `reason_code=runtime_stale_timeout`
-- heartbeat берётся из `runtime_heartbeat_at`, а если он ещё не выставлен — из `created_at`/`updated_at`
+## 3.1 Ключ доступа и режим разработки
 
----
+- `API_KEY` — ключ для защищенных HTTP-маршрутов.
+- `DEV_MODE` (`false` по умолчанию) — отключает проверку `X-API-Key` в HTTP-маршрутах и ослабляет CORS в `src/app.py`.
+- `DEMO_MODE` (по умолчанию `0`) — включает маскирование числовых значений в ответах результатов/истории.
 
-### LLM extraction и guarded structured output
+## 3.2 Параметры базы данных
 
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `LLM_EXTRACTION_ENABLED` | `bool` | `false` | — | Включить LLM-based extraction поверх детерминированного контура |
-| `LLM_CHUNK_SIZE` | `int` | `12000` | — | Размер одного текстового чанка для extraction |
-| `LLM_MAX_CHUNKS` | `int` | `5` | — | Максимальное число чанков на документ |
-| `LLM_TOKEN_BUDGET` | `int` | `50000` | — | Общий текстовый budget на документ |
+Из `AppSettings`:
 
-Поведение:
-- LLM-extraction остаётся guarded и не должен перетирать сильный deterministic parse;
-- structured output идёт в отдельный merge-path с fallback и validation;
-- контур полезен как дополнение к `table/text/OCR`, но не подменяет explainability-слой `extraction_metadata`.
+- `DATABASE_URL`
+- `DB_POOL_SIZE` (по умолчанию `5`)
+- `DB_MAX_OVERFLOW` (по умолчанию `10`)
+- `DB_POOL_TIMEOUT` (по умолчанию `30`)
+- `DB_POOL_RECYCLE` (по умолчанию `3600`)
+- `DB_POOL_PRE_PING` (по умолчанию `true`)
 
----
+Из прямого чтения окружения в `src/db/database.py`:
 
-### Персистентный контур выполнения задач
+- `TESTING` (по умолчанию `0`)
+- `CI` (по умолчанию `0`)
+- `TEST_DATABASE_URL` (используется при `TESTING=1`, если задан)
 
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `TASK_RUNTIME` | `string` | `background` | — | Режим выполнения: `background` для встроенных фоновых задач или `celery` для очереди задач |
-| `TASK_QUEUE_BROKER_URL` | `string` | — | при `TASK_RUNTIME=celery` | Адрес Redis-брокера очереди задач. Формат: `redis://host:6379/0` или `rediss://...` |
-| `TASK_QUEUE_RESULT_BACKEND` | `string` | — | — | Адрес Redis-хранилища результатов Celery. В текущем контуре используется как часть согласованной конфигурации процесса-исполнителя |
-| `TASK_EVENTS_REDIS_URL` | `string` | — | — | Адрес Redis-канала для переноса событий статуса из процесса-исполнителя в процесс API FastAPI |
-| `TASK_QUEUE_NAME` | `string` | `neofin` | — | Имя очереди задач для процесса-исполнителя |
-| `TASK_QUEUE_EAGER` | `bool` | `false` | — | Режим немедленного выполнения Celery; нужен только для специальных локальных сценариев и отладки |
+Практически:
 
-Поведение:
-- `TASK_RUNTIME=background` сохраняет локальный безопасный путь без внешней инфраструктуры
-- `TASK_RUNTIME=celery` требует рабочий Redis и отдельный процесс-исполнитель
-- URL очереди и событий валидируются отдельно от HTTP-провайдеров и принимают схемы `redis://` / `rediss://`
-- при недоступности инфраструктуры диспетчер поднимает `TaskRuntimeError`, который роутеры переводят в канонический ответ `503`
-- события статуса в персистентном режиме публикуются через Redis-канал и затем транслируются в WebSocket из процесса FastAPI
-- в Docker-окружении для `backend`, `worker` и `backend-migrate` следует явно задавать `TESTING=0`, чтобы локальный `.env` не переключал runtime на `TEST_DATABASE_URL`
-- cooperative cancellation использует persisted поля `cancel_requested_at` / `cancelled_at`, а `cancelling` вычисляется как transitional user-facing state
-- stale recovery опирается на `runtime_heartbeat_at` и отдельный maintenance job, а не на принудительный auto-requeue
+- в обычном режиме используется `DATABASE_URL`;
+- при `TESTING=1` и заданном `TEST_DATABASE_URL` приложение использует тестовую базу;
+- при `TESTING=1` и отсутствии обеих строк подключения используется встроенный тестовый адрес по умолчанию (только для тестового контура).
 
----
+## 3.3 Параметры фонового выполнения и очередей
 
-### ИИ-провайдеры
+Из `AppSettings`:
 
-Провайдер выбирается автоматически при старте в порядке приоритета:
+- `TASK_RUNTIME` (`background` по умолчанию, поддерживаются `background` и `celery`)
+- `TASK_STORAGE_DIR`
+- `TASK_QUEUE_BROKER_URL`
+- `TASK_QUEUE_RESULT_BACKEND`
+- `TASK_EVENTS_REDIS_URL`
+- `TASK_QUEUE_NAME` (`neofin` по умолчанию)
+- `TASK_QUEUE_EAGER` (`false` по умолчанию)
 
-```
-GigaChat → HuggingFace → Ollama → мягкая деградация
-```
+Связанные параметры обслуживания:
 
-Если ни один провайдер не настроен — NLP-анализ отключается. Числовой анализ (коэффициенты, скоринг) продолжается в полном объёме.
+- `CLEANUP_BATCH_LIMIT` (по умолчанию `100`)
+- `ANALYSIS_CLEANUP_STALE_HOURS` (по умолчанию `48`)
+- `MULTI_SESSION_STALE_HOURS` (по умолчанию `24`)
+- `RUNTIME_RECOVERY_BATCH_LIMIT` (по умолчанию `100`)
+- `ANALYSIS_RUNTIME_STALE_MINUTES` (по умолчанию `60`)
+- `MULTI_SESSION_RUNTIME_STALE_MINUTES` (по умолчанию `90`)
 
----
+## 3.4 Параметры поставщиков языковой модели
 
-#### GigaChat (приоритет 1)
+Из `AppSettings`:
 
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `GIGACHAT_CLIENT_ID` | `string` | — | — | Идентификатор клиента из личного кабинета Sber |
-| `GIGACHAT_CLIENT_SECRET` | `string` | — | — | Секрет клиента из личного кабинета Sber |
+- GigaChat:
+  - `GIGACHAT_CLIENT_ID`
+  - `GIGACHAT_CLIENT_SECRET`
+  - `GIGACHAT_AUTH_URL` (по умолчанию задан)
+  - `GIGACHAT_CHAT_URL` (по умолчанию задан)
+- Hugging Face:
+  - `HF_TOKEN`
+  - `HF_MODEL` (по умолчанию `Qwen/Qwen3.5-9B-Instruct`)
+- Qwen:
+  - `QWEN_API_KEY`
+  - `QWEN_API_URL`
+- Локальная модель:
+  - `LLM_URL` (по умолчанию `http://localhost:11434/api/generate`)
+  - `LLM_MODEL` (по умолчанию `llama3`)
 
-Условие активации: заданы оба — `GIGACHAT_CLIENT_ID` и `GIGACHAT_CLIENT_SECRET`.
-Реализован через **единую ClientSession** с экспоненциальными повторами и кешированием токена на 55 минут.
+Дополнительно, вне `AppSettings`:
 
----
+- `GIGACHAT_SSL_VERIFY` (читается в `src/core/gigachat_agent.py`, по умолчанию `true`)
 
-#### HuggingFace — Qwen/Qwen3.5-9B-Instruct (приоритет 2)
+## 3.5 Прочие параметры приложения
 
-Доступ к модели Qwen через HuggingFace Inference API.
-
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `HF_TOKEN` | `string` | — | — | Токен HuggingFace API (формат: `hf_...`) |
-| `HF_MODEL` | `string` | `Qwen/Qwen3.5-9B-Instruct` | — | Идентификатор модели в каталоге HuggingFace |
-
-Условие активации: задан `HF_TOKEN`.
-
-> **Устарело:** `QWEN_API_KEY` / `QWEN_API_URL` — прямой Qwen API. Заменён на провайдера через HuggingFace. Переменные ещё читаются кодом, но этот путь имеет более низкий приоритет, чем HuggingFace.
-
----
-
-#### Ollama — локальная модель (приоритет 3)
-
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `LLM_URL` | `string` | `http://localhost:11434/api/generate` | — | URL Ollama API |
-| `LLM_MODEL` | `string` | `llama3` | — | Имя модели: `deepseek-r1:7b`, `llama3`, `mistral` и др. |
-
-Условие активации: задан `LLM_URL`. Работает полностью локально, без внешних зависимостей.
-
-Практическая рекомендация для локального JSON-heavy сценария:
-- кодовый default `LLM_MODEL` остаётся `llama3`;
-- для более стабильного structured-output path рекомендуется явно задавать `LLM_MODEL=qwen3.5:9b`.
+- Ограничение запросов:
+  - `RATE_LIMIT` (по умолчанию `100/minute`)
+- Логи:
+  - `LOG_LEVEL` (по умолчанию `INFO`)
+  - `LOG_FORMAT` (по умолчанию `text`)
+- Порог достоверности и профиль скоринга:
+  - `CONFIDENCE_THRESHOLD` (по умолчанию `0.5`)
+  - `SCORING_PROFILE` (по умолчанию `auto`)
+- Параметры повторных попыток/таймаутов:
+  - `AI_TIMEOUT`, `AI_RETRY_COUNT`, `AI_RETRY_BACKOFF` (из `AppSettings`)
+  - `RETRY_COUNT`, `RETRY_BACKOFF`, `RETRY_INITIAL_DELAY` (в `src/utils/retry_utils.py`)
+  - `AI_CIRCUIT_BREAKER_THRESHOLD`, `AI_CIRCUIT_BREAKER_TIMEOUT` (в `src/utils/circuit_breaker.py`)
+- Параметры LLM-извлечения:
+  - `LLM_EXTRACTION_ENABLED`, `LLM_CHUNK_SIZE`, `LLM_MAX_CHUNKS`, `LLM_TOKEN_BUDGET`
+- Параметры CORS (читаются в `src/app.py`):
+  - `CORS_ALLOW_ORIGINS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS`, `CORS_ALLOW_CREDENTIALS`
+- OCR-путь (опционально):
+  - `TESSERACT_CMD`
 
 ---
 
-### Параметры серверной части
+## 4. Выбор поставщика языковой модели
 
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `API_HOST` | `string` | `0.0.0.0` | — | Адрес, на котором слушает FastAPI |
-| `API_PORT` | `int` | `8000` | — | Порт FastAPI |
-| `RATE_LIMIT` | `string` | `100/minute` | — | Лимит запросов. Формат: `<N>/<second\|minute\|hour\|day>` |
-| `LOG_LEVEL` | `string` | `INFO` | — | Уровень логирования: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
-| `LOG_FORMAT` | `string` | `text` | — | Формат логов: `text` (локально) или `json` (продакшн) |
+Поддерживаются четыре поставщика:
 
----
+- `gigachat`
+- `huggingface`
+- `qwen`
+- `ollama`
 
-### Продакшн / SSL
+Порядок выбора по умолчанию в `AIService`:
 
-| Переменная | Тип | По умолчанию | Обязательная | Описание |
-|---|---|---|:---:|---|
-| `SSL_CERT_PATH` | `string` | — | — | Абсолютный путь к SSL-сертификату (`.pem`). Пока используется как резерв под отдельную итерацию настройки HTTPS |
-| `SSL_KEY_PATH` | `string` | — | — | Абсолютный путь к приватному ключу SSL (`.pem`) |
+1. `gigachat`
+2. `huggingface`
+3. `qwen`
+4. `ollama`
 
-Текущий production compose поднимает HTTP-контур на порту 80. Переменные `SSL_CERT_PATH` и `SSL_KEY_PATH` зарезервированы для отдельной итерации включения HTTPS.
+Доступность определяется так:
 
----
+- **GigaChat**: заданы `GIGACHAT_CLIENT_ID` и `GIGACHAT_CLIENT_SECRET` (и не выглядят как шаблонные значения).
+- **Hugging Face**: задан валидный `HF_TOKEN`.
+- **Qwen**: заданы `QWEN_API_KEY` и `QWEN_API_URL`; при этом `QWEN_API_URL` не должен быть шаблонным значением по умолчанию `https://api.qwen.ai/v1`.
+- **Ollama**: задан `LLM_URL` (по умолчанию задан).
 
-## Поведение системы
-
-### Выбор ИИ-провайдера
-
-При старте `AIService._configure()` проверяет переменные в порядке приоритета:
-
-```
-1. GIGACHAT_CLIENT_ID + GIGACHAT_CLIENT_SECRET заданы и не пустые?
-   → Использовать GigaChat
-
-2. HF_TOKEN задан и не пустой?
-   → Использовать HuggingFace (Qwen/Qwen3.5-9B-Instruct)
-
-3. LLM_URL задан?
-   → Использовать Ollama (локальный режим)
-
-4. Ни один провайдер не настроен?
-   → NLP-анализ отключён (мягкая деградация)
-      Возвращаются пустые списки: risks=[], recommendations=[]
-      Числовой анализ продолжается без изменений
-```
-
-**При сбое провайдера во время запроса** (тайм-аут, сетевая ошибка, HTTP 5xx):
-- NLP-блок перехватывает исключение
-- Возвращает пустые списки без прерывания обработки
-- Числовой результат (коэффициенты, скоринг) сохраняется в БД в полном объёме
-- Ошибка логируется с уровнем `WARNING`
-
-Автоматического переключения на следующий провайдер при сбое **не происходит** — провайдер выбирается один раз при старте приложения.
-
-Для пользовательского интерфейса дополнительно доступен endpoint `/system/ai/providers`, который возвращает:
-- `default_provider`
-- `available_providers`
-и используется для выбора preferred provider на экране загрузки.
+Если поставщики не настроены, языковой анализ деградирует без остановки числового контура анализа.
 
 ---
 
-### Порог достоверности
+## 5. Режимы выполнения задач
 
-`CONFIDENCE_THRESHOLD` определяет, какие извлечённые показатели участвуют в расчёте финансовых коэффициентов.
+## 5.1 Встроенный фоновый режим (`TASK_RUNTIME=background`)
 
-**Правило фильтрации:** `confidence >= threshold` → показатель включается в расчёт. Иначе — подставляется `None`.
+- используется `BackgroundTasks` в процессе FastAPI;
+- отдельный worker и Redis не требуются.
 
-| Достоверность | Метод извлечения | Тип источника | При пороге `0.5` |
-|:---:|---|---|:---:|
-| `0.9` | Точное совпадение ключевого слова в таблице | `table_exact` | ✅ включается |
-| `0.7` | Частичное совпадение в таблице | `table_partial` | ✅ включается |
-| `0.5` | Извлечение через регулярное выражение из текста | `text_regex` | ✅ включается |
-| `0.3` | Производный расчёт (например, обязательства = активы − капитал) | `derived` | ❌ исключается |
+## 5.2 Режим очереди (`TASK_RUNTIME=celery`)
 
-**Важно:**
-- Исключённые показатели **не удаляются** из ответа API — они присутствуют в `extraction_metadata` с фактическим уровнем достоверности
-- В расчёт коэффициентов вместо исключённого значения подставляется `None`
-- Коэффициент, зависящий от `None`-показателя, также принимает значение `None`
-- При невалидном значении переменной система применяет `0.5` и логирует `WARNING`
+Требуются:
 
-**Рекомендуемые значения:**
+- запущенный Celery worker;
+- Redis как брокер очереди (`TASK_QUEUE_BROKER_URL`);
+- (опционально) Redis для событий статуса (`TASK_EVENTS_REDIS_URL`, иначе берется `TASK_QUEUE_BROKER_URL`);
+- общий путь хранения временных файлов между API и worker (`TASK_STORAGE_DIR`, в compose это `/shared/task-files`).
 
-| Значение | Режим | Описание |
-|---|---|---|
-| `0.3` | Мягкий | Включать все показатели, кроме явно ненадёжных |
-| `0.5` | Стандартный (по умолчанию) | Баланс полноты и надёжности |
-| `0.7` | Строгий | Только таблично извлечённые данные |
-| `0.9` | Максимальный | Только точные совпадения в таблицах |
+В режиме `celery` события статусов транслируются через мост Redis -> WebSocket.
 
 ---
 
-### Профиль benchmark’ов скоринга
+## 6. Локальный запуск через Docker Compose
 
-`SCORING_PROFILE` переключает внутренние benchmark’и для нормализации коэффициентов без изменения API-контракта.
+Файл: `docker-compose.yml`.
 
-| Значение | Режим | Описание |
-|---|---|---|
-| `auto` | По умолчанию | Автовыбор между `generic` и `retail_demo` по контексту документа |
-| `generic` | Универсальный | Универсальные benchmark’и для широкого набора компаний |
-| `retail_demo` | Demo-профиль | Retail-friendly benchmark’и для показов и кейсов крупного ритейла |
+## 6.1 Основной контур
 
-Важно:
-- anomaly-blocking в скоринге (блокировка экстремальных ratio) остаётся включённым для всех профилей;
-- профиль влияет только на внутреннюю нормализацию/интерпретацию score, формат ответа API не меняется;
-- при `SCORING_PROFILE=auto` сервис сохраняет explainability в `score.methodology`: `benchmark_profile`, `period_basis`, `guardrails`, `leverage_basis`, `peer_context`.
+Поднимаются сервисы:
+
+- `backend`
+- `worker`
+- `backend-migrate`
+- `frontend`
+- `db`
+- `redis`
+
+Фактические особенности локального compose:
+
+- `backend` и `worker` работают в режиме `TASK_RUNTIME=celery`;
+- `backend` публикует порт `8000`, `frontend` — порт `80`;
+- `db` публикует порт `5432`, `redis` — `6379`;
+- `backend-migrate` применяет миграции через `entrypoint.sh`.
+
+## 6.2 Дополнительные профили
+
+- Профиль `test`: добавляет `db_test` (PostgreSQL на `5433`).
+- Профиль `ollama`: добавляет сервис `ollama` (порт `11434`).
 
 ---
 
-## Пример файла .env
+## 7. Производственный контур
 
-```env
-# ── Core ──────────────────────────────────────────────────
-DATABASE_URL=postgresql+asyncpg://neofin:password@db:5432/neofin
-API_KEY=change-me-in-production
-CONFIDENCE_THRESHOLD=0.5
-SCORING_PROFILE=auto
+Файл: `docker-compose.prod.yml`.
 
-# ── GigaChat (приоритет 1) ────────────────────────────────
-GIGACHAT_CLIENT_ID=your-client-id
-GIGACHAT_CLIENT_SECRET=your-client-secret
+## 7.1 Что подтверждено этим контуром
 
-# ── HuggingFace / Qwen (приоритет 2) ─────────────────────
-HF_TOKEN=hf_your_token_here
-HF_MODEL=Qwen/Qwen3.5-9B-Instruct
+- публичный входной сервис: `nginx` (в текущем файле опубликован порт `80`);
+- `backend`, `worker`, `db`, `redis`, `backend-migrate` во внутренней сети;
+- профиль `ollama` доступен отдельно;
+- `backend` и `worker` запускаются в режиме `TASK_RUNTIME=celery`.
 
-# ── Ollama — локальный режим (приоритет 3) ─────────────────
-LLM_URL=http://ollama:11434/api/generate
-LLM_MODEL=qwen3.5:9b
+## 7.2 Важное разделение уровней
 
-# ── Backend ───────────────────────────────────────────────
-API_HOST=0.0.0.0
-API_PORT=8000
-RATE_LIMIT=100/minute
-LOG_LEVEL=INFO
-LOG_FORMAT=json
+- Параметры SSL/TLS относятся к уровню внешнего прокси и инфраструктуры.
+- Параметры `SSL_CERT_PATH`, `SSL_KEY_PATH` **не являются параметрами `AppSettings`** и не используются приложением как конфигурация FastAPI.
 
-# ── SSL (продакшн) ────────────────────────────────────────
-SSL_CERT_PATH=/etc/nginx/certs/cert.pem
-SSL_KEY_PATH=/etc/nginx/certs/key.pem
-```
+Если требуется HTTPS, его нужно настраивать на уровне reverse proxy/инфраструктуры, а не как переменные приложения.
+
+---
+
+## 8. Таблица переменных окружения
+
+Ниже только подтвержденные переменные из кода и эксплуатационных файлов.
+
+Пояснение по колонке «По умолчанию»:
+
+- **код** — значение задано в коде приложения;
+- **compose** — значение подставляется только на уровне `docker-compose*.yml`;
+- **нет** — дефолт не задан, переменная должна быть передана явно;
+- **зависит от режима** — значение определяется условиями запуска (например, `TESTING`, профиль compose).
+
+| Переменная | Назначение | Обязательна | По умолчанию | Где используется |
+|---|---|---:|---|---|
+| `API_KEY` | Ключ доступа к защищенным HTTP-маршрутам | да (кроме `DEV_MODE=1`) | нет | `AppSettings`, `src/core/auth.py` |
+| `DEV_MODE` | Режим разработки: отключает проверку API-ключа для HTTP | нет | `false` | `AppSettings`, `auth`, `app` |
+| `DEMO_MODE` | Маскирование числовых значений в результатах/истории | нет | `0` | `src/routers/pdf_tasks.py`, `src/routers/analyses.py` |
+| `DATABASE_URL` | Основная строка подключения к БД | да (кроме тестовых режимов) | нет | `AppSettings`, `src/db/database.py` |
+| `TEST_DATABASE_URL` | Строка подключения для тестового режима | нет | зависит от режима | `AppSettings`, `src/db/database.py`, compose |
+| `TESTING` | Переключение на тестовую логику БД | нет | `0` | `src/db/database.py`, compose |
+| `CI` | Флаг CI-режима для валидации БД | нет | `0` | `src/db/database.py` |
+| `DB_POOL_SIZE` | Размер пула БД | нет | `5` | `AppSettings`, `src/db/database.py` |
+| `DB_MAX_OVERFLOW` | Доп. подключения пула БД | нет | `10` | `AppSettings`, `src/db/database.py` |
+| `DB_POOL_TIMEOUT` | Таймаут ожидания соединения БД | нет | `30` | `AppSettings`, `src/db/database.py` |
+| `DB_POOL_RECYCLE` | Время переразвертывания соединений БД | нет | `3600` | `AppSettings`, `src/db/database.py` |
+| `DB_POOL_PRE_PING` | Проверка соединения перед выдачей из пула | нет | `true` | `AppSettings`, `src/db/database.py` |
+| `DB_WAIT_RETRIES` | Число попыток миграций при старте | нет | `30` (entrypoint, может быть переопределено в compose) | `entrypoint.sh`, compose |
+| `DB_WAIT_SECONDS` | Пауза между попытками миграций | нет | `2` (entrypoint, может быть переопределено в compose) | `entrypoint.sh`, compose |
+| `TASK_RUNTIME` | Режим выполнения задач (`background`/`celery`) | нет | `background` (код), в compose часто задан `celery` | `AppSettings`, `src/core/task_queue.py`, compose |
+| `TASK_STORAGE_DIR` | Общий путь временных файлов задач | нет | нет | `AppSettings`, роутеры загрузки, compose |
+| `TASK_QUEUE_BROKER_URL` | URL брокера очереди задач | для `celery` | нет | `AppSettings`, `task_queue`, `runtime_events`, compose |
+| `TASK_QUEUE_RESULT_BACKEND` | URL backend для Celery | нет | нет | `AppSettings`, `task_queue`, compose |
+| `TASK_EVENTS_REDIS_URL` | URL Redis для моста событий WebSocket | нет | нет | `AppSettings`, `runtime_events`, compose |
+| `TASK_QUEUE_NAME` | Имя очереди Celery | нет | `neofin` | `AppSettings`, `task_queue` |
+| `TASK_QUEUE_EAGER` | Выполнение Celery в eager-режиме | нет | `false` | `AppSettings`, `task_queue` |
+| `CLEANUP_BATCH_LIMIT` | Пакет очистки зависших записей | нет | `100` | `AppSettings`, скрипты обслуживания |
+| `ANALYSIS_CLEANUP_STALE_HOURS` | Порог очистки одиночных задач | нет | `48` | `AppSettings`, скрипты обслуживания |
+| `MULTI_SESSION_STALE_HOURS` | Порог очистки многопериодных сессий | нет | `24` | `AppSettings`, скрипты обслуживания |
+| `RUNTIME_RECOVERY_BATCH_LIMIT` | Пакет восстановления зависших runtime-записей | нет | `100` | `AppSettings`, скрипты обслуживания |
+| `ANALYSIS_RUNTIME_STALE_MINUTES` | Порог runtime-stale для одиночных задач | нет | `60` | `AppSettings`, скрипты обслуживания |
+| `MULTI_SESSION_RUNTIME_STALE_MINUTES` | Порог runtime-stale для сессий | нет | `90` | `AppSettings`, скрипты обслуживания |
+| `CONFIDENCE_THRESHOLD` | Порог фильтрации достоверности извлечения | нет | `0.5` | `AppSettings`, анализатор |
+| `SCORING_PROFILE` | Профиль скоринга (`auto/generic/retail_demo`) | нет | `auto` | `AppSettings`, `scoring` |
+| `GIGACHAT_CLIENT_ID` | Идентификатор клиента GigaChat | нет | нет | `AppSettings`, `ai_service` |
+| `GIGACHAT_CLIENT_SECRET` | Секрет клиента GigaChat | нет | нет | `AppSettings`, `ai_service` |
+| `GIGACHAT_AUTH_URL` | URL OAuth GigaChat | нет | код (`https://ngw.devices.sberbank.ru:9443/api/v2/oauth`) | `AppSettings`, `ai_service` |
+| `GIGACHAT_CHAT_URL` | URL чата GigaChat | нет | код (`https://gigachat.devices.sberbank.ru/api/v1/chat/completions`) | `AppSettings`, `ai_service` |
+| `GIGACHAT_SSL_VERIFY` | Проверка SSL для клиента GigaChat | нет | `true` | `src/core/gigachat_agent.py`, compose prod |
+| `HF_TOKEN` | Токен Hugging Face | нет | нет | `AppSettings`, `ai_service` |
+| `HF_MODEL` | Идентификатор модели HF | нет | `Qwen/Qwen3.5-9B-Instruct` | `AppSettings`, `ai_service` |
+| `QWEN_API_KEY` | Ключ Qwen API | нет | нет | `AppSettings`, `ai_service`, compose prod |
+| `QWEN_API_URL` | URL Qwen API | нет | нет в коде, `https://api.qwen.ai/v1` в compose prod* | `AppSettings`, `ai_service`, compose prod |
+| `LLM_URL` | URL локальной языковой модели | нет | код (`http://localhost:11434/api/generate`), в compose может быть переопределен | `AppSettings`, `ai_service`, compose |
+| `LLM_MODEL` | Имя локальной модели | нет | код (`llama3`), в compose prod может быть переопределен | `AppSettings`, compose prod |
+| `AI_TIMEOUT` | Таймаут вызова языкового сервиса | нет | `120` | `AppSettings`, `ai_service` |
+| `AI_RETRY_COUNT` | Повторы вызова языкового сервиса | нет | `2` | `AppSettings`, `ai_service` |
+| `AI_RETRY_BACKOFF` | Коэффициент задержки повторов AI | нет | `2.0` | `AppSettings`, `ai_service` |
+| `AI_CIRCUIT_BREAKER_THRESHOLD` | Порог срабатывания автомата защиты | нет | `5` | `src/utils/circuit_breaker.py` |
+| `AI_CIRCUIT_BREAKER_TIMEOUT` | Время восстановления автомата защиты | нет | `120` | `src/utils/circuit_breaker.py` |
+| `RETRY_COUNT` | Число повторов в общих утилитах retry | нет | `3` | `src/utils/retry_utils.py` |
+| `RETRY_BACKOFF` | Множитель backoff в общих retry-утилитах | нет | `2.0` | `src/utils/retry_utils.py` |
+| `RETRY_INITIAL_DELAY` | Начальная задержка в общих retry-утилитах | нет | `1.0` | `src/utils/retry_utils.py` |
+| `RATE_LIMIT` | Ограничение частоты запросов | нет | `100/minute` | `AppSettings`, `app.py` |
+| `LOG_LEVEL` | Уровень логирования | нет | `INFO` | `AppSettings`, логирование |
+| `LOG_FORMAT` | Формат логирования (`text/json`) | нет | `text` | `AppSettings`, логирование |
+| `LLM_EXTRACTION_ENABLED` | Включение LLM-извлечения | нет | `false` | `AppSettings`, `tasks.py` |
+| `LLM_CHUNK_SIZE` | Размер текстового блока для LLM-извлечения | нет | `12000` | `AppSettings`, `tasks.py` |
+| `LLM_MAX_CHUNKS` | Лимит блоков на документ | нет | `5` | `AppSettings`, `tasks.py` |
+| `LLM_TOKEN_BUDGET` | Лимит объема текста на документ | нет | `50000` | `AppSettings`, `tasks.py` |
+| `CORS_ALLOW_ORIGINS` | Разрешенные источники CORS | нет | код (список localhost), в `DEV_MODE=1` используется `*` | `src/app.py` |
+| `CORS_ALLOW_METHODS` | Разрешенные HTTP-методы CORS | нет | код (`GET,POST,PUT,DELETE,OPTIONS`) | `src/app.py` |
+| `CORS_ALLOW_HEADERS` | Разрешенные заголовки CORS | нет | код (базовый список) | `src/app.py` |
+| `CORS_ALLOW_CREDENTIALS` | Разрешение credentials для CORS | нет | код (`false`) | `src/app.py` |
+| `TESSERACT_CMD` | Явный путь к исполняемому файлу tesseract | нет | нет | `pdf_extractor`, `legacy_helpers` |
+| `POSTGRES_USER` | Пользователь PostgreSQL в compose | да для compose | нет (задается в `.env`) | `docker-compose*.yml`, `.env.example` |
+| `POSTGRES_PASSWORD` | Пароль PostgreSQL в compose | да для compose | нет (задается в `.env`) | `docker-compose*.yml`, `.env.example` |
+| `POSTGRES_DB` | Имя базы PostgreSQL в compose | да для compose | нет (задается в `.env`) | `docker-compose*.yml`, `.env.example` |
+
+\* В `AppSettings` для `QWEN_API_URL` нет дефолта; значение по умолчанию на уровне compose не означает, что дефолт задан в коде приложения.
+
+---
+
+## 9. Типовые сценарии настройки
+
+## 9.1 Минимальный локальный запуск
+
+Минимально:
+
+- заполнить `.env`: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `API_KEY`;
+- при необходимости оставить `TASK_RUNTIME` как есть (в локальном compose он переопределяется на `celery`);
+- выполнить `docker compose up --build`.
+
+## 9.2 Запуск с очередью задач (Celery/Redis)
+
+Нужно:
+
+- `TASK_RUNTIME=celery`;
+- корректный `TASK_QUEUE_BROKER_URL`;
+- запущенный worker;
+- общий `TASK_STORAGE_DIR` (для многоконтейнерного режима);
+- Redis для моста событий (`TASK_EVENTS_REDIS_URL` либо fallback на broker URL).
+
+## 9.3 Запуск с локальным поставщиком языковой модели
+
+Варианты:
+
+- локально вне compose: запустить Ollama и указать `LLM_URL`;
+- в compose: использовать профиль `ollama`.
+
+При этом `LLM_MODEL` задает модель по умолчанию, а фактическая доступность зависит от установленной модели в Ollama.
+
+---
+
+## 10. Типовые ошибки конфигурации
+
+- `DATABASE_URL` не задана при обычном запуске -> ошибка инициализации БД.
+- `API_KEY` не задан при `DEV_MODE=0` -> защищенные HTTP-маршруты отвечают `500`.
+- `TASK_RUNTIME=celery` без `TASK_QUEUE_BROKER_URL` или без Celery/Redis -> ошибки запуска задач (`503` на маршрутах запуска).
+- Неверный формат `TASK_QUEUE_*_URL` (не `redis://`/`rediss://`) -> ошибка валидации настроек.
+- Неправильный `RATE_LIMIT` или выход параметров `AppSettings` за допустимые диапазоны -> автозамена на безопасные значения с предупреждением в логах.
+- Включенный `TESTING=1` в рабочем контуре -> риск подключения к `TEST_DATABASE_URL`.
+
+---
+
+## 11. Примечания по сопровождению
+
+- Обновлять документ при изменении `AppSettings`, прямых `os.getenv` и compose-конфигурации.
+- Не добавлять в раздел параметров приложения переменные внешнего прокси/SSL, если они не читаются кодом приложения.
+- При изменении порядка выбора поставщиков языковой модели синхронно обновлять раздел 4.
+- Для безопасной эксплуатации в контейнерах явно фиксировать `TESTING=0` для `backend`, `worker` и `backend-migrate`.

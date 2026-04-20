@@ -27,7 +27,7 @@
 
 Редактировать только здесь:
 
-- [content.js](E:/neo-fin-ai/docs/contest_presentation_2026/src/content.js)
+- [content.js](src/content.js)
 
 Блок:
 
@@ -45,7 +45,7 @@ const CONTACT = {
 ## Как собрать
 
 ```powershell
-cd E:\neo-fin-ai\docs\contest_presentation_2026
+cd docs/archive/contest/contest_presentation_2026
 npm install
 node .\neo-fin-ai-molodoy-finansist-2026.cjs
 ```
@@ -81,13 +81,14 @@ node .\neo-fin-ai-molodoy-finansist-2026.cjs
 
 - `docs/ARCHITECTURE.md`
 - `docs/API.md`
-- `docs/BUSINESS_MODEL.md`
 - `docs/CONFIGURATION.md`
 - `docs/ROADMAP.md`
 - `frontend/src/api/interfaces.ts`
-- `docs/CONTEST_DEMO_RUNBOOK.md`
-- `docs/CONTEST_OPERATOR_CARD.md`
+- `docs/archive/contest/CONTEST_DEMO_RUNBOOK.md`
+- `docs/archive/contest/CONTEST_OPERATOR_CARD.md`
 - `tests/data/demo_manifest.json`
+
+Стратегическая продуктовая рамка и прочие внутренние материалы не публикуются в открытом GitHub-репозитории; при обновлении колоды опираться на актуальное публичное ядро `docs/*` и локальный контур владельца.
 
 ## Дизайн-направление
 
