@@ -7,9 +7,13 @@ from src.analysis.scoring import (
     calculate_score_from_precomputed_ratios,
     calculate_score_with_context,
 )
-from tests.scoring_freeze.fixtures.classification_registry import PRESERVED_TEMPORARY_BUG_CASES
+from tests.scoring_freeze.fixtures.classification_registry import (
+    PRESERVED_TEMPORARY_BUG_CASES,
+)
 from tests.scoring_freeze.fixtures.payload_rules import PAYLOAD_RULE_SET_INDEX
-from tests.scoring_freeze.helpers.payload_assertions import assert_payload_matches_matrix
+from tests.scoring_freeze.helpers.payload_assertions import (
+    assert_payload_matches_matrix,
+)
 
 _BASE_METRICS: dict[str, Any] = {
     "revenue": 120_000_000.0,
@@ -38,7 +42,9 @@ def test_with_annualization_payload_contract_with_limited_snapshot() -> None:
         profile="generic",
     )
     payload = result["score_payload"]
-    assert_payload_matches_matrix(payload, PAYLOAD_RULE_SET_INDEX["prs-with-annualization"])
+    assert_payload_matches_matrix(
+        payload, PAYLOAD_RULE_SET_INDEX["prs-with-annualization"]
+    )
 
     # Soft snapshot: only stable, non-critical top-level shape.
     shape_snapshot = {

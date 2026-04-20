@@ -1,12 +1,14 @@
 from tests.scoring_freeze.fixtures.classification_registry import (
     ADMISSIBLE_CANONICAL_BASELINE_CASES,
-    BLOCKER_CASES as BLOCKER_CASE_IDS,
-    CLASSIFICATION_INDEX,
 )
+from tests.scoring_freeze.fixtures.classification_registry import (
+    BLOCKER_CASES as BLOCKER_CASE_IDS,
+)
+from tests.scoring_freeze.fixtures.classification_registry import CLASSIFICATION_INDEX
 from tests.scoring_freeze.fixtures.expectations import EXPECTATION_INDEX
 from tests.scoring_freeze.fixtures.input_bundles import INPUT_BUNDLE_INDEX
-from tests.scoring_freeze.fixtures.inventory_registry import INVENTORY_INDEX
 from tests.scoring_freeze.fixtures.invariant_registry import INVARIANT_INDEX
+from tests.scoring_freeze.fixtures.inventory_registry import INVENTORY_INDEX
 from tests.scoring_freeze.fixtures.models import FreezeDomain, ScoringFreezeCase
 from tests.scoring_freeze.fixtures.payload_rules import PAYLOAD_RULE_SET_INDEX
 

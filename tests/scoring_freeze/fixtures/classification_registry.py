@@ -1,7 +1,6 @@
 from tests.scoring_freeze.fixtures.inventory_registry import AMBIGUITY_INDEX
 from tests.scoring_freeze.fixtures.models import ClassificationDecision
 
-
 CLASSIFICATION_DECISIONS: tuple[ClassificationDecision, ...] = (
     ClassificationDecision(
         classification_id="cls-period-marker-annualization",

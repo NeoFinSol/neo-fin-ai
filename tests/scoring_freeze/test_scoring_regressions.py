@@ -8,8 +8,13 @@ from src.analysis.scoring import (
     WEIGHTS,
     calculate_score_with_context,
 )
-from tests.scoring_freeze.fixtures.case_registry import BLOCKER_CASES, CANONICAL_FREEZE_CASES
-from tests.scoring_freeze.fixtures.classification_registry import BLOCKER_CASES as BLOCKER_CASE_IDS
+from tests.scoring_freeze.fixtures.case_registry import (
+    BLOCKER_CASES,
+    CANONICAL_FREEZE_CASES,
+)
+from tests.scoring_freeze.fixtures.classification_registry import (
+    BLOCKER_CASES as BLOCKER_CASE_IDS,
+)
 
 _BASE_METRICS: dict[str, Any] = {
     "revenue": 120_000_000.0,
@@ -109,7 +114,9 @@ def test_factor_status_drift_impacts_are_from_expected_domain() -> None:
 def test_machine_reason_and_prose_are_not_conflated() -> None:
     result = _run_case(metrics_overrides={"revenue": None})
     assert result["methodology"]["guardrails"] == ["missing_core:revenue"]
-    descriptions = [factor["description"] for factor in result["score_payload"]["factors"]]
+    descriptions = [
+        factor["description"] for factor in result["score_payload"]["factors"]
+    ]
     assert all(isinstance(description, str) for description in descriptions)
     assert "missing_core:revenue" not in " ".join(descriptions)
 

@@ -1,4 +1,6 @@
 from tests.scoring_freeze.fixtures.case_registry import (
+    BLOCKER_CASES,
+    CANONICAL_FREEZE_CASES,
     CASES_WITH_DUPLICATE_DOMAIN_ASSIGNMENT,
     CASES_WITH_INVALID_INVARIANT_LINKAGE,
     CASES_WITHOUT_CLASSIFICATION,
@@ -7,11 +9,11 @@ from tests.scoring_freeze.fixtures.case_registry import (
     CASES_WITHOUT_INVARIANT_SEEDS,
     CASES_WITHOUT_INVENTORY_LINKAGE,
     CASES_WITHOUT_PAYLOAD_RULE_SET,
-    BLOCKER_CASES,
-    CANONICAL_FREEZE_CASES,
 )
 from tests.scoring_freeze.fixtures.classification_registry import (
     BLOCKER_CASES as BLOCKER_CASE_IDS,
+)
+from tests.scoring_freeze.fixtures.classification_registry import (
     CLASSIFICATION_DECISIONS,
     PRESERVED_TEMPORARY_BUG_CASES,
 )

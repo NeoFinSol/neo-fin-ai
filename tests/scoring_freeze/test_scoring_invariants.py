@@ -16,7 +16,9 @@ from tests.scoring_freeze.fixtures.case_registry import (
     CASES_WITHOUT_INVENTORY_LINKAGE,
     CASES_WITHOUT_PAYLOAD_RULE_SET,
 )
-from tests.scoring_freeze.fixtures.classification_registry import BLOCKER_CASES as BLOCKER_CASE_IDS
+from tests.scoring_freeze.fixtures.classification_registry import (
+    BLOCKER_CASES as BLOCKER_CASE_IDS,
+)
 from tests.scoring_freeze.fixtures.input_bundles import (
     DOCUMENT_INPUT_BUNDLES,
     INPUT_BUNDLE_INDEX,
@@ -27,7 +29,10 @@ from tests.scoring_freeze.fixtures.models import (
     PrecomputedInputBundle,
     ScoringFreezeCase,
 )
-from tests.scoring_freeze.helpers.boundary_runner import run_document_case, run_precomputed_case
+from tests.scoring_freeze.helpers.boundary_runner import (
+    run_document_case,
+    run_precomputed_case,
+)
 from tests.scoring_freeze.helpers.payload_classifier import resolve_payload_class
 
 _EXPECTED_INVARIANT_GROUPS = {
@@ -46,31 +51,45 @@ def test_invariant_groups_are_fully_covered_by_seeds() -> None:
 
 
 def test_deterministic_invariants_same_case_same_payload_and_class() -> None:
-    deterministic_seeds = [seed for seed in INVARIANT_SEEDS if seed.group == "deterministic"]
+    deterministic_seeds = [
+        seed for seed in INVARIANT_SEEDS if seed.group == "deterministic"
+    ]
     assert deterministic_seeds
     for seed in deterministic_seeds:
         case = _find_case(seed.case_id)
         first = _execute_case(case)
         second = _execute_case(case)
         assert first["payload"] == second["payload"]
-        assert first["resolution"].primary_payload_class == second["resolution"].primary_payload_class
-        assert _machine_status_fields(first["payload"]) == _machine_status_fields(second["payload"])
+        assert (
+            first["resolution"].primary_payload_class
+            == second["resolution"].primary_payload_class
+        )
+        assert _machine_status_fields(first["payload"]) == _machine_status_fields(
+            second["payload"]
+        )
 
 
 def test_anti_coupling_invariants_machine_fields_not_display_text_primary() -> None:
-    anti_coupling_seeds = [seed for seed in INVARIANT_SEEDS if seed.group == "anti_coupling"]
+    anti_coupling_seeds = [
+        seed for seed in INVARIANT_SEEDS if seed.group == "anti_coupling"
+    ]
     assert anti_coupling_seeds
     for seed in anti_coupling_seeds:
         case = _find_case(seed.case_id)
         baseline = _execute_case(case)["payload"]
         variant = _execute_case(case, mutate_doc_context=True)["payload"]
-        assert baseline["methodology"]["period_basis"] == variant["methodology"]["period_basis"]
+        assert (
+            baseline["methodology"]["period_basis"]
+            == variant["methodology"]["period_basis"]
+        )
         assert isinstance(baseline["factors"][0]["description"], str)
         assert isinstance(variant["factors"][0]["description"], str)
 
 
 def test_machine_contract_invariants_status_reason_explanation_separated() -> None:
-    machine_contract_seeds = [seed for seed in INVARIANT_SEEDS if seed.group == "machine_contract"]
+    machine_contract_seeds = [
+        seed for seed in INVARIANT_SEEDS if seed.group == "machine_contract"
+    ]
     assert machine_contract_seeds
     for seed in machine_contract_seeds:
         payload = _execute_case(_find_case(seed.case_id))["payload"]
@@ -83,19 +102,29 @@ def test_machine_contract_invariants_status_reason_explanation_separated() -> No
 
 
 def test_data_binding_invariants_are_stable_for_same_paths() -> None:
-    data_binding_seeds = [seed for seed in INVARIANT_SEEDS if seed.group == "data_binding"]
+    data_binding_seeds = [
+        seed for seed in INVARIANT_SEEDS if seed.group == "data_binding"
+    ]
     assert data_binding_seeds
     for seed in data_binding_seeds:
         case = _find_case(seed.case_id)
         first = _execute_case(case)["payload"]
         second = _execute_case(case)["payload"]
-        assert first["methodology"]["benchmark_profile"] == second["methodology"]["benchmark_profile"]
-        assert first["methodology"]["period_basis"] == second["methodology"]["period_basis"]
+        assert (
+            first["methodology"]["benchmark_profile"]
+            == second["methodology"]["benchmark_profile"]
+        )
+        assert (
+            first["methodology"]["period_basis"]
+            == second["methodology"]["period_basis"]
+        )
         assert first["normalized_scores"] == second["normalized_scores"]
 
 
 def test_payload_typing_invariants_keep_numeric_boolean_and_omission_shapes() -> None:
-    payload_typing_seeds = [seed for seed in INVARIANT_SEEDS if seed.group == "payload_typing"]
+    payload_typing_seeds = [
+        seed for seed in INVARIANT_SEEDS if seed.group == "payload_typing"
+    ]
     assert payload_typing_seeds
     for seed in payload_typing_seeds:
         payload = _execute_case(_find_case(seed.case_id))["payload"]
@@ -106,8 +135,12 @@ def test_payload_typing_invariants_keep_numeric_boolean_and_omission_shapes() ->
         assert isinstance(payload["factors"], list)
 
 
-def test_equivalence_preparation_invariants_full_linkage_and_blocker_separation() -> None:
-    equivalence_seeds = [seed for seed in INVARIANT_SEEDS if seed.group == "equivalence_preparation"]
+def test_equivalence_preparation_invariants_full_linkage_and_blocker_separation() -> (
+    None
+):
+    equivalence_seeds = [
+        seed for seed in INVARIANT_SEEDS if seed.group == "equivalence_preparation"
+    ]
     assert equivalence_seeds
     assert not CASES_WITHOUT_INPUT_BUNDLE
     assert not CASES_WITHOUT_CLASSIFICATION
