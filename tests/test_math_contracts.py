@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from src.analysis.math.contracts import DerivedMetric, ValidityState
+from src.analysis.math.policies import SuppressionPolicy
 
 
 def test_derived_metric_requires_trace_and_inputs() -> None:
@@ -43,3 +44,8 @@ def test_derived_metric_without_trace_is_invalid() -> None:
     assert metric.trace["status"] == "invalid"
     assert metric.trace["formula_id"] == "current_ratio"
     assert metric.trace["inputs_snapshot"]["current_assets"] == 125.0
+
+
+def test_suppression_policy_vocabulary_is_canonical() -> None:
+    assert SuppressionPolicy.NEVER.value == "never"
+    assert SuppressionPolicy.SUPPRESS_UNSAFE.value == "suppress_unsafe"

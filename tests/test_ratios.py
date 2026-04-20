@@ -1,4 +1,5 @@
 ﻿"""Basic smoke tests for calculate_ratios (legacy compatibility)."""
+
 from __future__ import annotations
 
 import pytest
@@ -80,3 +81,42 @@ def test_calculate_ratios_keeps_debt_metrics_unavailable_without_safe_math_suppo
     assert ratios["Финансовый рычаг"] is None
     assert ratios["Финансовый рычаг (обязательства/капитал)"] is None
     assert ratios["Финансовый рычаг (долг/капитал)"] is None
+
+
+def test_calculate_ratios_reads_all_legacy_exports_from_projection(monkeypatch):
+    import src.analysis.ratios as ratios_module
+
+    projected_values = {
+        "Коэффициент текущей ликвидности": 2.0,
+        "Коэффициент быстрой ликвидности": 1.1,
+        "Коэффициент абсолютной ликвидности": 0.25,
+        "Рентабельность активов (ROA)": 0.1,
+        "Рентабельность собственного капитала (ROE)": 0.2,
+        "Рентабельность продаж (ROS)": 0.05,
+        "EBITDA маржа": None,
+        "Коэффициент автономии": 0.5,
+        "Финансовый рычаг": None,
+        "Финансовый рычаг (обязательства/капитал)": None,
+        "Финансовый рычаг (долг/капитал)": None,
+        "Покрытие процентов": None,
+        "Оборачиваемость активов": None,
+        "Оборачиваемость запасов": None,
+        "Оборачиваемость дебиторской задолженности": None,
+    }
+
+    class FakeEngine:
+        def compute(self, typed_inputs):
+            return {"sentinel": typed_inputs}
+
+    monkeypatch.setattr(ratios_module, "MathEngine", lambda: FakeEngine())
+    monkeypatch.setattr(
+        ratios_module,
+        "project_legacy_ratios",
+        lambda metrics: (projected_values, {"projection": "sentinel"}),
+    )
+
+    ratios = calculate_ratios(
+        {"current_assets": 200.0, "short_term_liabilities": 100.0}
+    )
+
+    assert ratios == projected_values
