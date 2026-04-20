@@ -1,5 +1,32 @@
 # Project Log
 
+## 2026-04-20 — test(recovery): preserve branch recovery and add two non-duplicative math guards
+
+**Контекст:** user-requested cleanup/recovery pass по локальным веткам вокруг `E:\neo-fin-ai` перед работой над `Math Layer v2 Wave 4.5`.
+
+**Что сделано:**
+- выполнен fetch/prune и re-check локального graph против `origin/main`
+- сохранены две страховочные ветки:
+  - `codex/preserve-main-dirty-2026-04-20` — для локальных dirty meta-files
+  - `codex/preserve-math-layer-v1-dirty-2026-04-20` — для dirty follow-up worktree
+- рабочее дерево переведено на recovery-ветку `codex/wave45-recovery-2026-04-20` от `origin/main`
+- после tree-level recheck установлено:
+  - `feat/math-wave3-layer-v2` уже совпадает по дереву с `origin/main`
+  - `claude/festive-nash` не переносился, потому что его полезные фиксы уже присутствуют в более новой форме, а остальное — branch noise / historical junk
+- из сохранённого dirty worktree перенесены только 2 полезных тестовых инварианта:
+  - `tests/test_math_contracts.py` — canonical vocabulary lock для `SuppressionPolicy.NEVER/SUPPRESS_UNSAFE`
+  - `tests/test_ratios.py` — regression test, что `calculate_ratios()` читает весь legacy export через `project_legacy_ratios()`
+- дополнительный `/system/health` smoke из dirty worktree сознательно НЕ перенесён: он оказался почти полным дубликатом существующего router coverage и был отброшен как low-signal noise
+
+**Верификация:**
+- `python -m pytest tests/test_api.py tests/test_math_contracts.py tests/test_ratios.py -q`
+- результат: `13 passed`
+
+**Итог:**
+- recovery surface чистый: в diff остались только 2 осмысленных тестовых усиления без branch-мусора, старых env/cache файлов и без перетаскивания устаревших реализаций
+
+---
+
 ## 2026-04-20 — feat(math): Wave 4 outward reason governance + Phase 8 cleanup (ветка feat/math-wave3-layer-v2)
 
 **Контекст:** Завершение Wave 4 для math layer: канонический словарь outward-причин, детерминированная резолюция primary/supporting на границе engine, централизованный emission guard, разделение trace vs final outward, удаление migration-модуля `resolver_reason_codes.py`, ужесточение AST-scan legacy `wave3_*` литералов. Black/isort подогнаны под CI.
